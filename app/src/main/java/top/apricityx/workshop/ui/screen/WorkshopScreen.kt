@@ -3,9 +3,12 @@ package top.apricityx.workshop.ui.screen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -14,6 +17,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +43,7 @@ import top.apricityx.workshop.WorkshopScreenDestination
 import top.apricityx.workshop.WorkshopUiState
 import top.apricityx.workshop.data.SteamGame
 import top.apricityx.workshop.data.WorkshopBrowseItem
+import top.apricityx.workshop.update.UpdateSource
 
 data class WorkshopScreenActions(
     val onNavigateBack: () -> Unit,
@@ -56,6 +61,11 @@ data class WorkshopScreenActions(
     val onDismissRemoveGame: () -> Unit,
     val onNavigateToSettings: () -> Unit,
     val onUpdateThemeMode: (AppThemeMode) -> Unit,
+    val onUpdateAutoCheckUpdates: (Boolean) -> Unit,
+    val onUpdatePreferredUpdateSource: (UpdateSource) -> Unit,
+    val onCheckForUpdatesNow: () -> Unit,
+    val onDismissUpdatePrompt: () -> Unit,
+    val onOpenExternalUrl: (String) -> Unit,
     val onUpdateDownloadThreadCountInput: (String) -> Unit,
     val onUpdateConcurrentDownloadTaskCountInput: (String) -> Unit,
     val onSaveDownloadSettings: () -> Unit,
@@ -172,7 +182,50 @@ fun WorkshopScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                val updatePrompt = state.settingsState.updatePromptState
                 val pendingRemove = state.pendingRemoveGame
+                if (updatePrompt != null) {
+                    AlertDialog(
+                        onDismissRequest = actions.onDismissUpdatePrompt,
+                        title = { Text("发现新版本") },
+                        text = {
+                            Column(
+                                modifier = Modifier
+                                    .heightIn(max = 360.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("当前版本：${updatePrompt.currentVersion}")
+                                Text("最新版本：${updatePrompt.latestVersion}")
+                                Text("发布日期：${updatePrompt.publishedAtText}")
+                                Text("下载来源：${updatePrompt.downloadSourceDisplayName}")
+                                Text(
+                                    text = "更新说明",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    text = updatePrompt.notesText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    actions.onOpenExternalUrl(updatePrompt.downloadUrl)
+                                    actions.onDismissUpdatePrompt()
+                                },
+                            ) {
+                                Text("前往下载")
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(onClick = actions.onDismissUpdatePrompt) {
+                                Text("稍后")
+                            }
+                        },
+                    )
+                }
                 if (pendingRemove != null && state.currentScreen == WorkshopScreenDestination.Library) {
                     AlertDialog(
                         onDismissRequest = actions.onDismissRemoveGame,
@@ -268,6 +321,10 @@ fun WorkshopScreen(
                             WorkshopScreenDestination.Settings -> SettingsScreen(
                                 state = state.settingsState,
                                 onThemeModeSelected = actions.onUpdateThemeMode,
+                                onAutoCheckUpdatesChanged = actions.onUpdateAutoCheckUpdates,
+                                onPreferredUpdateSourceSelected = actions.onUpdatePreferredUpdateSource,
+                                onManualCheckUpdates = actions.onCheckForUpdatesNow,
+                                onOpenExternalUrl = actions.onOpenExternalUrl,
                                 onThreadCountChange = actions.onUpdateDownloadThreadCountInput,
                                 onConcurrentTaskCountChange = actions.onUpdateConcurrentDownloadTaskCountInput,
                                 onSave = actions.onSaveDownloadSettings,

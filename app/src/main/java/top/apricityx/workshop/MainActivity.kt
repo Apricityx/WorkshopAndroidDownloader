@@ -1,6 +1,7 @@
 package top.apricityx.workshop
 
 import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.app.UiModeManager
 import android.os.Bundle
 import android.widget.Toast
@@ -11,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.net.toUri
 import top.apricityx.workshop.ui.screen.WorkshopScreen
 import top.apricityx.workshop.ui.screen.WorkshopScreenActions
 import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
@@ -62,6 +64,11 @@ class MainActivity : ComponentActivity() {
                         onDismissRemoveGame = workshopViewModel::dismissRemoveGameDialog,
                         onNavigateToSettings = workshopViewModel::navigateToSettings,
                         onUpdateThemeMode = workshopViewModel::updateThemeMode,
+                        onUpdateAutoCheckUpdates = workshopViewModel::updateAutoCheckUpdates,
+                        onUpdatePreferredUpdateSource = workshopViewModel::updatePreferredUpdateSource,
+                        onCheckForUpdatesNow = workshopViewModel::checkForUpdatesNow,
+                        onDismissUpdatePrompt = workshopViewModel::dismissUpdatePrompt,
+                        onOpenExternalUrl = ::openExternalUrl,
                         onUpdateDownloadThreadCountInput = workshopViewModel::updateDownloadThreadCountInput,
                         onUpdateConcurrentDownloadTaskCountInput = workshopViewModel::updateConcurrentDownloadTaskCountInput,
                         onSaveDownloadSettings = workshopViewModel::saveDownloadSettings,
@@ -110,6 +117,16 @@ class MainActivity : ComponentActivity() {
             startActivity(intent)
         }.onFailure {
             val message = if (it is ActivityNotFoundException) "没有找到可打开这个文件的应用" else "打开文件失败"
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun openExternalUrl(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+        runCatching {
+            startActivity(intent)
+        }.onFailure {
+            val message = if (it is ActivityNotFoundException) "没有找到可打开链接的应用" else "打开链接失败"
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }

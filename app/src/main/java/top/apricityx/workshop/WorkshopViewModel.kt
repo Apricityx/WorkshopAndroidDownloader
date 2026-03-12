@@ -16,6 +16,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.net.SocketTimeoutException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import okhttp3.OkHttpClient
 import top.apricityx.workshop.data.GameLibraryRepository
 import top.apricityx.workshop.data.SteamGame
@@ -23,6 +26,14 @@ import top.apricityx.workshop.data.SteamGameRepository
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.data.WorkshopBrowseRepository
 import top.apricityx.workshop.data.WorkshopDetailRepository
+import top.apricityx.workshop.update.UpdateCheckExecutionResult
+import top.apricityx.workshop.update.UpdateDownloadResolution
+import top.apricityx.workshop.update.UpdateReleaseInfo
+import top.apricityx.workshop.update.UpdateSource
+import top.apricityx.workshop.update.UpdateUiMessage
+import top.apricityx.workshop.update.WorkshopUpdateService
+import top.apricityx.workshop.update.WorkshopUpdateUiReducer
+import top.apricityx.workshop.update.WorkshopUpdateVersioning
 
 class WorkshopViewModel(
     application: Application,
@@ -34,6 +45,7 @@ class WorkshopViewModel(
     private val libraryRepository = GameLibraryRepository(application)
     private val downloadCenterManager = DownloadCenterManager.getInstance(application)
     private val settingsRepository = DownloadSettingsRepository(application)
+    private val updateService = WorkshopUpdateService(httpClient)
 
     private val _uiState = MutableStateFlow(createInitialUiState())
     val uiState: StateFlow<WorkshopUiState> = _uiState.asStateFlow()
@@ -43,6 +55,7 @@ class WorkshopViewModel(
     init {
         refreshLibrary()
         loadFeaturedGames()
+        maybeStartAutoUpdateCheck()
         viewModelScope.launch {
             downloadCenterManager.uiState.collect { downloadCenterState ->
                 _uiState.update { state ->
@@ -96,6 +109,11 @@ class WorkshopViewModel(
                     concurrentDownloadTaskCountInput = currentConcurrentTasks.toString(),
                     savedConcurrentDownloadTaskCount = currentConcurrentTasks,
                     selectedThemeMode = currentThemeMode,
+                    autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
+                    preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
+                    availableUpdateSources = UpdateSource.userSelectableSources(),
+                    currentVersionText = BuildConfig.VERSION_NAME,
+                    updateStatusSummary = buildUpdateStatusSummary(),
                     message = null,
                 ),
             )
@@ -164,6 +182,31 @@ class WorkshopViewModel(
                     selectedThemeMode = themeMode,
                     message = "已切换为${themeMode.displayName()}。",
                 ),
+            )
+        }
+    }
+
+    fun updateAutoCheckUpdates(enabled: Boolean) {
+        settingsRepository.setAutoCheckUpdatesEnabled(enabled)
+        syncStoredUpdateState()
+    }
+
+    fun updatePreferredUpdateSource(source: UpdateSource) {
+        if (!source.userSelectable) {
+            return
+        }
+        settingsRepository.setPreferredUpdateSource(source)
+        syncStoredUpdateState()
+    }
+
+    fun checkForUpdatesNow() {
+        runUpdateCheck(userInitiated = true)
+    }
+
+    fun dismissUpdatePrompt() {
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(updatePromptState = null),
             )
         }
     }
@@ -722,6 +765,181 @@ class WorkshopViewModel(
         }
     }
 
+    private fun maybeStartAutoUpdateCheck() {
+        if (!settingsRepository.isAutoCheckUpdatesEnabled()) {
+            return
+        }
+        runUpdateCheck(userInitiated = false)
+    }
+
+    private fun runUpdateCheck(userInitiated: Boolean) {
+        if (_uiState.value.settingsState.updateCheckInProgress) {
+            return
+        }
+
+        syncStoredUpdateState(updateCheckInProgress = true)
+        viewModelScope.launch {
+            val preferredSource = settingsRepository.getPreferredUpdateSource()
+            val result = runCatching {
+                updateService.checkForUpdates(
+                    currentVersion = BuildConfig.VERSION_NAME,
+                    preferredUserSource = preferredSource,
+                )
+            }.getOrElse { error ->
+                UpdateCheckExecutionResult.Failure(
+                    errorSummary = error.message ?: "检查更新失败。",
+                )
+            }
+
+            val toastMessage = when (result) {
+                is UpdateCheckExecutionResult.Success -> handleUpdateCheckSuccess(result, userInitiated)
+                is UpdateCheckExecutionResult.Failure -> handleUpdateCheckFailure(result, userInitiated)
+            }
+            if (!toastMessage.isNullOrBlank()) {
+                _toastMessages.emit(toastMessage)
+            }
+        }
+    }
+
+    private fun handleUpdateCheckSuccess(
+        result: UpdateCheckExecutionResult.Success,
+        userInitiated: Boolean,
+    ): String? {
+        val decision = WorkshopUpdateUiReducer.reduce(result, userInitiated)
+        settingsRepository.setLastUpdateCheckAtMs(System.currentTimeMillis())
+        settingsRepository.setLastKnownRemoteTag(result.release.normalizedVersion)
+        settingsRepository.setLastSuccessfulMetadataSourceId(result.metadataSource.id)
+        settingsRepository.setLastUpdateErrorSummary(null)
+        if (result.downloadResolution != null) {
+            settingsRepository.setLastSuccessfulDownloadSourceId(result.downloadResolution.source.id)
+        }
+
+        val promptState = if (decision.showPrompt) {
+            buildUpdatePromptState(result.release, result.downloadResolution)
+        } else {
+            null
+        }
+        syncStoredUpdateState(
+            updateCheckInProgress = false,
+            updatePromptState = promptState,
+        )
+
+        return when (decision.message) {
+            UpdateUiMessage.LATEST -> "当前已是最新版本。"
+            UpdateUiMessage.FAILURE -> "检查更新失败。"
+            null -> null
+        }
+    }
+
+    private fun handleUpdateCheckFailure(
+        result: UpdateCheckExecutionResult.Failure,
+        userInitiated: Boolean,
+    ): String? {
+        val decision = WorkshopUpdateUiReducer.reduce(result, userInitiated)
+        settingsRepository.setLastUpdateCheckAtMs(System.currentTimeMillis())
+        settingsRepository.setLastUpdateErrorSummary(result.errorSummary)
+        result.release?.let { release ->
+            settingsRepository.setLastKnownRemoteTag(release.normalizedVersion)
+        }
+        result.metadataSource?.let { source ->
+            settingsRepository.setLastSuccessfulMetadataSourceId(source.id)
+        }
+        syncStoredUpdateState(
+            updateCheckInProgress = false,
+            updatePromptState = null,
+        )
+
+        return when (decision.message) {
+            UpdateUiMessage.FAILURE -> "检查更新失败：${result.errorSummary}"
+            UpdateUiMessage.LATEST -> "当前已是最新版本。"
+            null -> null
+        }
+    }
+
+    private fun buildUpdatePromptState(
+        release: UpdateReleaseInfo,
+        downloadResolution: UpdateDownloadResolution?,
+    ): UpdatePromptState? {
+        val resolvedDownload = downloadResolution ?: return null
+        return UpdatePromptState(
+            currentVersion = BuildConfig.VERSION_NAME,
+            latestVersion = release.normalizedVersion,
+            publishedAtText = release.publishedAtDisplayText.ifBlank { "未知" },
+            downloadSourceDisplayName = resolvedDownload.source.displayName,
+            notesText = release.notesText.ifBlank { "暂无更新说明。" },
+            downloadUrl = resolvedDownload.resolvedUrl,
+        )
+    }
+
+    private fun syncStoredUpdateState(
+        updateCheckInProgress: Boolean = _uiState.value.settingsState.updateCheckInProgress,
+        updatePromptState: UpdatePromptState? = _uiState.value.settingsState.updatePromptState,
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
+                    preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
+                    availableUpdateSources = UpdateSource.userSelectableSources(),
+                    currentVersionText = BuildConfig.VERSION_NAME,
+                    updateStatusSummary = buildUpdateStatusSummary(),
+                    updateCheckInProgress = updateCheckInProgress,
+                    updatePromptState = updatePromptState,
+                ),
+            )
+        }
+    }
+
+    private fun buildUpdateStatusSummary(): String {
+        val lastCheckedAtMs = settingsRepository.getLastUpdateCheckAtMs()
+        if (lastCheckedAtMs <= 0L) {
+            return "尚未执行过更新检查。"
+        }
+
+        val lines = mutableListOf<String>()
+        lines += "最近检查：${formatUpdateCheckTime(lastCheckedAtMs)}"
+
+        val remoteTag = settingsRepository.getLastKnownRemoteTag()
+        if (!remoteTag.isNullOrBlank()) {
+            lines += "远端版本：$remoteTag"
+        }
+
+        val metadataSource = resolveUpdateSourceDisplayName(settingsRepository.getLastSuccessfulMetadataSourceId())
+        if (metadataSource != null) {
+            lines += "元数据来源：$metadataSource"
+        }
+
+        val errorSummary = settingsRepository.getLastUpdateErrorSummary()
+        if (!errorSummary.isNullOrBlank()) {
+            lines += "结果：检查失败"
+            lines += errorSummary
+            return lines.joinToString("\n")
+        }
+
+        val hasUpdate = !remoteTag.isNullOrBlank() &&
+            WorkshopUpdateVersioning.isRemoteNewer(BuildConfig.VERSION_NAME, remoteTag)
+        lines += if (hasUpdate) {
+            "结果：发现新版本"
+        } else {
+            "结果：当前已是最新版本"
+        }
+
+        if (hasUpdate) {
+            val downloadSource = resolveUpdateSourceDisplayName(settingsRepository.getLastSuccessfulDownloadSourceId())
+            if (downloadSource != null) {
+                lines += "下载来源：$downloadSource"
+            }
+        }
+
+        return lines.joinToString("\n")
+    }
+
+    private fun resolveUpdateSourceDisplayName(sourceId: String?): String? =
+        UpdateSource.fromPersistedValue(sourceId)?.displayName
+
+    private fun formatUpdateCheckTime(timestampMs: Long): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestampMs))
+
     private fun navigateTo(
         screen: WorkshopScreenDestination,
         rememberPrevious: Boolean = true,
@@ -767,6 +985,11 @@ class WorkshopViewModel(
                 concurrentDownloadTaskCountInput = concurrentTaskCount.toString(),
                 savedConcurrentDownloadTaskCount = concurrentTaskCount,
                 selectedThemeMode = themeMode,
+                autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
+                preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
+                availableUpdateSources = UpdateSource.userSelectableSources(),
+                currentVersionText = BuildConfig.VERSION_NAME,
+                updateStatusSummary = buildUpdateStatusSummary(),
             ),
         )
     }

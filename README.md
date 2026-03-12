@@ -133,6 +133,12 @@
 
 - `docs/release-automation/README.md`
 
+本地准备 release note、打 tag 并推送，建议直接运行：
+
+```powershell
+scripts\prepare-release.bat
+```
+
 <a id="automation"></a>
 
 ## 自动化调试

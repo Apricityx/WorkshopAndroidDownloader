@@ -2,6 +2,7 @@ package top.apricityx.workshop
 
 import top.apricityx.workshop.data.SteamGame
 import top.apricityx.workshop.data.WorkshopBrowseItem
+import top.apricityx.workshop.update.UpdateSource
 
 enum class WorkshopScreenDestination {
     Library,
@@ -82,7 +83,23 @@ data class SettingsUiState(
     val concurrentDownloadTaskCountInput: String = "",
     val savedConcurrentDownloadTaskCount: Int = DownloadSettingsRepository.DEFAULT_CONCURRENT_DOWNLOAD_TASKS,
     val selectedThemeMode: AppThemeMode = DownloadSettingsRepository.DEFAULT_THEME_MODE,
+    val autoCheckUpdatesEnabled: Boolean = DownloadSettingsRepository.DEFAULT_AUTO_CHECK_UPDATES_ENABLED,
+    val preferredUpdateSource: UpdateSource = UpdateSource.DEFAULT_PREFERRED_USER_SOURCE,
+    val availableUpdateSources: List<UpdateSource> = UpdateSource.userSelectableSources(),
+    val currentVersionText: String = "",
+    val updateStatusSummary: String = "尚未执行过更新检查。",
+    val updateCheckInProgress: Boolean = false,
+    val updatePromptState: UpdatePromptState? = null,
     val message: String? = null,
+)
+
+data class UpdatePromptState(
+    val currentVersion: String,
+    val latestVersion: String,
+    val publishedAtText: String,
+    val downloadSourceDisplayName: String,
+    val notesText: String,
+    val downloadUrl: String,
 )
 
 fun AppThemeMode.displayName(): String =

@@ -77,12 +77,35 @@ application.version.name=1.0
 
 ### 推荐流程
 
-1. 修改 `gradle.properties` 中的 `application.version.code` 和 `application.version.name`
-2. 新建或更新 `docs/release/note/v<version>.md`
-3. 提交变更
-4. 创建并推送标签 `v<version>`
+优先使用仓库内置脚本：
 
-PowerShell 示例：
+```powershell
+scripts\prepare-release.bat
+```
+
+也可以直接调用：
+
+```powershell
+.\scripts\prepare-release.ps1
+```
+
+在 macOS / Linux / Git Bash 下可用：
+
+```bash
+bash scripts/prepare-release.sh
+```
+
+脚本会自动完成：
+
+1. 读取 `gradle.properties` 里的 `application.version.name`
+2. 确认是否发布 `v<version>`
+3. 如果缺少发布说明，则创建 `docs/release/note/v<version>.md`
+4. 等待你补完更新日志
+5. 仅提交 `docs/release/note/v<version>.md` 和 `gradle.properties` 的发布相关改动
+6. 创建 annotated tag：`v<version>`
+7. 推送当前分支和对应 tag
+
+如果你需要手动执行，PowerShell 示例：
 
 ```powershell
 git add gradle.properties docs/release/note/v1.0.md
@@ -139,3 +162,11 @@ $env:RELEASE_KEY_PASSWORD="..."
 `Could not determine java version` 或找不到本地 JDK
 - 原因：机器上没有可用 JDK，或仓库里误写了本机专用的 `org.gradle.java.home`
 - 修复：使用系统 `JAVA_HOME` / Android Studio JDK；当前工作流会显式使用 `setup-java` 提供的 JDK 21
+
+`没有可提交的发布变更`
+- 原因：`docs/release/note/v<version>.md` 和 `gradle.properties` 都没有新的本地改动
+- 修复：补充发布说明内容，或先更新版本号后再重新运行脚本
+
+`远端已存在 tag`
+- 原因：当前版本已经发布过
+- 修复：更新 `application.version.name` 后重新准备下一版发布

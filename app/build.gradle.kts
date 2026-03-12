@@ -44,6 +44,8 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
+        buildConfigField("String", "UPDATE_GITHUB_OWNER", "\"Apricityx\"")
+        buildConfigField("String", "UPDATE_GITHUB_REPO", "\"WorkshopAndroidDownloader\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -72,6 +74,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
