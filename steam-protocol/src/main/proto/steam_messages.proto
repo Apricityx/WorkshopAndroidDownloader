@@ -1,0 +1,114 @@
+syntax = "proto2";
+
+package steam.messages;
+
+option java_package = "top.apricityx.workshop.steam.proto";
+option java_multiple_files = true;
+
+message CMsgProtoBufHeader {
+  optional fixed64 steamid = 1;
+  optional int32 client_sessionid = 2;
+  optional fixed64 jobid_source = 10 [default = 18446744073709551615];
+  optional fixed64 jobid_target = 11 [default = 18446744073709551615];
+  optional string target_job_name = 12;
+  optional int32 eresult = 13 [default = 2];
+  optional string error_message = 14;
+  optional int32 seq_num = 24;
+}
+
+message CMsgClientHeartBeat {
+  optional bool send_reply = 1;
+}
+
+message CMsgClientHello {
+  optional uint32 protocol_version = 1;
+}
+
+message CMsgClientLogon {
+  optional uint32 protocol_version = 1;
+  optional uint32 cell_id = 3;
+  optional uint32 client_package_version = 5;
+  optional string client_language = 6;
+  optional uint32 client_os_type = 7;
+  optional fixed64 client_supplied_steam_id = 22;
+  optional bytes machine_id = 30;
+  optional string machine_name = 96;
+  optional bool supports_rate_limit_response = 102;
+}
+
+message CMsgClientLogonResponse {
+  optional int32 eresult = 1 [default = 2];
+  optional int32 legacy_out_of_game_heartbeat_seconds = 2;
+  optional int32 heartbeat_seconds = 3;
+  optional uint32 cell_id = 7;
+  optional string user_country = 16;
+  optional fixed64 client_supplied_steamid = 20;
+  optional string ip_country_code = 21;
+}
+
+message CMsgClientGetDepotDecryptionKey {
+  optional uint32 depot_id = 1;
+  optional uint32 app_id = 2;
+}
+
+message CMsgClientGetDepotDecryptionKeyResponse {
+  optional int32 eresult = 1 [default = 2];
+  optional uint32 depot_id = 2;
+  optional bytes depot_encryption_key = 3;
+}
+
+message CMsgMulti {
+  optional uint32 size_unzipped = 1;
+  optional bytes message_body = 2;
+}
+
+message CContentServerDirectory_GetServersForSteamPipe_Request {
+  optional uint32 cell_id = 1;
+  optional uint32 max_servers = 2 [default = 20];
+}
+
+message CContentServerDirectory_ServerInfo {
+  optional string type = 1;
+  optional int32 source_id = 2;
+  optional int32 cell_id = 3;
+  optional int32 load = 4;
+  optional float weighted_load = 5;
+  optional int32 num_entries_in_client_list = 6;
+  optional bool steam_china_only = 7;
+  optional string host = 8;
+  optional string vhost = 9;
+  optional bool use_as_proxy = 10;
+  optional string proxy_request_path_template = 11;
+  optional string https_support = 12;
+  repeated uint32 allowed_app_ids = 13;
+  optional uint32 priority_class = 15;
+  repeated string bypass_proxies_of_type = 16;
+}
+
+message CContentServerDirectory_GetServersForSteamPipe_Response {
+  repeated CContentServerDirectory_ServerInfo servers = 1;
+  optional bool no_change = 2;
+}
+
+message CContentServerDirectory_GetManifestRequestCode_Request {
+  optional uint32 app_id = 1;
+  optional uint32 depot_id = 2;
+  optional uint64 manifest_id = 3;
+  optional string app_branch = 4;
+  optional string branch_password_hash = 5;
+}
+
+message CContentServerDirectory_GetManifestRequestCode_Response {
+  optional uint64 manifest_request_code = 1;
+}
+
+message CContentServerDirectory_GetCDNAuthToken_Request {
+  optional uint32 depot_id = 1;
+  optional string host_name = 2;
+  optional uint32 app_id = 3;
+}
+
+message CContentServerDirectory_GetCDNAuthToken_Response {
+  optional string token = 1;
+  optional uint32 expiration_time = 2;
+}
