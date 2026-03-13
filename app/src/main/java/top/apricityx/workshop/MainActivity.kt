@@ -1,24 +1,44 @@
 package top.apricityx.workshop
 
+import android.Manifest
+import android.app.UiModeManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.app.UiModeManager
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.LaunchedEffect
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.net.toUri
+import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.ui.screen.WorkshopScreen
 import top.apricityx.workshop.ui.screen.WorkshopScreenActions
 import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
 
 class MainActivity : ComponentActivity() {
     private val workshopViewModel: WorkshopViewModel by viewModels { WorkshopViewModel.Factory }
+    private var pendingDownloadItem: WorkshopBrowseItem? = null
+    private val legacyStoragePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val item = pendingDownloadItem ?: return@registerForActivityResult
+            pendingDownloadItem = null
+            if (!granted) {
+                Toast.makeText(
+                    this,
+                    "未授予存储权限，下载完成后将导出到应用专用目录。",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            workshopViewModel.downloadSingleItem(item)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,13 +52,7 @@ class MainActivity : ComponentActivity() {
 
             SteamWorkshopDemoTheme(themeMode = uiState.themeMode) {
                 LaunchedEffect(uiState.themeMode) {
-                    getSystemService(UiModeManager::class.java)?.setApplicationNightMode(
-                        when (uiState.themeMode) {
-                            AppThemeMode.FollowSystem -> UiModeManager.MODE_NIGHT_AUTO
-                            AppThemeMode.Light -> UiModeManager.MODE_NIGHT_NO
-                            AppThemeMode.Dark -> UiModeManager.MODE_NIGHT_YES
-                        },
-                    )
+                    applySystemNightMode(uiState.themeMode)
                 }
                 LaunchedEffect(Unit) {
                     workshopViewModel.toastMessages.collect { message ->
@@ -83,7 +97,7 @@ class MainActivity : ComponentActivity() {
                         onLoadMoreWorkshopItems = workshopViewModel::loadMoreWorkshopItems,
                         onOpenWorkshopItemDetail = workshopViewModel::openWorkshopItemDetail,
                         onRetryWorkshopItemDetail = workshopViewModel::retryWorkshopItemDetail,
-                        onDownloadSingleItem = workshopViewModel::downloadSingleItem,
+                        onDownloadSingleItem = ::downloadSingleItemWithCompatibilityGuard,
                     ),
                 )
             }
@@ -98,6 +112,16 @@ class MainActivity : ComponentActivity() {
 
     private fun handleLaunchIntent() {
         AdbDownloadCommandParser.parse(intent)?.let(workshopViewModel::applyAdbCommand)
+    }
+
+    private fun downloadSingleItemWithCompatibilityGuard(item: WorkshopBrowseItem) {
+        if (!shouldRequestLegacyStoragePermission()) {
+            workshopViewModel.downloadSingleItem(item)
+            return
+        }
+
+        pendingDownloadItem = item
+        legacyStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
     }
 
     private fun openDownloadedFile(
@@ -120,6 +144,27 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun applySystemNightMode(themeMode: AppThemeMode) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return
+        }
+
+        getSystemService(UiModeManager::class.java)?.setApplicationNightMode(
+            when (themeMode) {
+                AppThemeMode.FollowSystem -> UiModeManager.MODE_NIGHT_AUTO
+                AppThemeMode.Light -> UiModeManager.MODE_NIGHT_NO
+                AppThemeMode.Dark -> UiModeManager.MODE_NIGHT_YES
+            },
+        )
+    }
+
+    private fun shouldRequestLegacyStoragePermission(): Boolean =
+        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            ) != PackageManager.PERMISSION_GRANTED
 
     private fun openExternalUrl(url: String) {
         val intent = Intent(Intent.ACTION_VIEW, url.toUri())

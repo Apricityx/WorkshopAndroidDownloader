@@ -17,6 +17,8 @@ object WorkshopFileOpenManager {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
-        return Intent.createChooser(viewIntent, "打开文件")
+        return Intent.createChooser(viewIntent, "打开文件").apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
 }

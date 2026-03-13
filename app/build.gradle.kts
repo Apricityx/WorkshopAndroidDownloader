@@ -40,7 +40,7 @@ android {
 
     defaultConfig {
         applicationId = "top.apricityx.workshop"
-        minSdk = 31
+        minSdk = 26
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName

@@ -1,10 +1,17 @@
 package top.apricityx.workshop
 
+import android.Manifest
 import android.app.Application
 import android.content.ContentUris
 import android.content.ContentValues
+import android.content.pm.PackageManager
+import android.media.MediaScannerConnection
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -26,7 +33,6 @@ class WorkshopPublicExportManager(
             return@withContext emptyList()
         }
 
-        val resolver = application.contentResolver
         val metadata = loadWorkshopMetadata(stagingDir)
         val exportPlan = files.map { file ->
             val source = File(stagingDir, file.relativePath.replace('/', File.separatorChar))
@@ -46,12 +52,17 @@ class WorkshopPublicExportManager(
                     relativeFilePath = file.relativePath,
                     displayName = displayName,
                 ),
-                relativePath = buildDownloadRelativePath(
+                downloadSubdirectoryPath = buildDownloadSubdirectoryPath(
                     appId = appId,
                     publishedFileId = publishedFileId,
                     relativeFilePath = file.relativePath,
                 ),
-                userVisiblePath = buildUserVisiblePath(
+                mediaStoreRelativePath = buildDownloadRelativePath(
+                    appId = appId,
+                    publishedFileId = publishedFileId,
+                    relativeFilePath = file.relativePath,
+                ),
+                publicUserVisiblePath = buildUserVisiblePath(
                     appId = appId,
                     publishedFileId = publishedFileId,
                     relativeFilePath = file.relativePath,
@@ -60,7 +71,22 @@ class WorkshopPublicExportManager(
             )
         }
 
-        exportPlan.map { it.relativePath }.distinct().forEach { relativePath ->
+        return@withContext when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> exportToMediaStore(exportPlan, log)
+            hasLegacyExternalStoragePermission() && isLegacyExternalStorageWritable() ->
+                exportToLegacyPublicDownloads(exportPlan, log)
+
+            else -> exportToAppSpecificDownloads(exportPlan, log)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private suspend fun exportToMediaStore(
+        exportPlan: List<ExportTarget>,
+        log: suspend (String) -> Unit,
+    ): List<ExportedDownloadFile> {
+        val resolver = application.contentResolver
+        exportPlan.map(ExportTarget::mediaStoreRelativePath).distinct().forEach { relativePath ->
             deleteExistingFolderEntries(resolver, relativePath)
         }
 
@@ -73,7 +99,7 @@ class WorkshopPublicExportManager(
                 ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, target.displayName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, target.relativePath)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, target.mediaStoreRelativePath)
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 },
             ) ?: error("Failed to create public download entry for ${target.file.relativePath}")
@@ -91,14 +117,14 @@ class WorkshopPublicExportManager(
                 )
 
                 log(
-                    "Exported ${target.file.relativePath} to ${target.userVisiblePath}",
+                    "Exported ${target.file.relativePath} to ${target.publicUserVisiblePath}",
                 )
                 exportedFiles += ExportedDownloadFile(
                     relativePath = target.displayedRelativePath,
                     sizeBytes = target.file.sizeBytes,
                     modifiedEpochMillis = target.file.modifiedEpochMillis,
                     contentUri = itemUri.toString(),
-                    userVisiblePath = target.userVisiblePath,
+                    userVisiblePath = target.publicUserVisiblePath,
                 )
             } catch (error: Throwable) {
                 resolver.delete(itemUri, null, null)
@@ -106,9 +132,98 @@ class WorkshopPublicExportManager(
             }
         }
 
-        return@withContext exportedFiles
+        return exportedFiles
     }
 
+    private suspend fun exportToLegacyPublicDownloads(
+        exportPlan: List<ExportTarget>,
+        log: suspend (String) -> Unit,
+    ): List<ExportedDownloadFile> {
+        val downloadsRoot = legacyPublicDownloadsRoot()
+            ?: return exportToAppSpecificDownloads(exportPlan, log)
+
+        return exportToFileSystem(
+            exportPlan = exportPlan,
+            rootDir = downloadsRoot,
+            userVisiblePathFor = { target, _ -> target.publicUserVisiblePath },
+            onFileExported = { destinationFile, mimeType ->
+                MediaScannerConnection.scanFile(
+                    application,
+                    arrayOf(destinationFile.absolutePath),
+                    arrayOf(mimeType),
+                    null,
+                )
+            },
+            log = log,
+        )
+    }
+
+    private suspend fun exportToAppSpecificDownloads(
+        exportPlan: List<ExportTarget>,
+        log: suspend (String) -> Unit,
+    ): List<ExportedDownloadFile> {
+        val downloadsRoot = appSpecificDownloadsRoot()
+        log("Legacy storage permission unavailable; exported files to app-specific storage.")
+        return exportToFileSystem(
+            exportPlan = exportPlan,
+            rootDir = downloadsRoot,
+            userVisiblePathFor = { _, destinationFile -> destinationFile.absolutePath },
+            onFileExported = null,
+            log = log,
+        )
+    }
+
+    private suspend fun exportToFileSystem(
+        exportPlan: List<ExportTarget>,
+        rootDir: File,
+        userVisiblePathFor: (ExportTarget, File) -> String,
+        onFileExported: ((File, String) -> Unit)?,
+        log: suspend (String) -> Unit,
+    ): List<ExportedDownloadFile> {
+        deleteExistingDirectories(rootDir, exportPlan.map(ExportTarget::downloadSubdirectoryPath).distinct())
+
+        val exportedFiles = mutableListOf<ExportedDownloadFile>()
+        exportPlan.forEach { target ->
+            val destinationDir = File(rootDir, target.downloadSubdirectoryPath)
+            if (!destinationDir.exists() && !destinationDir.mkdirs()) {
+                error("Failed to create export directory: ${destinationDir.absolutePath}")
+            }
+
+            val destinationFile = File(destinationDir, target.displayName)
+            target.source.inputStream().buffered().use { input ->
+                destinationFile.outputStream().buffered().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            destinationFile.setLastModified(target.file.modifiedEpochMillis)
+
+            val mimeType = URLConnection.guessContentTypeFromName(target.displayName) ?: "application/octet-stream"
+            onFileExported?.invoke(destinationFile, mimeType)
+
+            val visiblePath = userVisiblePathFor(target, destinationFile)
+            log("Exported ${target.file.relativePath} to $visiblePath")
+            exportedFiles += ExportedDownloadFile(
+                relativePath = target.displayedRelativePath,
+                sizeBytes = target.file.sizeBytes,
+                modifiedEpochMillis = target.file.modifiedEpochMillis,
+                contentUri = fileProviderUri(destinationFile).toString(),
+                userVisiblePath = visiblePath,
+            )
+        }
+
+        return exportedFiles
+    }
+
+    private fun deleteExistingDirectories(
+        rootDir: File,
+        relativeDirectories: List<String>,
+    ) {
+        relativeDirectories.forEach { relativeDirectory ->
+            File(rootDir, relativeDirectory).deleteRecursively()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun deleteExistingFolderEntries(
         resolver: android.content.ContentResolver,
         relativePath: String,
@@ -129,6 +244,34 @@ class WorkshopPublicExportManager(
             }
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun legacyPublicDownloadsRoot(): File? {
+        if (!isLegacyExternalStorageWritable()) {
+            return null
+        }
+        return Environment.getExternalStoragePublicDirectory(downloadsDirectoryName())
+    }
+
+    private fun appSpecificDownloadsRoot(): File =
+        application.getExternalFilesDir(downloadsDirectoryName())
+            ?: File(application.filesDir, "exports/downloads")
+
+    private fun hasLegacyExternalStoragePermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            application,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        ) == PackageManager.PERMISSION_GRANTED
+
+    private fun isLegacyExternalStorageWritable(): Boolean =
+        Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
+
+    private fun fileProviderUri(file: File) =
+        FileProvider.getUriForFile(
+            application,
+            "${application.packageName}.fileprovider",
+            file,
+        )
 
     private fun loadWorkshopMetadata(stagingDir: File): WorkshopMetadata? {
         val metadataFile = File(stagingDir, "metadata.json")
@@ -237,15 +380,14 @@ class WorkshopPublicExportManager(
     companion object {
         private const val FALLBACK_DOWNLOADS_DIRECTORY = "Download"
 
-        fun buildDownloadRelativePath(
+        fun buildDownloadSubdirectoryPath(
             appId: UInt,
             publishedFileId: ULong,
             relativeFilePath: String,
         ): String {
             val parent = relativeFilePath.substringBeforeLast('/', "")
             return buildString {
-                append(Environment.DIRECTORY_DOWNLOADS ?: FALLBACK_DOWNLOADS_DIRECTORY)
-                append("/workshop/")
+                append("workshop/")
                 append(appId)
                 append('/')
                 append(publishedFileId)
@@ -257,26 +399,23 @@ class WorkshopPublicExportManager(
             }
         }
 
+        fun buildDownloadRelativePath(
+            appId: UInt,
+            publishedFileId: ULong,
+            relativeFilePath: String,
+        ): String = downloadsDirectoryName() + "/" +
+            buildDownloadSubdirectoryPath(appId = appId, publishedFileId = publishedFileId, relativeFilePath = relativeFilePath)
+
         fun buildUserVisiblePath(
             appId: UInt,
             publishedFileId: ULong,
             relativeFilePath: String,
             displayName: String = relativeFilePath.substringAfterLast('/'),
-        ): String {
-            val parent = relativeFilePath.substringBeforeLast('/', "")
-            return buildString {
-                append("Download/workshop/")
-                append(appId)
-                append('/')
-                append(publishedFileId)
-                append('/')
-                if (parent.isNotEmpty()) {
-                    append(parent)
-                    append('/')
-                }
-                append(displayName)
-            }
-        }
+        ): String = buildDownloadRelativePath(
+            appId = appId,
+            publishedFileId = publishedFileId,
+            relativeFilePath = relativeFilePath,
+        ) + displayName
 
         fun buildDisplayedRelativePath(
             relativeFilePath: String,
@@ -289,6 +428,9 @@ class WorkshopPublicExportManager(
                 "$parent/$displayName"
             }
         }
+
+        private fun downloadsDirectoryName(): String =
+            Environment.DIRECTORY_DOWNLOADS?.takeIf { it.isNotBlank() } ?: FALLBACK_DOWNLOADS_DIRECTORY
     }
 
     private data class WorkshopMetadata(
@@ -301,7 +443,8 @@ class WorkshopPublicExportManager(
         val file: top.apricityx.workshop.workshop.DownloadedFileInfo,
         val displayName: String,
         val displayedRelativePath: String,
-        val relativePath: String,
-        val userVisiblePath: String,
+        val downloadSubdirectoryPath: String,
+        val mediaStoreRelativePath: String,
+        val publicUserVisiblePath: String,
     )
 }
