@@ -14,7 +14,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.File
 import java.net.URLConnection
 import java.util.zip.ZipInputStream
@@ -23,8 +22,8 @@ class WorkshopPublicExportManager(
     private val application: Application,
 ) {
     suspend fun exportDownloadedFiles(
-        appId: UInt,
-        publishedFileId: ULong,
+        gameTitle: String,
+        itemTitle: String,
         stagingDir: File,
         files: List<top.apricityx.workshop.workshop.DownloadedFileInfo>,
         log: suspend (String) -> Unit,
@@ -33,7 +32,8 @@ class WorkshopPublicExportManager(
             return@withContext emptyList()
         }
 
-        val metadata = loadWorkshopMetadata(stagingDir)
+        val metadata = readWorkshopDownloadMetadata(stagingDir)
+        val resolvedItemTitle = metadata?.title?.takeIf { it.isNotBlank() } ?: itemTitle
         val exportPlan = files.map { file ->
             val source = File(stagingDir, file.relativePath.replace('/', File.separatorChar))
             require(source.isFile) { "Downloaded file is missing: ${file.relativePath}" }
@@ -52,19 +52,23 @@ class WorkshopPublicExportManager(
                     relativeFilePath = file.relativePath,
                     displayName = displayName,
                 ),
+                modSubdirectoryPath = buildModSubdirectoryPath(
+                    gameTitle = gameTitle,
+                    itemTitle = resolvedItemTitle,
+                ),
                 downloadSubdirectoryPath = buildDownloadSubdirectoryPath(
-                    appId = appId,
-                    publishedFileId = publishedFileId,
+                    gameTitle = gameTitle,
+                    itemTitle = resolvedItemTitle,
                     relativeFilePath = file.relativePath,
                 ),
                 mediaStoreRelativePath = buildDownloadRelativePath(
-                    appId = appId,
-                    publishedFileId = publishedFileId,
+                    gameTitle = gameTitle,
+                    itemTitle = resolvedItemTitle,
                     relativeFilePath = file.relativePath,
                 ),
                 publicUserVisiblePath = buildUserVisiblePath(
-                    appId = appId,
-                    publishedFileId = publishedFileId,
+                    gameTitle = gameTitle,
+                    itemTitle = resolvedItemTitle,
                     relativeFilePath = file.relativePath,
                     displayName = displayName,
                 ),
@@ -86,8 +90,8 @@ class WorkshopPublicExportManager(
         log: suspend (String) -> Unit,
     ): List<ExportedDownloadFile> {
         val resolver = application.contentResolver
-        exportPlan.map(ExportTarget::mediaStoreRelativePath).distinct().forEach { relativePath ->
-            deleteExistingFolderEntries(resolver, relativePath)
+        exportPlan.map(ExportTarget::mediaStoreModRelativePath).distinct().forEach { relativePath ->
+            deleteExistingFolderEntriesRecursively(resolver, relativePath)
         }
 
         val exportedFiles = mutableListOf<ExportedDownloadFile>()
@@ -180,7 +184,7 @@ class WorkshopPublicExportManager(
         onFileExported: ((File, String) -> Unit)?,
         log: suspend (String) -> Unit,
     ): List<ExportedDownloadFile> {
-        deleteExistingDirectories(rootDir, exportPlan.map(ExportTarget::downloadSubdirectoryPath).distinct())
+        deleteExistingDirectories(rootDir, exportPlan.map(ExportTarget::modSubdirectoryPath).distinct())
 
         val exportedFiles = mutableListOf<ExportedDownloadFile>()
         exportPlan.forEach { target ->
@@ -224,15 +228,15 @@ class WorkshopPublicExportManager(
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun deleteExistingFolderEntries(
+    private fun deleteExistingFolderEntriesRecursively(
         resolver: android.content.ContentResolver,
         relativePath: String,
     ) {
         resolver.query(
             MediaStore.Downloads.EXTERNAL_CONTENT_URI,
             arrayOf(MediaStore.MediaColumns._ID),
-            "${MediaStore.MediaColumns.RELATIVE_PATH} = ?",
-            arrayOf(relativePath),
+            "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+            arrayOf("$relativePath%"),
             null,
         )?.use { cursor ->
             while (cursor.moveToNext()) {
@@ -273,28 +277,10 @@ class WorkshopPublicExportManager(
             file,
         )
 
-    private fun loadWorkshopMetadata(stagingDir: File): WorkshopMetadata? {
-        val metadataFile = File(stagingDir, "metadata.json")
-        if (!metadataFile.isFile) {
-            return null
-        }
-
-        return runCatching {
-            val details = JSONObject(metadataFile.readText())
-                .getJSONObject("response")
-                .getJSONArray("publishedfiledetails")
-                .getJSONObject(0)
-            WorkshopMetadata(
-                title = details.optString("title").trim(),
-                filename = details.optString("filename").trim(),
-            )
-        }.getOrNull()
-    }
-
     private fun buildExportDisplayName(
         source: File,
         file: top.apricityx.workshop.workshop.DownloadedFileInfo,
-        metadata: WorkshopMetadata?,
+        metadata: WorkshopDownloadMetadata?,
         singleFile: Boolean,
     ): String {
         val originalName = file.relativePath.substringAfterLast('/')
@@ -380,18 +366,25 @@ class WorkshopPublicExportManager(
     companion object {
         private const val FALLBACK_DOWNLOADS_DIRECTORY = "Download"
 
+        fun buildModSubdirectoryPath(
+            gameTitle: String,
+            itemTitle: String,
+        ): String = buildString {
+            append("workshop/")
+            append(sanitizeDirectorySegment(gameTitle, fallback = "game"))
+            append('/')
+            append(sanitizeDirectorySegment(itemTitle, fallback = "mod"))
+            append('/')
+        }
+
         fun buildDownloadSubdirectoryPath(
-            appId: UInt,
-            publishedFileId: ULong,
+            gameTitle: String,
+            itemTitle: String,
             relativeFilePath: String,
         ): String {
             val parent = relativeFilePath.substringBeforeLast('/', "")
             return buildString {
-                append("workshop/")
-                append(appId)
-                append('/')
-                append(publishedFileId)
-                append('/')
+                append(buildModSubdirectoryPath(gameTitle = gameTitle, itemTitle = itemTitle))
                 if (parent.isNotEmpty()) {
                     append(parent)
                     append('/')
@@ -399,21 +392,27 @@ class WorkshopPublicExportManager(
             }
         }
 
+        fun downloadRootRelativePath(): String = downloadsDirectoryName() + "/workshop/"
+
         fun buildDownloadRelativePath(
-            appId: UInt,
-            publishedFileId: ULong,
+            gameTitle: String,
+            itemTitle: String,
             relativeFilePath: String,
         ): String = downloadsDirectoryName() + "/" +
-            buildDownloadSubdirectoryPath(appId = appId, publishedFileId = publishedFileId, relativeFilePath = relativeFilePath)
+            buildDownloadSubdirectoryPath(
+                gameTitle = gameTitle,
+                itemTitle = itemTitle,
+                relativeFilePath = relativeFilePath,
+            )
 
         fun buildUserVisiblePath(
-            appId: UInt,
-            publishedFileId: ULong,
+            gameTitle: String,
+            itemTitle: String,
             relativeFilePath: String,
             displayName: String = relativeFilePath.substringAfterLast('/'),
         ): String = buildDownloadRelativePath(
-            appId = appId,
-            publishedFileId = publishedFileId,
+            gameTitle = gameTitle,
+            itemTitle = itemTitle,
             relativeFilePath = relativeFilePath,
         ) + displayName
 
@@ -431,20 +430,31 @@ class WorkshopPublicExportManager(
 
         private fun downloadsDirectoryName(): String =
             Environment.DIRECTORY_DOWNLOADS?.takeIf { it.isNotBlank() } ?: FALLBACK_DOWNLOADS_DIRECTORY
-    }
 
-    private data class WorkshopMetadata(
-        val title: String,
-        val filename: String,
-    )
+        private fun sanitizeDirectorySegment(
+            value: String,
+            fallback: String,
+        ): String =
+            value
+                .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .trim('.', ' ')
+                .ifBlank { fallback }
+    }
 
     private data class ExportTarget(
         val source: File,
         val file: top.apricityx.workshop.workshop.DownloadedFileInfo,
         val displayName: String,
         val displayedRelativePath: String,
+        val modSubdirectoryPath: String,
         val downloadSubdirectoryPath: String,
         val mediaStoreRelativePath: String,
         val publicUserVisiblePath: String,
-    )
+    ) {
+        val mediaStoreModRelativePath: String =
+            downloadsDirectoryName() + "/" + modSubdirectoryPath
+    }
 }
+

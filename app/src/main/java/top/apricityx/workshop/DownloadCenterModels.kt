@@ -135,7 +135,7 @@ fun DownloadCenterTaskUiState.summaryText(): String =
             progress.bytesText(),
         ).joinToString(" · ").ifBlank { "已暂停，可继续下载" }
 
-        DownloadCenterTaskStatus.Success -> "已完成，点击查看日志和导出文件"
+        DownloadCenterTaskStatus.Success -> "已完成，可到模组库查看文件"
         DownloadCenterTaskStatus.Failed -> errorMessage ?: "下载失败，可继续下载"
     }
 

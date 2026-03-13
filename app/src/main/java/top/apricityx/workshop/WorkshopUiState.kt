@@ -5,14 +5,19 @@ import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.update.UpdateSource
 
 enum class WorkshopScreenDestination {
-    Library,
+    GameLibrary,
+    ModLibrary,
     AddGame,
     GameWorkshop,
     WorkshopItemDetail,
+    ModDetail,
     DownloadCenter,
     DownloadTaskDetail,
     Settings,
 }
+
+fun WorkshopScreenDestination.isLibraryRoot(): Boolean =
+    this == WorkshopScreenDestination.GameLibrary || this == WorkshopScreenDestination.ModLibrary
 
 enum class AppThemeMode(
     val storageValue: String,
@@ -24,6 +29,18 @@ enum class AppThemeMode(
     companion object {
         fun fromStorageValue(value: String): AppThemeMode =
             entries.firstOrNull { it.storageValue == value } ?: FollowSystem
+    }
+}
+
+enum class ModLibraryDisplayMode(
+    val storageValue: String,
+) {
+    LargePreview("large_preview"),
+    CompactList("compact_list");
+
+    companion object {
+        fun fromStorageValue(value: String): ModLibraryDisplayMode =
+            entries.firstOrNull { it.storageValue == value } ?: LargePreview
     }
 }
 
@@ -57,15 +74,27 @@ data class WorkshopItemDetailUiState(
     val message: String? = null,
 )
 
+data class ModLibraryUiState(
+    val items: List<DownloadedModEntry> = emptyList(),
+    val selectedEntry: DownloadedModEntry? = null,
+    val displayMode: ModLibraryDisplayMode = DownloadSettingsRepository.DEFAULT_MOD_LIBRARY_DISPLAY_MODE,
+    val updateCheckState: ModLibraryUpdateCheckState = ModLibraryUpdateCheckState(),
+    val isLoading: Boolean = false,
+    val message: String? = null,
+    val errorMessage: String? = null,
+)
+
 data class WorkshopUiState(
-    val currentScreen: WorkshopScreenDestination = WorkshopScreenDestination.Library,
-    val previousScreen: WorkshopScreenDestination = WorkshopScreenDestination.Library,
+    val currentScreen: WorkshopScreenDestination = WorkshopScreenDestination.GameLibrary,
+    val previousScreen: WorkshopScreenDestination = WorkshopScreenDestination.GameLibrary,
     val themeMode: AppThemeMode = DownloadSettingsRepository.DEFAULT_THEME_MODE,
     val libraryGames: List<SteamGame> = emptyList(),
     val isLibraryLoading: Boolean = true,
     val libraryMessage: String? = null,
     val libraryError: LibraryErrorUiState? = null,
     val pendingRemoveGame: SteamGame? = null,
+    val modLibraryState: ModLibraryUiState = ModLibraryUiState(isLoading = true),
+    val pendingRemoveMod: DownloadedModEntry? = null,
     val addGameState: AddGameUiState = AddGameUiState(),
     val gameWorkshopState: GameWorkshopUiState? = null,
     val workshopItemDetailState: WorkshopItemDetailUiState? = null,

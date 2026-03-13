@@ -24,7 +24,7 @@ class DownloadCenterManager private constructor(
     private val application: Application,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val publicExportManager = WorkshopPublicExportManager(application)
+    private val taskFinalizer = DownloadCenterTaskFinalizer(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val store = DownloadCenterStore(File(application.filesDir, "download-center/tasks.json"))
     private val _uiState = MutableStateFlow(
@@ -166,6 +166,18 @@ class DownloadCenterManager private constructor(
         }
     }
 
+    fun clearExportedFilesForMod(
+        appId: UInt,
+        publishedFileId: ULong,
+    ) {
+        mutateState { state ->
+            state.clearExportedFilesForMod(
+                appId = appId,
+                publishedFileId = publishedFileId,
+            )
+        }
+    }
+
     private fun ensureRunner() {
         if (runnerJob?.isActive == true) {
             return
@@ -266,27 +278,30 @@ class DownloadCenterManager private constructor(
 
                     is DownloadEvent.Completed -> {
                         runCatching {
-                            publicExportManager.exportDownloadedFiles(
-                                appId = task.appId,
-                                publishedFileId = task.publishedFileId,
+                            taskFinalizer.finalizeSuccessfulDownload(
+                                task = task,
                                 stagingDir = outputDir,
-                                files = event.files,
+                                downloadedFiles = event.files,
                             ) { line ->
                                 appendTaskLog(task.id, line)
                             }
-                        }.onSuccess { exportedFiles ->
+                        }.onSuccess { finalizedDownload ->
                             taskSucceeded = true
                             clearProgressSample(task.id)
                             updateTask(task.id) { current ->
                                 current.copy(
+                                    itemTitle = finalizedDownload.itemTitle,
                                     status = DownloadCenterTaskStatus.Success,
                                     phase = DownloadState.Success,
-                                    files = exportedFiles,
+                                    files = finalizedDownload.exportedFiles,
                                     progress = current.progress.complete(filesCount = event.files.size),
                                     updatedAtMillis = System.currentTimeMillis(),
                                 )
                             }
-                            Log.i(WorkshopAppContract.logTag, "Download completed files=${exportedFiles.size}")
+                            Log.i(
+                                WorkshopAppContract.logTag,
+                                "Download completed files=${finalizedDownload.exportedFiles.size}",
+                            )
                         }.onFailure { error ->
                             val message = "Export failed: ${error.message ?: error::class.simpleName}"
                             clearProgressSample(task.id)
@@ -575,3 +590,8 @@ private fun eventProgressCompletedFiles(
     } else {
         progress.completedFiles + 1
     }
+
+
+
+
+

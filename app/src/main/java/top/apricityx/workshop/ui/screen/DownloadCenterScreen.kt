@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,7 +47,6 @@ fun DownloadCenterScreen(
     onClearFinished: () -> Unit,
     onOpenTask: (String) -> Unit,
     onRemoveTask: (String) -> Unit,
-    onOpenFile: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -58,7 +56,7 @@ fun DownloadCenterScreen(
         item {
             ScreenSummaryCard(
                 title = "下载中心",
-                subtitle = "所有下载任务都会在这里排队、执行和保留历史记录，不会影响前台浏览。",
+                subtitle = "这里保留下载任务的状态、进度和日志；已导出的文件统一到模组库管理。",
                 metrics = listOf(
                     "运行中 ${state.runningCount}",
                     "排队 ${state.queuedCount}",
@@ -89,7 +87,6 @@ fun DownloadCenterScreen(
                         task = task,
                         onOpenTask = { onOpenTask(task.id) },
                         onRemoveTask = { onRemoveTask(task.id) },
-                        onOpenFile = { contentUri -> onOpenFile(task.id, contentUri) },
                     )
                 }
             }
@@ -98,7 +95,7 @@ fun DownloadCenterScreen(
                 item {
                     SectionHeading(
                         title = "历史记录",
-                        subtitle = "已完成或失败的任务会保留在这里。",
+                        subtitle = "已完成或失败的任务会保留在这里，方便查看状态和日志。",
                     )
                 }
 
@@ -107,7 +104,6 @@ fun DownloadCenterScreen(
                         task = task,
                         onOpenTask = { onOpenTask(task.id) },
                         onRemoveTask = { onRemoveTask(task.id) },
-                        onOpenFile = { contentUri -> onOpenFile(task.id, contentUri) },
                     )
                 }
             }
@@ -120,7 +116,6 @@ private fun DownloadTaskCard(
     task: DownloadCenterTaskUiState,
     onOpenTask: () -> Unit,
     onRemoveTask: () -> Unit,
-    onOpenFile: (String) -> Unit,
 ) {
     WorkshopPanelCard(
         modifier = Modifier.clickable(onClick = onOpenTask),
@@ -194,11 +189,6 @@ private fun DownloadTaskCard(
             ) {
                 TextButton(onClick = onRemoveTask) {
                     Text(task.removeActionLabel())
-                }
-                task.files.firstOrNull()?.let { file ->
-                    TextButton(onClick = { onOpenFile(file.contentUri) }) {
-                        Text("打开文件")
-                    }
                 }
             }
         }

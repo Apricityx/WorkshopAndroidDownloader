@@ -5,25 +5,35 @@ import org.junit.Test
 
 class WorkshopPublicExportManagerTest {
     @Test
-    fun `build download relative path nests under downloads workshop`() {
+    fun `build download relative path nests under game and mod titles`() {
         val relativePath = WorkshopPublicExportManager.buildDownloadRelativePath(
-            appId = 646570u,
-            publishedFileId = 3677098410uL,
+            gameTitle = "Slay the Spire",
+            itemTitle = "Skip The Spire",
             relativeFilePath = "mods/example/file.txt",
         )
 
-        assertThat(relativePath).isEqualTo("Download/workshop/646570/3677098410/mods/example/")
+        assertThat(relativePath).isEqualTo("Download/workshop/Slay the Spire/Skip The Spire/mods/example/")
     }
 
     @Test
     fun `build user visible path includes file name`() {
         val visiblePath = WorkshopPublicExportManager.buildUserVisiblePath(
-            appId = 646570u,
-            publishedFileId = 3677098410uL,
+            gameTitle = "Slay the Spire",
+            itemTitle = "Skip The Spire",
             relativeFilePath = "mods/example/file.txt",
         )
 
-        assertThat(visiblePath).isEqualTo("Download/workshop/646570/3677098410/mods/example/file.txt")
+        assertThat(visiblePath).isEqualTo("Download/workshop/Slay the Spire/Skip The Spire/mods/example/file.txt")
+    }
+
+    @Test
+    fun `build mod subdirectory path sanitizes invalid path characters`() {
+        val path = WorkshopPublicExportManager.buildModSubdirectoryPath(
+            gameTitle = "Game: Name",
+            itemTitle = "Mod*Name?",
+        )
+
+        assertThat(path).isEqualTo("workshop/Game_ Name/Mod_Name_/")
     }
 
     @Test

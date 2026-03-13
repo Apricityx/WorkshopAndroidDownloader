@@ -44,6 +44,7 @@ class WorkshopViewModel(
     private val browseRepository = WorkshopBrowseRepository(httpClient)
     private val detailRepository = WorkshopDetailRepository(httpClient)
     private val libraryRepository = GameLibraryRepository(application)
+    private val modLibraryRepository = ModLibraryRepository(application)
     private val downloadCenterManager = DownloadCenterManager.getInstance(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val updateService = WorkshopUpdateService(httpClient)
@@ -53,14 +54,23 @@ class WorkshopViewModel(
     private val _toastMessages = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val toastMessages = _toastMessages.asSharedFlow()
 
+    private var lastDownloadCenterModSignature: String? = null
+
     init {
         refreshLibrary()
+        refreshModLibrary()
         loadFeaturedGames()
         maybeStartAutoUpdateCheck()
         viewModelScope.launch {
             downloadCenterManager.uiState.collect { downloadCenterState ->
+                val nextSignature = buildModLibrarySyncSignature(downloadCenterState)
+                val shouldRefreshModLibrary = nextSignature != lastDownloadCenterModSignature
+                lastDownloadCenterModSignature = nextSignature
                 _uiState.update { state ->
                     state.copy(downloadCenterState = downloadCenterState)
+                }
+                if (shouldRefreshModLibrary) {
+                    refreshModLibrary(showLoading = false)
                 }
             }
         }
@@ -69,15 +79,24 @@ class WorkshopViewModel(
     fun navigateBack() {
         val state = _uiState.value
         when (state.currentScreen) {
-            WorkshopScreenDestination.Library -> Unit
+            WorkshopScreenDestination.GameLibrary,
+            WorkshopScreenDestination.ModLibrary,
+            -> Unit
+
             WorkshopScreenDestination.AddGame,
             WorkshopScreenDestination.GameWorkshop,
-            WorkshopScreenDestination.Settings,
-            -> navigateTo(WorkshopScreenDestination.Library)
+            -> navigateTo(WorkshopScreenDestination.GameLibrary, rememberPrevious = false)
+
             WorkshopScreenDestination.WorkshopItemDetail ->
                 navigateTo(WorkshopScreenDestination.GameWorkshop, rememberPrevious = false)
 
-            WorkshopScreenDestination.DownloadCenter -> navigateTo(state.previousScreen, rememberPrevious = false)
+            WorkshopScreenDestination.ModDetail ->
+                navigateTo(WorkshopScreenDestination.ModLibrary, rememberPrevious = false)
+
+            WorkshopScreenDestination.DownloadCenter,
+            WorkshopScreenDestination.Settings,
+            -> navigateTo(state.previousScreen, rememberPrevious = false)
+
             WorkshopScreenDestination.DownloadTaskDetail -> {
                 _uiState.update { it.copy(selectedDownloadTaskId = null) }
                 navigateTo(WorkshopScreenDestination.DownloadCenter, rememberPrevious = false)
@@ -85,10 +104,13 @@ class WorkshopViewModel(
         }
     }
 
-    fun navigateToLibrary() {
-        navigateTo(WorkshopScreenDestination.Library)
+    fun navigateToGameLibrary() {
+        navigateTo(WorkshopScreenDestination.GameLibrary, rememberPrevious = false)
     }
 
+    fun navigateToModLibrary() {
+        navigateTo(WorkshopScreenDestination.ModLibrary, rememberPrevious = false)
+    }
     fun navigateToAddGame() {
         navigateTo(WorkshopScreenDestination.AddGame)
     }
@@ -150,6 +172,109 @@ class WorkshopViewModel(
 
     fun retryMainScreenNetwork() {
         refreshLibrary()
+    }
+
+    fun retryModLibrarySync() {
+        refreshModLibrary()
+    }
+
+    fun checkModLibraryUpdates() {
+        val entries = _uiState.value.modLibraryState.items
+        if (entries.isEmpty()) {
+            viewModelScope.launch {
+                _toastMessages.emit("模组库还是空的，没有可检查的模组。")
+            }
+            return
+        }
+        if (_uiState.value.modLibraryState.updateCheckState.isChecking) {
+            return
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    updateCheckState = ModLibraryUpdateCheckState(
+                        isChecking = true,
+                        lastCheckedAtMillis = state.modLibraryState.updateCheckState.lastCheckedAtMillis,
+                        results = entries.associate { entry ->
+                            entry.modLibraryKey() to ModUpdateCheckResult(status = ModUpdateCheckStatus.Checking)
+                        },
+                    ),
+                ),
+            )
+        }
+
+        viewModelScope.launch {
+            val results = linkedMapOf<String, ModUpdateCheckResult>()
+            entries.forEach { entry ->
+                val checkedAtMillis = System.currentTimeMillis()
+                val result = runCatching {
+                    withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                        detailRepository.loadWorkshopItemDetail(entry.toWorkshopBrowseItem())
+                    }
+                }.fold(
+                    onSuccess = { detail ->
+                        evaluateModUpdate(
+                            entry = entry,
+                            remoteUpdatedEpochSeconds = detail.timeUpdatedEpochSeconds,
+                            checkedAtMillis = checkedAtMillis,
+                        )
+                    },
+                    onFailure = { error ->
+                        ModUpdateCheckResult(
+                            status = ModUpdateCheckStatus.Failed,
+                            checkedAtMillis = checkedAtMillis,
+                            message = if (error.isTimeoutRequestFailure()) {
+                                REQUEST_TIMEOUT_MESSAGE
+                            } else {
+                                error.message ?: "检查更新失败。"
+                            },
+                        )
+                    },
+                )
+                results[entry.modLibraryKey()] = result
+                _uiState.update { state ->
+                    val nextUpdateCheckState = state.modLibraryState.updateCheckState.copy(
+                        results = state.modLibraryState.updateCheckState.results + (entry.modLibraryKey() to result),
+                    ).filterForEntries(state.modLibraryState.items)
+                    state.copy(
+                        modLibraryState = state.modLibraryState.copy(
+                            updateCheckState = nextUpdateCheckState,
+                        ),
+                    )
+                }
+            }
+
+            val summaryMessage = buildModUpdateCheckSummary(results.values)
+            val checkedAtMillis = System.currentTimeMillis()
+            _uiState.update { state ->
+                val nextUpdateCheckState = state.modLibraryState.updateCheckState.copy(
+                    isChecking = false,
+                    summaryMessage = summaryMessage,
+                    lastCheckedAtMillis = checkedAtMillis,
+                    results = results,
+                ).filterForEntries(state.modLibraryState.items)
+                state.copy(
+                    modLibraryState = state.modLibraryState.copy(
+                        updateCheckState = nextUpdateCheckState,
+                    ),
+                )
+            }
+            _toastMessages.emit(summaryMessage)
+        }
+    }
+
+    fun toggleModLibraryDisplayMode() {
+        val nextMode = when (_uiState.value.modLibraryState.displayMode) {
+            ModLibraryDisplayMode.LargePreview -> ModLibraryDisplayMode.CompactList
+            ModLibraryDisplayMode.CompactList -> ModLibraryDisplayMode.LargePreview
+        }
+        settingsRepository.setModLibraryDisplayMode(nextMode)
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(displayMode = nextMode),
+            )
+        }
     }
 
     fun updateDownloadThreadCountInput(value: String) {
@@ -407,6 +532,45 @@ class WorkshopViewModel(
         _uiState.update { it.copy(pendingRemoveGame = null) }
     }
 
+    fun openModDetail(entry: DownloadedModEntry) {
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(selectedEntry = entry),
+            )
+        }
+        navigateTo(WorkshopScreenDestination.ModDetail)
+    }
+
+    fun requestRemoveMod(entry: DownloadedModEntry) {
+        _uiState.update { it.copy(pendingRemoveMod = entry) }
+    }
+
+    fun confirmRemoveMod() {
+        val entry = _uiState.value.pendingRemoveMod ?: return
+        _uiState.update { it.copy(pendingRemoveMod = null) }
+        viewModelScope.launch {
+            runCatching {
+                modLibraryRepository.deleteMod(entry)
+            }.onSuccess { entries ->
+                downloadCenterManager.clearExportedFilesForMod(entry.appId, entry.publishedFileId)
+                _toastMessages.emit("已删除 ${entry.itemTitle} 的本地文件。")
+                _uiState.update { state ->
+                    applyModLibraryEntries(
+                        state = state.copy(pendingRemoveMod = null),
+                        entries = entries,
+                    )
+                }
+            }.onFailure { error ->
+                _toastMessages.emit(error.message ?: "删除模组失败。")
+                refreshModLibrary(showLoading = false)
+            }
+        }
+    }
+
+    fun dismissRemoveModDialog() {
+        _uiState.update { it.copy(pendingRemoveMod = null) }
+    }
+
     fun openGameWorkshop(game: SteamGame) {
         navigateTo(WorkshopScreenDestination.GameWorkshop)
         _uiState.update { state ->
@@ -625,6 +789,44 @@ class WorkshopViewModel(
                         } else {
                             error.message ?: "加载游戏库失败。"
                         },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun refreshModLibrary(showLoading: Boolean = true) {
+        if (showLoading) {
+            _uiState.update { state ->
+                state.copy(
+                    modLibraryState = state.modLibraryState.copy(
+                        isLoading = true,
+                        errorMessage = null,
+                    ),
+                )
+            }
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                modLibraryRepository.syncWithLocalStorage()
+            }.onSuccess { entries ->
+                _uiState.update { state ->
+                    applyModLibraryEntries(
+                        state = state,
+                        entries = entries,
+                        isLoading = false,
+                        errorMessage = null,
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update { state ->
+                    state.copy(
+                        modLibraryState = state.modLibraryState.copy(
+                            isLoading = false,
+                            errorMessage = error.message ?: "同步模组库失败。",
+                            message = if (state.modLibraryState.items.isEmpty()) null else state.modLibraryState.message,
+                        ),
                     )
                 }
             }
@@ -993,7 +1195,11 @@ class WorkshopViewModel(
     ) {
         _uiState.update { state ->
             state.copy(
-                previousScreen = if (rememberPrevious && state.currentScreen != WorkshopScreenDestination.DownloadCenter) {
+                previousScreen = if (
+                    rememberPrevious &&
+                    state.currentScreen != screen &&
+                    state.currentScreen != WorkshopScreenDestination.DownloadCenter
+                ) {
                     state.currentScreen
                 } else {
                     state.previousScreen
@@ -1001,14 +1207,65 @@ class WorkshopViewModel(
                 currentScreen = screen,
                 selectedDownloadTaskId = if (screen == WorkshopScreenDestination.DownloadTaskDetail) {
                     state.selectedDownloadTaskId
-                } else if (screen == WorkshopScreenDestination.DownloadCenter || screen == WorkshopScreenDestination.Library || screen == WorkshopScreenDestination.AddGame || screen == WorkshopScreenDestination.GameWorkshop) {
-                    if (state.currentScreen == WorkshopScreenDestination.DownloadTaskDetail) null else state.selectedDownloadTaskId
+                } else if (
+                    state.currentScreen == WorkshopScreenDestination.DownloadTaskDetail &&
+                    screen != WorkshopScreenDestination.DownloadCenter
+                ) {
+                    null
                 } else {
                     state.selectedDownloadTaskId
                 },
             )
         }
     }
+
+    private fun applyModLibraryEntries(
+        state: WorkshopUiState,
+        entries: List<DownloadedModEntry>,
+        isLoading: Boolean = false,
+        errorMessage: String? = null,
+    ): WorkshopUiState {
+        val selectedEntry = state.modLibraryState.selectedEntry?.let { current ->
+            entries.firstOrNull { it.matches(current.appId, current.publishedFileId) }
+        }
+        val nextScreen = if (state.currentScreen == WorkshopScreenDestination.ModDetail && selectedEntry == null) {
+            WorkshopScreenDestination.ModLibrary
+        } else {
+            state.currentScreen
+        }
+        val updateCheckState = state.modLibraryState.updateCheckState.filterForEntries(entries)
+        return state.copy(
+            currentScreen = nextScreen,
+            modLibraryState = state.modLibraryState.copy(
+                items = entries,
+                selectedEntry = selectedEntry,
+                updateCheckState = updateCheckState,
+                isLoading = isLoading,
+                errorMessage = errorMessage,
+                message = if (entries.isEmpty()) {
+                    "模组库还是空的，下载一个模组后会自动同步到这里。"
+                } else {
+                    null
+                },
+            ),
+        )
+    }
+
+    private fun buildModLibrarySyncSignature(downloadCenterState: DownloadCenterUiState): String =
+        downloadCenterState.tasks
+            .filter { it.status == DownloadCenterTaskStatus.Success }
+            .sortedBy(DownloadCenterTaskUiState::id)
+            .joinToString("|") { task ->
+                buildString {
+                    append(task.id)
+                    append(":")
+                    append(task.appId)
+                    append(":")
+                    append(task.publishedFileId)
+                    append(":")
+                    append(task.files.joinToString(",") { file -> "${file.contentUri}#${file.userVisiblePath}" })
+                }
+            }
 
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
@@ -1027,6 +1284,10 @@ class WorkshopViewModel(
         val concurrentTaskCount = settingsRepository.getConcurrentDownloadTaskCount()
         return WorkshopUiState(
             themeMode = themeMode,
+            modLibraryState = ModLibraryUiState(
+                isLoading = true,
+                displayMode = settingsRepository.getModLibraryDisplayMode(),
+            ),
             settingsState = SettingsUiState(
                 downloadThreadCountInput = threadCount.toString(),
                 savedDownloadThreadCount = threadCount,
@@ -1045,3 +1306,36 @@ class WorkshopViewModel(
 
 private fun Throwable.isTimeoutRequestFailure(): Boolean =
     this is SocketTimeoutException || this is TimeoutCancellationException
+
+private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
+    WorkshopBrowseItem(
+        appId = appId,
+        publishedFileId = publishedFileId,
+        title = itemTitle,
+        authorName = "",
+        previewImageUrl = "",
+        descriptionSnippet = "",
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

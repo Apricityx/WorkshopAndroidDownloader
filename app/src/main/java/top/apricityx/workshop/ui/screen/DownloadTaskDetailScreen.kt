@@ -16,10 +16,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import top.apricityx.workshop.DownloadCenterTaskStatus
 import top.apricityx.workshop.DownloadCenterTaskUiState
 import top.apricityx.workshop.canPause
 import top.apricityx.workshop.canResume
@@ -43,7 +42,6 @@ fun DownloadTaskDetailScreen(
     onPauseTask: () -> Unit,
     onResumeTask: () -> Unit,
     onRemoveTask: () -> Unit,
-    onOpenFile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -126,31 +124,16 @@ fun DownloadTaskDetailScreen(
             }
         }
 
-        SectionCard(title = "导出文件") {
-            if (task.files.isEmpty()) {
-                Text("暂无导出文件。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    task.files.forEach { file ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(
-                                text = file.userVisiblePath,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            OutlinedButton(onClick = { onOpenFile(file.contentUri) }) {
-                                Text("打开")
-                            }
-                        }
-                    }
-                }
+        if (task.status == DownloadCenterTaskStatus.Success) {
+            SectionCard(title = "文件管理") {
+                Text(
+                    text = if (task.files.isEmpty()) {
+                        "任务已经完成，导出结果会同步到模组库统一管理。"
+                    } else {
+                        "任务已经导出 ${task.files.size} 个文件。打开、分享或删除请前往模组库。"
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 

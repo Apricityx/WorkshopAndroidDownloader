@@ -27,7 +27,7 @@ class DownloadCenterStoreTest {
                         sizeBytes = 42L,
                         modifiedEpochMillis = 1234L,
                         contentUri = "content://downloads/1",
-                        userVisiblePath = "Download/workshop/646570/3677098410/Skip The Spire.jar",
+                        userVisiblePath = "Download/workshop/Slay the Spire/Skip The Spire/Skip The Spire.jar",
                     ),
                 ),
                 progress = DownloadCenterProgressSnapshot(
