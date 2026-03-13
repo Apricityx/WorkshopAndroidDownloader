@@ -35,6 +35,7 @@ import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
+import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
@@ -56,94 +57,105 @@ fun WorkshopItemDetailScreen(
         detail?.fileSizeBytes?.let { add("大小 ${Formatter.formatFileSize(context, it)}") }
     }
 
-    Column(
-        modifier = modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        ScreenSummaryCard(
-            title = detail?.title ?: state.item.title,
-            subtitle = "PublishedFileID ${state.item.publishedFileId}",
-            metrics = metrics,
+    if (state.showConnectionErrorState) {
+        WorkshopCenteredState(
+            title = "啊哦，加载超时",
+            message = state.message
+                ?: "啊哦，加载超时，您的网络环境可能不支持直连创意工坊，请开启加速器加速 steam 或科学上网后重试。",
+            actionLabel = "重试",
+            onAction = onRetry,
+            modifier = modifier,
+        )
+    } else {
+        Column(
+            modifier = modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            WorkshopDetailHeaderImage(
-                thumbnailUrl = state.item.previewImageUrl,
-                fullImageUrl = detail?.previewImageUrl,
-                contentDescription = state.item.title,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp),
-            )
-
-            if (description.isNotBlank()) {
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-
-            Button(
-                onClick = { onDownload(state.item) },
-                modifier = Modifier.fillMaxWidth(),
+            ScreenSummaryCard(
+                title = detail?.title ?: state.item.title,
+                subtitle = "PublishedFileID ${state.item.publishedFileId}",
+                metrics = metrics,
             ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = null,
+                WorkshopDetailHeaderImage(
+                    thumbnailUrl = state.item.previewImageUrl,
+                    fullImageUrl = detail?.previewImageUrl,
+                    contentDescription = state.item.title,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp),
                 )
-                Text(" 开始下载")
-            }
 
-            if (state.message != null) {
-                OutlinedButton(
-                    onClick = onRetry,
+                if (description.isNotBlank()) {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+
+                Button(
+                    onClick = { onDownload(state.item) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Refresh,
+                        imageVector = Icons.Default.Download,
                         contentDescription = null,
                     )
-                    Text(" 重试加载详情")
+                    Text(" 开始下载")
+                }
+
+                if (state.message != null) {
+                    OutlinedButton(
+                        onClick = onRetry,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                        )
+                        Text(" 重试加载详情")
+                    }
                 }
             }
-        }
 
-        if (state.isLoading) {
-            WorkshopLoadingBlock(label = "正在加载更完整的模组详情。")
-        }
+            if (state.isLoading) {
+                WorkshopLoadingBlock(label = "正在加载更完整的模组详情。")
+            }
 
-        state.message?.let { message ->
-            WorkshopMessageBanner(
-                message = "$message\n如果网络不稳定，可以稍后重试；下载功能仍可直接使用。",
-                tone = MessageTone.Error,
-            )
-        }
+            state.message?.let { message ->
+                WorkshopMessageBanner(
+                    message = "$message\n如果网络不稳定，可以稍后重试；下载功能仍可直接使用。",
+                    tone = MessageTone.Error,
+                )
+            }
 
-        detail?.let {
-            WorkshopPanelCard {
-                Text(
-                    text = "模组信息",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                MetricFlow(
-                    metrics = listOfNotNull(
-                        it.timeUpdatedEpochSeconds?.let(::formatUpdatedTime)?.let { value -> "更新 $value" },
-                        it.favorited?.let(::formatCount)?.let { value -> "收藏 $value" },
-                        it.tags.takeIf { tags -> tags.isNotEmpty() }?.let { tags -> "标签 ${tags.size}" },
-                    ),
-                )
-                DetailLine(
-                    label = "文件大小",
-                    value = it.fileSizeBytes?.let { bytes -> Formatter.formatFileSize(context, bytes) } ?: "未知",
-                )
-                DetailLine(label = "更新时间", value = it.timeUpdatedEpochSeconds?.let(::formatUpdatedTime) ?: "未知")
-                DetailLine(label = "订阅数", value = it.subscriptions?.let(::formatCount) ?: "未知")
-                DetailLine(label = "收藏数", value = it.favorited?.let(::formatCount) ?: "未知")
-                DetailLine(label = "浏览量", value = it.views?.let(::formatCount) ?: "未知")
-                DetailLine(
-                    label = "标签",
-                    value = it.tags.takeIf { tags -> tags.isNotEmpty() }?.joinToString(" / ") ?: "暂无标签",
-                )
+            detail?.let {
+                WorkshopPanelCard {
+                    Text(
+                        text = "模组信息",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    MetricFlow(
+                        metrics = listOfNotNull(
+                            it.timeUpdatedEpochSeconds?.let(::formatUpdatedTime)?.let { value -> "更新 $value" },
+                            it.favorited?.let(::formatCount)?.let { value -> "收藏 $value" },
+                            it.tags.takeIf { tags -> tags.isNotEmpty() }?.let { tags -> "标签 ${tags.size}" },
+                        ),
+                    )
+                    DetailLine(
+                        label = "文件大小",
+                        value = it.fileSizeBytes?.let { bytes -> Formatter.formatFileSize(context, bytes) } ?: "未知",
+                    )
+                    DetailLine(label = "更新时间", value = it.timeUpdatedEpochSeconds?.let(::formatUpdatedTime) ?: "未知")
+                    DetailLine(label = "订阅数", value = it.subscriptions?.let(::formatCount) ?: "未知")
+                    DetailLine(label = "收藏数", value = it.favorited?.let(::formatCount) ?: "未知")
+                    DetailLine(label = "浏览量", value = it.views?.let(::formatCount) ?: "未知")
+                    DetailLine(
+                        label = "标签",
+                        value = it.tags.takeIf { tags -> tags.isNotEmpty() }?.joinToString(" / ") ?: "暂无标签",
+                    )
+                }
             }
         }
     }

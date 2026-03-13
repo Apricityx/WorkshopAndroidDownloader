@@ -18,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.ViewModule
@@ -101,16 +100,6 @@ internal fun WorkshopTopBar(
             }
 
             if (state.currentScreen == WorkshopScreenDestination.ModLibrary) {
-                IconButton(
-                    onClick = actions.onCheckModLibraryUpdates,
-                    enabled = !state.modLibraryState.updateCheckState.isChecking,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "检查模组更新",
-                    )
-                }
-
                 val toggleContentDescription = when (state.modLibraryState.displayMode) {
                     ModLibraryDisplayMode.LargePreview -> "切换为精简列表"
                     ModLibraryDisplayMode.CompactList -> "切换为大图显示"
@@ -330,6 +319,7 @@ private fun WorkshopScreenContent(
                 WorkshopScreenDestination.ModLibrary -> ModLibraryScreen(
                     state = state.modLibraryState,
                     onRetry = actions.onRetryModLibrarySync,
+                    onCheckUpdates = actions.onCheckModLibraryUpdates,
                     onOpenModDetail = actions.onOpenModDetail,
                     onOpenPrimaryFile = actions.onOpenModFile,
                     onSharePrimaryFile = actions.onShareModFile,
@@ -353,6 +343,8 @@ private fun WorkshopScreenContent(
                     GameWorkshopScreen(
                         state = workshopState,
                         onSearchQueryChange = actions.onUpdateWorkshopSearchQuery,
+                        onSortOptionSelected = actions.onUpdateWorkshopSort,
+                        onTimeWindowSelected = actions.onUpdateWorkshopTimeWindow,
                         onSearch = actions.onSearchCurrentWorkshop,
                         onLoadMore = actions.onLoadMoreWorkshopItems,
                         onOpenItemDetail = actions.onOpenWorkshopItemDetail,

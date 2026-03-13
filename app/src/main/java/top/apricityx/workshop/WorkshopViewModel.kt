@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import java.io.IOException
 import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -582,7 +583,14 @@ class WorkshopViewModel(
                 workshopItemDetailState = null,
             )
         }
-        loadWorkshopPage(game = game, searchQuery = "", page = 1, append = false)
+        loadWorkshopPage(
+            game = game,
+            searchQuery = "",
+            sortOption = WorkshopBrowseSortOption.MostPopular,
+            timeWindow = WorkshopBrowseTimeWindow.OneWeek,
+            page = 1,
+            append = false,
+        )
     }
 
     fun openWorkshopItemDetail(item: WorkshopBrowseItem) {
@@ -591,6 +599,7 @@ class WorkshopViewModel(
                 workshopItemDetailState = WorkshopItemDetailUiState(
                     item = item,
                     isLoading = true,
+                    showConnectionErrorState = false,
                 ),
             )
         }
@@ -607,16 +616,22 @@ class WorkshopViewModel(
                             detail = detail,
                             isLoading = false,
                             message = null,
+                            showConnectionErrorState = false,
                         ),
                     )
                 }
             }.onFailure { error ->
+                val showConnectionErrorState = error.isWorkshopConnectionFailure()
                 _uiState.update { state ->
                     val current = state.workshopItemDetailState ?: return@update state
                     state.copy(
                         workshopItemDetailState = current.copy(
                             isLoading = false,
-                            message = error.message ?: "加载模组详情失败。",
+                            message = workshopRequestFailureMessage(
+                                error = error,
+                                fallbackMessage = error.message ?: "加载模组详情失败。",
+                            ),
+                            showConnectionErrorState = showConnectionErrorState,
                         ),
                     )
                 }
@@ -635,9 +650,41 @@ class WorkshopViewModel(
                 gameWorkshopState = state.gameWorkshopState?.copy(
                     searchQuery = value,
                     message = null,
+                    showConnectionErrorState = false,
+                    retryLoadMoreOnError = false,
                 ),
             )
         }
+    }
+
+    fun updateWorkshopSort(sortOption: WorkshopBrowseSortOption) {
+        val workshopState = _uiState.value.gameWorkshopState ?: return
+        if (workshopState.selectedSortOption == sortOption) {
+            return
+        }
+        loadWorkshopPage(
+            game = workshopState.game,
+            searchQuery = workshopState.searchQuery.trim(),
+            sortOption = sortOption,
+            timeWindow = workshopState.selectedTimeWindow,
+            page = 1,
+            append = false,
+        )
+    }
+
+    fun updateWorkshopTimeWindow(timeWindow: WorkshopBrowseTimeWindow) {
+        val workshopState = _uiState.value.gameWorkshopState ?: return
+        if (!workshopState.selectedSortOption.supportsTimeWindow || workshopState.selectedTimeWindow == timeWindow) {
+            return
+        }
+        loadWorkshopPage(
+            game = workshopState.game,
+            searchQuery = workshopState.searchQuery.trim(),
+            sortOption = workshopState.selectedSortOption,
+            timeWindow = timeWindow,
+            page = 1,
+            append = false,
+        )
     }
 
     fun searchCurrentGameWorkshop() {
@@ -645,6 +692,8 @@ class WorkshopViewModel(
         loadWorkshopPage(
             game = workshopState.game,
             searchQuery = workshopState.searchQuery.trim(),
+            sortOption = workshopState.selectedSortOption,
+            timeWindow = workshopState.selectedTimeWindow,
             page = 1,
             append = false,
         )
@@ -659,6 +708,8 @@ class WorkshopViewModel(
         loadWorkshopPage(
             game = workshopState.game,
             searchQuery = workshopState.searchQuery.trim(),
+            sortOption = workshopState.selectedSortOption,
+            timeWindow = workshopState.selectedTimeWindow,
             page = workshopState.page + 1,
             append = true,
         )
@@ -877,6 +928,8 @@ class WorkshopViewModel(
     private fun loadWorkshopPage(
         game: SteamGame,
         searchQuery: String,
+        sortOption: WorkshopBrowseSortOption,
+        timeWindow: WorkshopBrowseTimeWindow,
         page: Int,
         append: Boolean,
     ) {
@@ -885,14 +938,21 @@ class WorkshopViewModel(
             val shouldKeepItemsWhileRefreshing =
                 !append &&
                     current.game.appId == game.appId &&
-                    current.items.isNotEmpty()
+                    current.items.isNotEmpty() &&
+                    current.selectedSortOption == sortOption &&
+                    current.selectedTimeWindow == timeWindow &&
+                    current.searchQuery.trim() == searchQuery
             state.copy(
                 gameWorkshopState = current.copy(
                     game = game,
+                    selectedSortOption = sortOption,
+                    selectedTimeWindow = timeWindow,
                     isLoading = !append,
                     isLoadingMore = append,
                     items = if (append || shouldKeepItemsWhileRefreshing) current.items else emptyList(),
                     message = null,
+                    showConnectionErrorState = false,
+                    retryLoadMoreOnError = false,
                 ),
             )
         }
@@ -902,6 +962,8 @@ class WorkshopViewModel(
                 browseRepository.browseGameWorkshop(
                     appId = game.appId,
                     searchQuery = searchQuery,
+                    sortOption = sortOption,
+                    timeWindow = timeWindow,
                     page = page,
                 )
             }.onSuccess { result ->
@@ -920,17 +982,25 @@ class WorkshopViewModel(
                             hasNextPage = result.hasNextPage,
                             page = result.page,
                             message = if (nextItems.isEmpty()) "这个游戏的当前筛选结果里没有模组。" else null,
+                            showConnectionErrorState = false,
+                            retryLoadMoreOnError = false,
                         ),
                     )
                 }
             }.onFailure { error ->
+                val showConnectionErrorState = error.isWorkshopConnectionFailure()
                 _uiState.update { state ->
                     val current = state.gameWorkshopState ?: return@update state
                     state.copy(
                         gameWorkshopState = current.copy(
                             isLoading = false,
                             isLoadingMore = false,
-                            message = error.message ?: "加载创意工坊失败。",
+                            message = workshopRequestFailureMessage(
+                                error = error,
+                                fallbackMessage = error.message ?: "加载创意工坊失败。",
+                            ),
+                            showConnectionErrorState = showConnectionErrorState,
+                            retryLoadMoreOnError = append && showConnectionErrorState,
                         ),
                     )
                 }
@@ -1010,6 +1080,16 @@ class WorkshopViewModel(
     ): String =
         if (error.isTimeoutRequestFailure()) {
             REQUEST_TIMEOUT_MESSAGE
+        } else {
+            fallbackMessage
+        }
+
+    private fun workshopRequestFailureMessage(
+        error: Throwable,
+        fallbackMessage: String,
+    ): String =
+        if (error.isWorkshopConnectionFailure()) {
+            WORKSHOP_CONNECTION_FAILURE_MESSAGE
         } else {
             fallbackMessage
         }
@@ -1270,6 +1350,8 @@ class WorkshopViewModel(
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"
+        private const val WORKSHOP_CONNECTION_FAILURE_MESSAGE =
+            "啊哦，加载超时，您的网络环境可能不支持直连创意工坊，请开启加速器加速 steam 或科学上网后重试。"
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -1306,6 +1388,9 @@ class WorkshopViewModel(
 
 private fun Throwable.isTimeoutRequestFailure(): Boolean =
     this is SocketTimeoutException || this is TimeoutCancellationException
+
+private fun Throwable.isWorkshopConnectionFailure(): Boolean =
+    this is IOException || this is TimeoutCancellationException
 
 private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
     WorkshopBrowseItem(

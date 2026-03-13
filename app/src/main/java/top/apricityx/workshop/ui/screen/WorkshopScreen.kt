@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadedModEntry
 import top.apricityx.workshop.ExportedDownloadFile
+import top.apricityx.workshop.WorkshopBrowseSortOption
+import top.apricityx.workshop.WorkshopBrowseTimeWindow
 import top.apricityx.workshop.WorkshopUiState
 import top.apricityx.workshop.data.SteamGame
 import top.apricityx.workshop.data.WorkshopBrowseItem
@@ -62,6 +64,8 @@ data class WorkshopScreenActions(
     val onOpenGameWorkshop: (SteamGame) -> Unit,
     val onRetryFeaturedGames: () -> Unit,
     val onUpdateWorkshopSearchQuery: (String) -> Unit,
+    val onUpdateWorkshopSort: (WorkshopBrowseSortOption) -> Unit,
+    val onUpdateWorkshopTimeWindow: (WorkshopBrowseTimeWindow) -> Unit,
     val onSearchCurrentWorkshop: () -> Unit,
     val onLoadMoreWorkshopItems: () -> Unit,
     val onOpenWorkshopItemDetail: (WorkshopBrowseItem) -> Unit,

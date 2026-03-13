@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -41,6 +44,7 @@ import top.apricityx.workshop.ui.component.buildModEntryMetrics
 fun ModLibraryScreen(
     state: ModLibraryUiState,
     onRetry: () -> Unit,
+    onCheckUpdates: () -> Unit,
     onOpenModDetail: (DownloadedModEntry) -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
@@ -85,7 +89,21 @@ fun ModLibraryScreen(
                         "文件 ${state.items.sumOf { it.files.size }}",
                         "可更新 ${state.updateCheckState.results.values.count { it.status == ModUpdateCheckStatus.UpdateAvailable }}",
                     ),
-                )
+                ) {
+                    OutlinedButton(
+                        onClick = onCheckUpdates,
+                        enabled = !state.updateCheckState.isChecking,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "检查模组更新",
+                        )
+                        Text(
+                            text = if (state.updateCheckState.isChecking) "正在检查更新" else "检查模组更新",
+                        )
+                    }
+                }
             }
 
             if (state.updateCheckState.isChecking) {

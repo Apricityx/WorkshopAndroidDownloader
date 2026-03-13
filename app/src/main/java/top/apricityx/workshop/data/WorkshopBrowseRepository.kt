@@ -10,6 +10,8 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import top.apricityx.workshop.WorkshopBrowseSortOption
+import top.apricityx.workshop.WorkshopBrowseTimeWindow
 
 class WorkshopBrowseRepository(
     private val client: OkHttpClient,
@@ -19,19 +21,24 @@ class WorkshopBrowseRepository(
     suspend fun browseGameWorkshop(
         appId: UInt,
         searchQuery: String,
+        sortOption: WorkshopBrowseSortOption = WorkshopBrowseSortOption.MostPopular,
+        timeWindow: WorkshopBrowseTimeWindow = WorkshopBrowseTimeWindow.OneWeek,
         page: Int = 1,
     ): WorkshopBrowsePage = withContext(Dispatchers.IO) {
-        val url = baseUrl.newBuilder()
+        val urlBuilder = baseUrl.newBuilder()
             .addPathSegments("workshop/browse/")
             .addQueryParameter("appid", appId.toString())
             .addQueryParameter("searchtext", searchQuery)
             .addQueryParameter("childpublishedfileid", "0")
-            .addQueryParameter("browsesort", "trend")
+            .addQueryParameter("browsesort", sortOption.browseSortValue)
             .addQueryParameter("section", "readytouseitems")
-            .addQueryParameter("actualsort", "trend")
+            .addQueryParameter("actualsort", sortOption.actualSortValue)
             .addQueryParameter("p", page.toString())
             .addQueryParameter("numperpage", "30")
-            .build()
+        if (sortOption.supportsTimeWindow) {
+            urlBuilder.addQueryParameter("days", timeWindow.daysValue.toString())
+        }
+        val url = urlBuilder.build()
 
         val request = Request.Builder()
             .url(url)

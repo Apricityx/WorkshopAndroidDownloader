@@ -2,6 +2,8 @@ package top.apricityx.workshop.ui.screen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +18,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -34,6 +37,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import top.apricityx.workshop.GameWorkshopUiState
+import top.apricityx.workshop.WorkshopBrowseSortOption
+import top.apricityx.workshop.WorkshopBrowseTimeWindow
+import top.apricityx.workshop.displayName
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
@@ -47,6 +53,8 @@ import top.apricityx.workshop.ui.component.WorkshopPanelCard
 fun GameWorkshopScreen(
     state: GameWorkshopUiState,
     onSearchQueryChange: (String) -> Unit,
+    onSortOptionSelected: (WorkshopBrowseSortOption) -> Unit,
+    onTimeWindowSelected: (WorkshopBrowseTimeWindow) -> Unit,
     onSearch: () -> Unit,
     onLoadMore: () -> Unit,
     onOpenItemDetail: (WorkshopBrowseItem) -> Unit,
@@ -70,11 +78,17 @@ fun GameWorkshopScreen(
             ScreenSummaryCard(
                 title = state.game.name,
                 subtitle = state.game.shortDescription.ifBlank { "这个游戏支持 Steam 创意工坊。" },
-                metrics = listOf(
-                    "AppID ${state.game.appId}",
-                    "已加载 ${state.items.size} 个模组",
-                    if (state.searchQuery.isBlank()) "当前排序 热门" else "搜索中",
-                ),
+                metrics = buildList {
+                    add("AppID ${state.game.appId}")
+                    add("已加载 ${state.items.size} 个模组")
+                    add("排序 ${state.selectedSortOption.displayName()}")
+                    if (state.selectedSortOption.supportsTimeWindow) {
+                        add("范围 ${state.selectedTimeWindow.displayName()}")
+                    }
+                    if (state.searchQuery.isNotBlank()) {
+                        add("搜索中")
+                    }
+                },
                 modifier = Modifier.padding(top = 8.dp),
             ) {
                 AsyncImage(
@@ -102,6 +116,12 @@ fun GameWorkshopScreen(
                         Icon(Icons.Default.Search, contentDescription = null)
                     }
                 }
+
+                WorkshopBrowseSortControls(
+                    state = state,
+                    onSortOptionSelected = onSortOptionSelected,
+                    onTimeWindowSelected = onTimeWindowSelected,
+                )
             }
         }
 
@@ -116,71 +136,133 @@ fun GameWorkshopScreen(
             }
         }
 
-        state.message?.let { message ->
-            item {
-                WorkshopMessageBanner(
-                    message = message,
-                    tone = if (message.contains("失败")) MessageTone.Error else MessageTone.Info,
-                )
-            }
-        }
-
-        item {
-            SectionHeading(
-                title = "工坊模组",
-                subtitle = if (state.searchQuery.isBlank()) {
-                    "浏览当前游戏的公开创意工坊条目。"
-                } else {
-                    "当前搜索：${state.searchQuery}"
-                },
-            )
-        }
-
-        if (state.isLoading && state.items.isEmpty()) {
-            item {
-                WorkshopLoadingBlock(label = "正在加载创意工坊列表。")
-            }
-        } else if (state.items.isEmpty()) {
+        if (state.showConnectionErrorState) {
             item {
                 WorkshopCenteredState(
-                    title = "没有可显示的模组",
-                    message = if (state.searchQuery.isBlank()) {
-                        state.message ?: "这个游戏当前没有抓取到公开模组。"
-                    } else {
-                        state.message ?: "换个关键词再试试。"
-                    },
+                    title = "啊哦，加载超时",
+                    message = state.message
+                        ?: "啊哦，加载超时，您的网络环境可能不支持直连创意工坊，请开启加速器加速 steam 或科学上网后重试。",
+                    actionLabel = "重试",
+                    onAction = if (state.retryLoadMoreOnError) onLoadMore else onSearch,
                 )
             }
         } else {
-            if (showingRefreshState) {
+            state.message?.let { message ->
                 item {
                     WorkshopMessageBanner(
-                        message = "正在刷新当前列表，已保留你上一次浏览的位置。",
-                        tone = MessageTone.Info,
+                        message = message,
+                        tone = if (message.contains("失败")) MessageTone.Error else MessageTone.Info,
                     )
                 }
             }
 
-            items(state.items, key = { it.publishedFileId.toString() }) { item ->
-                WorkshopItemCard(
-                    item = item,
-                    onOpenDetail = { onOpenItemDetail(item) },
-                    onDownload = { onDownloadSingleItem(item) },
+            item {
+                SectionHeading(
+                    title = "工坊模组",
+                    subtitle = if (state.searchQuery.isBlank()) {
+                        "浏览当前游戏的公开创意工坊条目。"
+                    } else {
+                        "当前搜索：${state.searchQuery}"
+                    },
+                )
+            }
+
+            if (state.isLoading && state.items.isEmpty()) {
+                item {
+                    WorkshopLoadingBlock(label = "正在加载创意工坊列表。")
+                }
+            } else if (state.items.isEmpty()) {
+                item {
+                    WorkshopCenteredState(
+                        title = "没有可显示的模组",
+                        message = if (state.searchQuery.isBlank()) {
+                            state.message ?: "这个游戏当前没有抓取到公开模组。"
+                        } else {
+                            state.message ?: "换个关键词再试试。"
+                        },
+                    )
+                }
+            } else {
+                if (showingRefreshState) {
+                    item {
+                        WorkshopMessageBanner(
+                            message = "正在刷新当前列表，已保留你上一次浏览的位置。",
+                            tone = MessageTone.Info,
+                        )
+                    }
+                }
+
+                items(state.items, key = { it.publishedFileId.toString() }) { item ->
+                    WorkshopItemCard(
+                        item = item,
+                        onOpenDetail = { onOpenItemDetail(item) },
+                        onDownload = { onDownloadSingleItem(item) },
+                    )
+                }
+            }
+
+            if (state.isLoadingMore) {
+                item {
+                    WorkshopLoadingBlock(label = "正在加载更多模组。")
+                }
+            } else if (state.hasNextPage) {
+                item {
+                    OutlinedButton(
+                        onClick = onLoadMore,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("加载更多")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WorkshopBrowseSortControls(
+    state: GameWorkshopUiState,
+    onSortOptionSelected: (WorkshopBrowseSortOption) -> Unit,
+    onTimeWindowSelected: (WorkshopBrowseTimeWindow) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "排序方式",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            WorkshopBrowseSortOption.entries.forEach { option ->
+                FilterChip(
+                    selected = option == state.selectedSortOption,
+                    onClick = { onSortOptionSelected(option) },
+                    label = { Text(option.displayName()) },
                 )
             }
         }
 
-        if (state.isLoadingMore) {
-            item {
-                WorkshopLoadingBlock(label = "正在加载更多模组。")
-            }
-        } else if (state.hasNextPage) {
-            item {
-                OutlinedButton(
-                    onClick = onLoadMore,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("加载更多")
+        if (state.selectedSortOption.supportsTimeWindow) {
+            Text(
+                text = "热门范围",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                WorkshopBrowseTimeWindow.entries.forEach { option ->
+                    FilterChip(
+                        selected = option == state.selectedTimeWindow,
+                        onClick = { onTimeWindowSelected(option) },
+                        label = { Text(option.displayName()) },
+                    )
                 }
             }
         }

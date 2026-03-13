@@ -59,12 +59,16 @@ data class AddGameUiState(
 data class GameWorkshopUiState(
     val game: SteamGame,
     val searchQuery: String = "",
+    val selectedSortOption: WorkshopBrowseSortOption = WorkshopBrowseSortOption.MostPopular,
+    val selectedTimeWindow: WorkshopBrowseTimeWindow = WorkshopBrowseTimeWindow.OneWeek,
     val items: List<WorkshopBrowseItem> = emptyList(),
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val page: Int = 1,
     val hasNextPage: Boolean = false,
     val message: String? = null,
+    val showConnectionErrorState: Boolean = false,
+    val retryLoadMoreOnError: Boolean = false,
 )
 
 data class WorkshopItemDetailUiState(
@@ -72,6 +76,7 @@ data class WorkshopItemDetailUiState(
     val detail: top.apricityx.workshop.data.WorkshopItemDetail? = null,
     val isLoading: Boolean = false,
     val message: String? = null,
+    val showConnectionErrorState: Boolean = false,
 )
 
 data class ModLibraryUiState(

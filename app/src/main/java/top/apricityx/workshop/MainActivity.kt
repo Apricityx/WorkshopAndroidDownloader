@@ -187,6 +187,8 @@ class MainActivity : ComponentActivity() {
             onOpenGameWorkshop = workshopViewModel::openGameWorkshop,
             onRetryFeaturedGames = workshopViewModel::retryFeaturedGames,
             onUpdateWorkshopSearchQuery = workshopViewModel::updateWorkshopSearchQuery,
+            onUpdateWorkshopSort = workshopViewModel::updateWorkshopSort,
+            onUpdateWorkshopTimeWindow = workshopViewModel::updateWorkshopTimeWindow,
             onSearchCurrentWorkshop = workshopViewModel::searchCurrentGameWorkshop,
             onLoadMoreWorkshopItems = workshopViewModel::loadMoreWorkshopItems,
             onOpenWorkshopItemDetail = workshopViewModel::openWorkshopItemDetail,
