@@ -60,7 +60,7 @@ class SteamDirectoryClient(
                 CdnServer(
                     type = it.type,
                     sourceId = it.sourceId,
-                    cellId = it.cellId,
+                    cellId = it.cellId ?: cellId.toInt(),
                     load = it.load,
                     weightedLoad = it.weightedLoad,
                     numEntriesInClientList = it.numEntriesInClientList,
@@ -111,7 +111,7 @@ private data class CdnServerDto(
     @SerialName("source_id")
     val sourceId: Int,
     @SerialName("cell_id")
-    val cellId: Int,
+    val cellId: Int? = null,
     val load: Int = 0,
     @SerialName("weighted_load")
     val weightedLoad: Float = 0f,

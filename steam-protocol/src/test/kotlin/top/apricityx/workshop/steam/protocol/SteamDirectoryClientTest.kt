@@ -95,4 +95,46 @@ class SteamDirectoryClientTest {
         assertThat(result.first().secureScheme).isEqualTo("https")
         assertThat(result.first().allowedAppIds).containsExactly(4000u)
     }
+
+    @Test
+    fun `loadContentServers tolerates missing cell id`() = runTest {
+        server.enqueue(
+            MockResponse().setBody(
+                """
+                {
+                  "response": {
+                    "servers": [
+                      {
+                        "type":"SteamCache",
+                        "source_id":123,
+                        "load":70,
+                        "weighted_load":72.5,
+                        "num_entries_in_client_list":4,
+                        "steam_china_only":false,
+                        "host":"cache.example.net",
+                        "vhost":"cache.example.net",
+                        "use_as_proxy":false,
+                        "proxy_request_path_template":"",
+                        "https_support":"mandatory",
+                        "allowed_app_ids":[4000],
+                        "priority_class":3
+                      }
+                    ]
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val client = SteamDirectoryClient(
+            client = OkHttpClient(),
+            apiBaseUrl = server.url("/"),
+        )
+
+        val result = client.loadContentServers(cellId = 33u)
+
+        assertThat(result).hasSize(1)
+        assertThat(result.first().cellId).isEqualTo(33)
+        assertThat(result.first().host).isEqualTo("cache.example.net")
+    }
 }

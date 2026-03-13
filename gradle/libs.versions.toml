@@ -19,6 +19,9 @@ okio = "3.9.1"
 xz = "1.10"
 zstd = "1.5.6-9"
 coil = "2.7.0"
+securityCrypto = "1.1.0-alpha06"
+mlKitTranslate = "17.0.3"
+mlKitLanguageId = "17.0.6"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -53,6 +56,9 @@ protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", ve
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
 zstd = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
+mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlKitTranslate" }
+mlkit-language-id = { module = "com.google.mlkit:language-id", version.ref = "mlKitLanguageId" }
 
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }

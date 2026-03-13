@@ -19,6 +19,7 @@ data class WorkshopBrowseItem(
     val authorName: String,
     val previewImageUrl: String,
     val descriptionSnippet: String,
+    val fileSizeBytes: Long? = null,
 )
 
 data class WorkshopBrowsePage(

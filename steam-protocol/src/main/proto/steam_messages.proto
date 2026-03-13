@@ -24,16 +24,28 @@ message CMsgClientHello {
   optional uint32 protocol_version = 1;
 }
 
+message CMsgIPAddress {
+  optional uint32 v4 = 1;
+}
+
 message CMsgClientLogon {
   optional uint32 protocol_version = 1;
+  optional uint32 deprecated_obfustucated_private_ip = 2;
   optional uint32 cell_id = 3;
   optional uint32 client_package_version = 5;
   optional string client_language = 6;
   optional uint32 client_os_type = 7;
+  optional bool should_remember_password = 8;
+  optional CMsgIPAddress obfuscated_private_ip = 11;
   optional fixed64 client_supplied_steam_id = 22;
   optional bytes machine_id = 30;
+  optional string account_name = 50;
+  optional string password = 51;
+  optional string auth_code = 84;
   optional string machine_name = 96;
+  optional string two_factor_code = 101;
   optional bool supports_rate_limit_response = 102;
+  optional string access_token = 108;
 }
 
 message CMsgClientLogonResponse {
@@ -44,6 +56,10 @@ message CMsgClientLogonResponse {
   optional string user_country = 16;
   optional fixed64 client_supplied_steamid = 20;
   optional string ip_country_code = 21;
+}
+
+message CMsgClientLoggedOff {
+  optional int32 eresult = 1 [default = 2];
 }
 
 message CMsgClientGetDepotDecryptionKey {
@@ -111,4 +127,150 @@ message CContentServerDirectory_GetCDNAuthToken_Request {
 message CContentServerDirectory_GetCDNAuthToken_Response {
   optional string token = 1;
   optional uint32 expiration_time = 2;
+}
+
+enum EAuthTokenPlatformType {
+  k_EAuthTokenPlatformType_Unknown = 0;
+  k_EAuthTokenPlatformType_SteamClient = 1;
+  k_EAuthTokenPlatformType_WebBrowser = 2;
+  k_EAuthTokenPlatformType_MobileApp = 3;
+}
+
+enum EAuthTokenAppType {
+  k_EAuthTokenAppType_Unknown = 0;
+  k_EAuthTokenAppType_Mobile_SteamApp = 1;
+  k_EAuthTokenAppType_Mobile_ChatApp = 2;
+}
+
+enum EAuthSessionGuardType {
+  k_EAuthSessionGuardType_Unknown = 0;
+  k_EAuthSessionGuardType_None = 1;
+  k_EAuthSessionGuardType_EmailCode = 2;
+  k_EAuthSessionGuardType_DeviceCode = 3;
+  k_EAuthSessionGuardType_DeviceConfirmation = 4;
+  k_EAuthSessionGuardType_EmailConfirmation = 5;
+  k_EAuthSessionGuardType_MachineToken = 6;
+  k_EAuthSessionGuardType_LegacyMachineAuth = 7;
+}
+
+enum ESessionPersistence {
+  k_ESessionPersistence_Invalid = 0;
+  k_ESessionPersistence_Persistent = 1;
+  k_ESessionPersistence_Ephemeral = 2;
+}
+
+enum ETokenRenewalType {
+  k_ETokenRenewalType_None = 0;
+  k_ETokenRenewalType_Allow = 1;
+}
+
+enum EAuthTokenRevokeAction {
+  k_EAuthTokenRevokeLogout = 0;
+  k_EAuthTokenRevokePermanent = 1;
+  k_EAuthTokenRevokeReplaced = 2;
+  k_EAuthTokenRevokeSupport = 3;
+  k_EAuthTokenRevokeConsume = 4;
+  k_EAuthTokenRevokeNonRememberedLogout = 5;
+  k_EAuthTokenRevokeNonRememberedPermanent = 6;
+  k_EAuthTokenRevokeAutomatic = 7;
+}
+
+message CAuthentication_GetPasswordRSAPublicKey_Request {
+  optional string account_name = 1;
+}
+
+message CAuthentication_GetPasswordRSAPublicKey_Response {
+  optional string publickey_mod = 1;
+  optional string publickey_exp = 2;
+  optional uint64 timestamp = 3;
+}
+
+message CAuthentication_DeviceDetails {
+  optional string device_friendly_name = 1;
+  optional EAuthTokenPlatformType platform_type = 2 [default = k_EAuthTokenPlatformType_Unknown];
+  optional int32 os_type = 3;
+  optional uint32 gaming_device_type = 4;
+  optional uint32 client_count = 5;
+  optional bytes machine_id = 6;
+  optional EAuthTokenAppType app_type = 7 [default = k_EAuthTokenAppType_Unknown];
+}
+
+message CAuthentication_AllowedConfirmation {
+  optional EAuthSessionGuardType confirmation_type = 1 [default = k_EAuthSessionGuardType_Unknown];
+  optional string associated_message = 2;
+}
+
+message CAuthentication_BeginAuthSessionViaCredentials_Request {
+  optional string device_friendly_name = 1;
+  optional string account_name = 2;
+  optional string encrypted_password = 3;
+  optional uint64 encryption_timestamp = 4;
+  optional bool remember_login = 5;
+  optional EAuthTokenPlatformType platform_type = 6 [default = k_EAuthTokenPlatformType_Unknown];
+  optional ESessionPersistence persistence = 7 [default = k_ESessionPersistence_Persistent];
+  optional string website_id = 8 [default = "Unknown"];
+  optional CAuthentication_DeviceDetails device_details = 9;
+  optional string guard_data = 10;
+  optional uint32 language = 11;
+  optional int32 qos_level = 12 [default = 2];
+}
+
+message CAuthentication_BeginAuthSessionViaCredentials_Response {
+  optional uint64 client_id = 1;
+  optional bytes request_id = 2;
+  optional float interval = 3;
+  repeated CAuthentication_AllowedConfirmation allowed_confirmations = 4;
+  optional uint64 steamid = 5;
+  optional string weak_token = 6;
+  optional string agreement_session_url = 7;
+  optional string extended_error_message = 8;
+}
+
+message CAuthentication_PollAuthSessionStatus_Request {
+  optional uint64 client_id = 1;
+  optional bytes request_id = 2;
+  optional fixed64 token_to_revoke = 3;
+}
+
+message CAuthentication_PollAuthSessionStatus_Response {
+  optional uint64 new_client_id = 1;
+  optional string new_challenge_url = 2;
+  optional string refresh_token = 3;
+  optional string access_token = 4;
+  optional bool had_remote_interaction = 5;
+  optional string account_name = 6;
+  optional string new_guard_data = 7;
+  optional string agreement_session_url = 8;
+}
+
+message CAuthentication_UpdateAuthSessionWithSteamGuardCode_Request {
+  optional uint64 client_id = 1;
+  optional fixed64 steamid = 2;
+  optional string code = 3;
+  optional EAuthSessionGuardType code_type = 4 [default = k_EAuthSessionGuardType_Unknown];
+}
+
+message CAuthentication_UpdateAuthSessionWithSteamGuardCode_Response {
+  optional string agreement_session_url = 7;
+}
+
+message CAuthentication_AccessToken_GenerateForApp_Request {
+  optional string refresh_token = 1;
+  optional fixed64 steamid = 2;
+  optional ETokenRenewalType renewal_type = 3 [default = k_ETokenRenewalType_None];
+}
+
+message CAuthentication_AccessToken_GenerateForApp_Response {
+  optional string access_token = 1;
+  optional string refresh_token = 2;
+}
+
+message CAuthentication_RefreshToken_Revoke_Request {
+  optional fixed64 token_id = 1;
+  optional fixed64 steamid = 2;
+  optional EAuthTokenRevokeAction revoke_action = 3 [default = k_EAuthTokenRevokePermanent];
+  optional bytes signature = 4;
+}
+
+message CAuthentication_RefreshToken_Revoke_Response {
 }

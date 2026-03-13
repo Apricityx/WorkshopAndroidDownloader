@@ -16,8 +16,10 @@ class DownloadCenterTaskFinalizer(
         downloadedFiles: List<DownloadedFileInfo>,
         log: suspend (String) -> Unit,
     ): FinalizedDownloadArtifacts {
+        log("开始整理下载结果。stagingDir=${stagingDir.absolutePath} files=${downloadedFiles.size}")
         val metadata = readWorkshopDownloadMetadata(stagingDir)
         val resolvedItemTitle = metadata?.title?.takeIf(String::isNotBlank) ?: task.itemTitle
+        log("解析元数据完成。resolvedItemTitle=$resolvedItemTitle")
         val exportedFiles = publicExportManager.exportDownloadedFiles(
             gameTitle = task.gameTitle,
             itemTitle = resolvedItemTitle,
@@ -25,11 +27,13 @@ class DownloadCenterTaskFinalizer(
             files = downloadedFiles,
             log = log,
         )
+        log("公共导出完成。exportedFiles=${exportedFiles.size}")
         val previewImagePath = cachePreviewImage(
             task = task,
             previewImageUrl = metadata?.previewImageUrl,
             log = log,
         )
+        log("封面缓存阶段结束。previewImagePath=${previewImagePath ?: "<none>"}")
         syncModLibrary(
             task = task,
             itemTitle = resolvedItemTitle,
@@ -37,6 +41,7 @@ class DownloadCenterTaskFinalizer(
             exportedFiles = exportedFiles,
             log = log,
         )
+        log("模组库同步阶段结束。")
         return FinalizedDownloadArtifacts(
             itemTitle = resolvedItemTitle,
             exportedFiles = exportedFiles,
@@ -47,17 +52,25 @@ class DownloadCenterTaskFinalizer(
         task: DownloadCenterTaskUiState,
         previewImageUrl: String?,
         log: suspend (String) -> Unit,
-    ): String? =
-        runCatching {
+    ): String? {
+        log("开始缓存模组封面。previewImageUrl=${previewImageUrl ?: "<none>"}")
+        return runCatching {
             previewImageCache.cachePreviewImage(
                 appId = task.appId,
                 publishedFileId = task.publishedFileId,
                 imageUrl = previewImageUrl,
             )
-        }.getOrElse { error ->
+        }.fold(
+            onSuccess = { path ->
+                log("模组封面缓存完成。path=${path ?: "<none>"}")
+                path
+            },
+            onFailure = { error ->
             log("模组封面缓存失败：${error.summary()}")
             null
-        }
+            },
+        )
+    }
 
     private suspend fun syncModLibrary(
         task: DownloadCenterTaskUiState,
@@ -66,7 +79,8 @@ class DownloadCenterTaskFinalizer(
         exportedFiles: List<ExportedDownloadFile>,
         log: suspend (String) -> Unit,
     ) {
-        runCatching {
+        log("开始同步模组库索引。exportedFiles=${exportedFiles.size}")
+        val result = runCatching {
             modLibraryRepository.upsertDownloadedMod(
                 appId = task.appId,
                 publishedFileId = task.publishedFileId,
@@ -75,8 +89,11 @@ class DownloadCenterTaskFinalizer(
                 previewImagePath = previewImagePath,
                 files = exportedFiles,
             )
-        }.onFailure { error ->
-            log("模组库索引更新失败：${error.summary()}")
+        }
+        if (result.isSuccess) {
+            log("模组库索引更新完成。")
+        } else {
+            log("模组库索引更新失败：${result.exceptionOrNull()?.summary() ?: "未知错误"}")
         }
     }
 }

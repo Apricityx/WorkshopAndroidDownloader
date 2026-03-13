@@ -3,6 +3,11 @@ package top.apricityx.workshop
 import com.google.common.truth.Truth.assertThat
 import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Test
 
 class ModLibraryStoreTest {
@@ -43,5 +48,39 @@ class ModLibraryStoreTest {
 
         assertThat(store.loadEntries()).isEmpty()
         tempDir.deleteRecursively()
+    }
+
+    @Test
+    fun withFileLock_serializesOperationsAcrossStoreInstances() {
+        runBlocking {
+            val tempDir = Files.createTempDirectory("mod-library-store-lock").toFile()
+            val indexFile = File(tempDir, "index.json")
+            val firstStore = ModLibraryStore(indexFile)
+            val secondStore = ModLibraryStore(indexFile)
+            val firstEntered = CompletableDeferred<Unit>()
+            val releaseFirst = CompletableDeferred<Unit>()
+
+            val firstOperation = async(Dispatchers.Default) {
+                firstStore.withFileLock {
+                    firstEntered.complete(Unit)
+                    releaseFirst.await()
+                }
+            }
+            firstEntered.await()
+
+            val secondOperation = async(Dispatchers.Default) {
+                secondStore.withFileLock { "entered" }
+            }
+
+            val completedBeforeRelease = withTimeoutOrNull(150L) {
+                secondOperation.await()
+            }
+            assertThat(completedBeforeRelease).isNull()
+
+            releaseFirst.complete(Unit)
+            assertThat(secondOperation.await()).isEqualTo("entered")
+            firstOperation.await()
+            tempDir.deleteRecursively()
+        }
     }
 }

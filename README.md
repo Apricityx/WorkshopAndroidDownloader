@@ -26,7 +26,7 @@
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Android-7f52ff?style=flat-square&logo=kotlin&logoColor=white" />
   <img alt="Jetpack Compose" src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white" />
   <img alt="Steam Workshop Public Items" src="https://img.shields.io/badge/Steam%20Workshop-Public%20Items-1b2838?style=flat-square&logo=steam&logoColor=white" />
-  <img alt="Anonymous Steam CM" src="https://img.shields.io/badge/Protocol-Anonymous%20Steam%20CM-0a7ea4?style=flat-square" />
+  <img alt="Authenticated Steam CM" src="https://img.shields.io/badge/Protocol-Authenticated%20Steam%20CM-0a7ea4?style=flat-square" />
 </p>
 
 <p align="center">
@@ -40,7 +40,7 @@
 </p>
 
 > [!IMPORTANT]
-> 当前实现只面向 **公开可访问** 的 Steam Workshop 条目，不需要 Steam 登录，但也不支持私有内容、好友可见内容和 `Collection` 下载。
+> 支持在设置页通过 Steam 协议登录账号，并把同一套账号同时用于工坊浏览和下载。公开条目仍可匿名下载；需要登录态的条目会在任务入队时冻结绑定当前账号。当前仍不支持 `Collection` 下载和二维码登录。
 
 <a id="highlights"></a>
 
@@ -53,7 +53,7 @@
 | 调试自动化 | 提供基于 `adb` 的 Gradle 任务，可跳过 UI 直接触发下载并拉回日志。                            |
 
 > [!NOTE]
-> `:steam-protocol` 负责 Steam CM 匿名连接、内容服务器发现和 CDN 授权，`:workshop-core` 负责 manifest、chunk、校验、解压和最终文件组装。
+> `:steam-protocol` 负责 Steam CM 连接、账号认证、内容服务器发现和 CDN 授权，`:workshop-core` 负责 manifest、chunk、校验、解压和最终文件组装。
 
 <a id="quick-start"></a>
 
@@ -99,11 +99,11 @@
 
 ## 构建说明
 
-| 模块 | 职责 |
-| --- | --- |
-| `:app` | Compose UI、页面流转、游戏库、本地设置、下载中心和文件导出 |
-| `:workshop-core` | 创意工坊元数据解析、`file_url` 下载、UGC manifest/chunk 下载、校验和文件组装 |
-| `:steam-protocol` | Steam CM WebSocket 匿名登录、目录服务、内容服务器请求、manifest request code、CDN token 和 depot key 获取 |
+| 模块                | 职责                                                                                     |
+|-------------------|----------------------------------------------------------------------------------------|
+| `:app`            | Compose UI、页面流转、游戏库、本地设置、下载中心和文件导出                                                     |
+| `:workshop-core`  | 创意工坊元数据解析、`file_url` 下载、UGC manifest/chunk 下载、校验和文件组装                                  |
+| `:steam-protocol` | Steam CM WebSocket 连接、账号认证、目录服务、内容服务器请求、manifest request code、CDN token 和 depot key 获取 |
 
 构建目标：
 
@@ -117,6 +117,7 @@
 - 下载线程数可在应用设置页调整，范围 `1..8`
 - 同时下载任务数可在应用设置页调整，范围 `1..3`
 - 主题模式支持跟随系统、浅色和深色
+- 可在应用设置页保存多个 Steam 账号，切换当前浏览账号，并把下载任务绑定到入队时的账号
 
 <a id="release-automation"></a>
 
@@ -187,7 +188,7 @@ scripts\prepare-release.bat
 
 ## 当前限制
 
-- 仅支持公开可访问的创意工坊条目。
+- 下载仍只支持公开可访问的创意工坊条目；Steam 登录仅改善浏览可见性，不改变下载鉴权方式。
 - 暂不支持 `Collection`。
 - 工坊列表和详情依赖 Steam 页面结构与公开接口，若上游改版需要同步调整解析逻辑。
 - 当网络无法稳定访问 Steam 时，游戏库、工坊列表和下载流程都可能失败或超时。

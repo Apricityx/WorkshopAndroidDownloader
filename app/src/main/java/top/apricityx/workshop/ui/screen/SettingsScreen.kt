@@ -1,34 +1,49 @@
 package top.apricityx.workshop.ui.screen
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadSettingsRepository
 import top.apricityx.workshop.SettingsUiState
+import top.apricityx.workshop.SteamLoginDialogMode
 import top.apricityx.workshop.displayName
+import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
@@ -37,6 +52,16 @@ import top.apricityx.workshop.ui.component.WorkshopPanelCard
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
+    onOpenSteamLoginDialog: () -> Unit,
+    onDismissSteamLoginDialog: () -> Unit,
+    onUpdateSteamLoginUsername: (String) -> Unit,
+    onUpdateSteamLoginPassword: (String) -> Unit,
+    onUpdateSteamGuardCode: (String) -> Unit,
+    onSubmitSteamLogin: () -> Unit,
+    onSwitchToAnonymousSteamAccount: () -> Unit,
+    onSetActiveSteamAccount: (String) -> Unit,
+    onReauthenticateSteamAccount: (String) -> Unit,
+    onRemoveSteamAccount: (String) -> Unit,
     onThemeModeSelected: (AppThemeMode) -> Unit,
     onAutoCheckUpdatesChanged: (Boolean) -> Unit,
     onPreferredUpdateSourceSelected: (UpdateSource) -> Unit,
@@ -53,6 +78,70 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        WorkshopPanelCard {
+            Text("Steam 账号", style = MaterialTheme.typography.titleLarge)
+            Text(
+                state.steamAuthState.statusSummary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(onClick = onOpenSteamLoginDialog) {
+                    Text("添加账号")
+                }
+                OutlinedButton(onClick = onSwitchToAnonymousSteamAccount) {
+                    Text("切回匿名")
+                }
+            }
+
+            if (state.steamAuthState.accounts.isEmpty()) {
+                Text(
+                    "当前没有已保存的 Steam 账号。登录后浏览会自动带上 `steamLoginSecure`，下载任务也会在入队时绑定当前账号。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    state.steamAuthState.accounts.forEach { account ->
+                        WorkshopPanelCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(account.accountName, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    if (account.requiresReauthentication) {
+                                        "该账号需要重新认证。浏览会回退到匿名，绑定到它的新下载也会被阻止。"
+                                    } else if (account.isActive) {
+                                        "当前浏览账号"
+                                    } else {
+                                        "已保存账号"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    if (!account.isActive) {
+                                        OutlinedButton(onClick = { onSetActiveSteamAccount(account.accountId) }) {
+                                            Text("设为当前")
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    SteamAccountActionsButton(
+                                        onReauthenticate = { onReauthenticateSteamAccount(account.accountId) },
+                                        onRemove = { onRemoveSteamAccount(account.accountId) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         WorkshopPanelCard {
             Text("外观设置", style = MaterialTheme.typography.titleLarge)
             Text(
@@ -173,10 +262,7 @@ fun SettingsScreen(
                 }
             }
 
-            Text(
-                "当前版本：${state.currentVersionText}",
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Text("当前版本：${state.currentVersionText}", style = MaterialTheme.typography.bodyMedium)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -224,9 +310,7 @@ fun SettingsScreen(
                 onValueChange = onThreadCountChange,
                 label = { Text("单任务线程数") },
                 supportingText = {
-                    Text(
-                        "范围 ${DownloadSettingsRepository.MIN_DOWNLOAD_THREADS} - ${DownloadSettingsRepository.MAX_DOWNLOAD_THREADS}",
-                    )
+                    Text("范围 ${DownloadSettingsRepository.MIN_DOWNLOAD_THREADS} - ${DownloadSettingsRepository.MAX_DOWNLOAD_THREADS}")
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
@@ -238,9 +322,7 @@ fun SettingsScreen(
                 onValueChange = onConcurrentTaskCountChange,
                 label = { Text("同时下载任务数") },
                 supportingText = {
-                    Text(
-                        "范围 ${DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS} - ${DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS}",
-                    )
+                    Text("范围 ${DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS} - ${DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS}")
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
@@ -265,9 +347,7 @@ fun SettingsScreen(
         }
 
         WorkshopPanelCard {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("关于", style = MaterialTheme.typography.titleLarge)
                 Text(
                     "开发者",
@@ -276,17 +356,13 @@ fun SettingsScreen(
                 )
                 Text(
                     text = "apricityx",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        textDecoration = TextDecoration.Underline,
-                    ),
+                    style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.clickable { onOpenExternalUrl(primaryDeveloperUrl) },
                 )
                 Text(
                     text = "ZJustin117",
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        textDecoration = TextDecoration.Underline,
-                    ),
+                    style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.clickable { onOpenExternalUrl(secondaryDeveloperUrl) },
                 )
@@ -297,9 +373,7 @@ fun SettingsScreen(
                 )
                 Text(
                     text = repositoryUrl,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        textDecoration = TextDecoration.Underline,
-                    ),
+                    style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.clickable { onOpenExternalUrl(repositoryUrl) },
                 )
@@ -308,6 +382,170 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+    }
+
+    state.steamAuthState.loginDialogState?.let { dialogState ->
+        SteamLoginDialog(
+            state = dialogState,
+            onDismiss = onDismissSteamLoginDialog,
+            onUsernameChange = onUpdateSteamLoginUsername,
+            onPasswordChange = onUpdateSteamLoginPassword,
+            onGuardCodeChange = onUpdateSteamGuardCode,
+            onSubmit = onSubmitSteamLogin,
+        )
+    }
+}
+
+@Composable
+private fun SteamAccountActionsButton(
+    onReauthenticate: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        OutlinedButton(onClick = { expanded = true }) {
+            Text("操作")
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("重新认证") },
+                onClick = {
+                    expanded = false
+                    onReauthenticate()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("删除") },
+                onClick = {
+                    expanded = false
+                    onRemove()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SteamLoginDialog(
+    state: top.apricityx.workshop.SteamLoginDialogUiState,
+    onDismiss: () -> Unit,
+    onUsernameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onGuardCodeChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnClickOutside = false),
+    ) {
+        Surface(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                        "重新认证 Steam"
+                    } else {
+                        "登录 Steam"
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                )
+
+                when (state.challengeType) {
+                    SteamGuardChallengeType.EmailCode,
+                    SteamGuardChallengeType.DeviceCode,
+                    -> {
+                        Text(
+                            state.challengeMessage ?: "请输入 Steam Guard 验证码。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedTextField(
+                            value = state.guardCode,
+                            onValueChange = onGuardCodeChange,
+                            label = { Text("验证码") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
+
+                    SteamGuardChallengeType.DeviceConfirmation,
+                    SteamGuardChallengeType.EmailConfirmation,
+                    -> {
+                        Text(
+                            state.challengeMessage ?: "请在 Steam 手机 App 中完成确认，应用会自动继续等待结果。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    else -> {
+                        OutlinedTextField(
+                            value = state.username,
+                            onValueChange = onUsernameChange,
+                            label = { Text("账号名") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
+                        )
+                        OutlinedTextField(
+                            value = state.password,
+                            onValueChange = onPasswordChange,
+                            label = { Text("密码") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
+                }
+
+                state.errorMessage?.takeIf(String::isNotBlank)?.let { message ->
+                    WorkshopMessageBanner(
+                        message = message,
+                        tone = MessageTone.Error,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(onClick = onDismiss, enabled = !state.isSubmitting) {
+                        Text("关闭")
+                    }
+                    Button(onClick = onSubmit, enabled = !state.isSubmitting) {
+                        if (state.isSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                        Text(
+                            when (state.challengeType) {
+                                SteamGuardChallengeType.EmailCode,
+                                SteamGuardChallengeType.DeviceCode,
+                                -> "提交验证码"
+
+                                SteamGuardChallengeType.DeviceConfirmation,
+                                SteamGuardChallengeType.EmailConfirmation,
+                                -> "继续等待"
+
+                                else -> if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                                    "重新认证"
+                                } else {
+                                    "登录"
+                                }
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -322,6 +560,6 @@ private fun sourceDescription(source: UpdateSource): String =
         UpdateSource.OFFICIAL -> "官方 GitHub 直连地址。"
     }
 
+private const val repositoryUrl = "https://github.com/Apricityx/WorkshopAndroidDownloader"
 private const val primaryDeveloperUrl = "https://github.com/Apricityx"
 private const val secondaryDeveloperUrl = "https://github.com/ZJustin117"
-private const val repositoryUrl = "https://github.com/Apricityx/WorkshopAndroidDownloader"

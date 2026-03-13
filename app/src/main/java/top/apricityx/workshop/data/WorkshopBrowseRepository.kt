@@ -3,9 +3,11 @@ package top.apricityx.workshop.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -17,6 +19,7 @@ class WorkshopBrowseRepository(
     private val client: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val baseUrl: HttpUrl = "https://steamcommunity.com/".toHttpUrl(),
+    private val detailBaseUrl: HttpUrl = "https://api.steampowered.com/".toHttpUrl(),
 ) {
     suspend fun browseGameWorkshop(
         appId: UInt,
@@ -49,11 +52,66 @@ class WorkshopBrowseRepository(
             if (!response.isSuccessful) {
                 error("Workshop browse request failed: ${response.code}")
             }
-            WorkshopBrowseParser.parse(
+            val pageResult = WorkshopBrowseParser.parse(
                 payload = response.body?.string().orEmpty(),
                 page = page,
                 json = json,
             )
+            val fileSizes = runCatching {
+                loadFileSizes(pageResult.items)
+            }.getOrDefault(emptyMap())
+            if (fileSizes.isEmpty()) {
+                pageResult
+            } else {
+                pageResult.copy(
+                    items = pageResult.items.map { item ->
+                        item.copy(fileSizeBytes = fileSizes[item.publishedFileId] ?: item.fileSizeBytes)
+                    },
+                )
+            }
+        }
+    }
+
+    private fun loadFileSizes(items: List<WorkshopBrowseItem>): Map<ULong, Long> {
+        if (items.isEmpty()) {
+            return emptyMap()
+        }
+
+        val request = Request.Builder()
+            .url(detailBaseUrl.newBuilder().addPathSegments("ISteamRemoteStorage/GetPublishedFileDetails/v1/").build())
+            .post(
+                FormBody.Builder().apply {
+                    add("itemcount", items.size.toString())
+                    add("appid", items.first().appId.toString())
+                    items.forEachIndexed { index, item ->
+                        add("publishedfileids[$index]", item.publishedFileId.toString())
+                    }
+                }.build(),
+            )
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                error("Workshop detail request failed: ${response.code}")
+            }
+
+            return json.parseToJsonElement(response.body?.string().orEmpty())
+                .jsonObject["response"]
+                ?.jsonObject
+                ?.get("publishedfiledetails")
+                ?.jsonArray
+                ?.mapNotNull { detail ->
+                    val detailObject = detail.jsonObject
+                    val publishedFileId = detailObject["publishedfileid"]?.jsonPrimitive?.contentOrNull?.toULongOrNull()
+                    val fileSizeBytes = detailObject["file_size"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                    if (publishedFileId != null && fileSizeBytes != null) {
+                        publishedFileId to fileSizeBytes
+                    } else {
+                        null
+                    }
+                }
+                ?.toMap()
+                .orEmpty()
         }
     }
 

@@ -1,5 +1,9 @@
 package top.apricityx.workshop.workshop
 
+import top.apricityx.workshop.steam.protocol.CmServer
+import top.apricityx.workshop.steam.protocol.OkHttpSteamCmSession
+import top.apricityx.workshop.steam.protocol.SessionContext
+import top.apricityx.workshop.steam.protocol.SteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamDirectoryClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -68,9 +72,15 @@ class WorkshopDownloadEngine(
 
     companion object {
         fun createDefault(
+            client: OkHttpClient = OkHttpClient.Builder().build(),
+            sessionFactory: () -> SteamCmSession = { OkHttpSteamCmSession(client) },
+            sessionConnector: suspend (SteamCmSession, List<CmServer>) -> SessionContext = { session, servers ->
+                session.connectAnonymous(servers)
+            },
             maxConcurrentChunks: Int = UgcWorkshopDownloader.DEFAULT_MAX_CONCURRENT_CHUNKS,
+            bypassSteamCmWebSocket: Boolean = false,
+            allowPublicCdnFallbackOnSessionFailure: Boolean = true,
         ): WorkshopDownloadEngine {
-            val client = OkHttpClient.Builder().build()
             val directoryClient = SteamDirectoryClient(client)
             return WorkshopDownloadEngine(
                 resolver = PublishedFileResolver(client, Json { ignoreUnknownKeys = true }),
@@ -79,6 +89,10 @@ class WorkshopDownloadEngine(
                     client = client,
                     directoryClient = directoryClient,
                     maxConcurrentChunks = maxConcurrentChunks,
+                    bypassSteamCmWebSocket = bypassSteamCmWebSocket,
+                    sessionFactory = sessionFactory,
+                    sessionConnector = sessionConnector,
+                    allowPublicCdnFallbackOnSessionFailure = allowPublicCdnFallbackOnSessionFailure,
                 ),
             )
         }

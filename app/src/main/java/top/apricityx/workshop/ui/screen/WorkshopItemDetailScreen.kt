@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -44,12 +45,14 @@ import top.apricityx.workshop.ui.component.WorkshopPanelCard
 fun WorkshopItemDetailScreen(
     state: WorkshopItemDetailUiState,
     onRetry: () -> Unit,
+    onTranslateDescription: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val detail = state.detail
     val context = LocalContext.current
     val description = detail?.description?.ifBlank { state.item.descriptionSnippet }.orEmpty()
+    val canTranslateDescription = detail != null && description.isNotBlank()
     val metrics = buildList {
         add("作者 ${detail?.authorName ?: state.item.authorName}")
         detail?.subscriptions?.let { add("订阅 ${formatCount(it)}") }
@@ -86,8 +89,59 @@ fun WorkshopItemDetailScreen(
                 )
 
                 if (description.isNotBlank()) {
+                    if (state.translatedDescription != null) {
+                        Text(
+                            text = "原文",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(
                         text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+
+                if (canTranslateDescription) {
+                    OutlinedButton(
+                        onClick = onTranslateDescription,
+                        enabled = !state.isTranslatingDescription,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (state.isTranslatingDescription) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text(" 正在翻译描述…")
+                        } else {
+                            Text(
+                                if (state.translatedDescription == null) {
+                                    "翻译描述"
+                                } else {
+                                    "重新翻译描述"
+                                },
+                            )
+                        }
+                    }
+                }
+
+                state.translationErrorMessage?.let { translationErrorMessage ->
+                    WorkshopMessageBanner(
+                        message = translationErrorMessage,
+                        tone = MessageTone.Error,
+                    )
+                }
+
+                state.translatedDescription?.takeIf(String::isNotBlank)?.let { translatedDescription ->
+                    Text(
+                        text = "译文",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = translatedDescription,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                     )

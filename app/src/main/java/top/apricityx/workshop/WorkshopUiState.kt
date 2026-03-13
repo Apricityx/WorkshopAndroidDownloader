@@ -3,6 +3,7 @@ package top.apricityx.workshop
 import top.apricityx.workshop.data.SteamGame
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.update.UpdateSource
+import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 
 enum class WorkshopScreenDestination {
     GameLibrary,
@@ -75,6 +76,9 @@ data class WorkshopItemDetailUiState(
     val item: WorkshopBrowseItem,
     val detail: top.apricityx.workshop.data.WorkshopItemDetail? = null,
     val isLoading: Boolean = false,
+    val isTranslatingDescription: Boolean = false,
+    val translatedDescription: String? = null,
+    val translationErrorMessage: String? = null,
     val message: String? = null,
     val showConnectionErrorState: Boolean = false,
 )
@@ -119,6 +123,7 @@ data class SettingsUiState(
     val concurrentDownloadTaskCountInput: String = "",
     val savedConcurrentDownloadTaskCount: Int = DownloadSettingsRepository.DEFAULT_CONCURRENT_DOWNLOAD_TASKS,
     val selectedThemeMode: AppThemeMode = DownloadSettingsRepository.DEFAULT_THEME_MODE,
+    val steamAuthState: SteamAuthUiState = SteamAuthUiState(),
     val autoCheckUpdatesEnabled: Boolean = DownloadSettingsRepository.DEFAULT_AUTO_CHECK_UPDATES_ENABLED,
     val preferredUpdateSource: UpdateSource = UpdateSource.DEFAULT_PREFERRED_USER_SOURCE,
     val availableUpdateSources: List<UpdateSource> = UpdateSource.userSelectableSources(),
@@ -128,6 +133,31 @@ data class SettingsUiState(
     val updatePromptState: UpdatePromptState? = null,
     val message: String? = null,
 )
+
+data class SteamAuthUiState(
+    val accounts: List<SteamAccountSummary> = emptyList(),
+    val activeAccountId: String? = null,
+    val statusSummary: String =
+        "当前浏览账号：匿名。未登录时只能保证公开可见内容，部分成人内容或需要年龄确认的条目可能不会出现。",
+    val loginDialogState: SteamLoginDialogUiState? = null,
+)
+
+data class SteamLoginDialogUiState(
+    val mode: SteamLoginDialogMode = SteamLoginDialogMode.Add,
+    val username: String = "",
+    val password: String = "",
+    val guardCode: String = "",
+    val challengeType: SteamGuardChallengeType? = null,
+    val challengeMessage: String? = null,
+    val isSubmitting: Boolean = false,
+    val errorMessage: String? = null,
+    val targetAccountId: String? = null,
+)
+
+enum class SteamLoginDialogMode {
+    Add,
+    Reauthenticate,
+}
 
 data class UpdatePromptState(
     val currentVersion: String,
@@ -143,4 +173,22 @@ fun AppThemeMode.displayName(): String =
         AppThemeMode.FollowSystem -> "跟随系统"
         AppThemeMode.Light -> "亮色模式"
         AppThemeMode.Dark -> "深色模式"
+    }
+
+fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? = null): SteamAuthUiState =
+    activeAccount.let { currentActiveAccount ->
+        SteamAuthUiState(
+            accounts = accounts,
+            activeAccountId = activeAccountId,
+            statusSummary = if (currentActiveAccount != null) {
+                if (currentActiveAccount.requiresReauthentication) {
+                    "当前浏览账号：${currentActiveAccount.accountName}。该账号需要重新认证，浏览将自动回退到匿名可见性。"
+                } else {
+                    "当前浏览账号：${currentActiveAccount.accountName}。工坊浏览会自动投影 Steam 登录态，下载任务会在入队时冻结当前账号。"
+                }
+            } else {
+                "当前浏览账号：匿名。未登录时只能保证公开可见内容，部分成人内容或需要年龄确认的条目可能不会出现。"
+            },
+            loginDialogState = loginDialogState,
+        )
     }

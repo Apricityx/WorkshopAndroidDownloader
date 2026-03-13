@@ -27,6 +27,7 @@ import top.apricityx.workshop.phaseLabel
 import top.apricityx.workshop.progressDetails
 import top.apricityx.workshop.progressFraction
 import top.apricityx.workshop.removeActionLabel
+import top.apricityx.workshop.resumeActionLabel
 import top.apricityx.workshop.shouldAnimateProgress
 import top.apricityx.workshop.statusLabel
 import top.apricityx.workshop.summaryText
@@ -42,6 +43,7 @@ fun DownloadTaskDetailScreen(
     onPauseTask: () -> Unit,
     onResumeTask: () -> Unit,
     onRemoveTask: () -> Unit,
+    onShareDebugLog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -51,7 +53,7 @@ fun DownloadTaskDetailScreen(
         ScreenSummaryCard(
             title = task.itemTitle,
             subtitle = task.gameTitle,
-            metrics = listOf(task.statusLabel(), "阶段 ${task.phaseLabel()}"),
+            metrics = listOf(task.statusLabel(), "阶段 ${task.phaseLabel()}", "账号 ${task.boundAccountName}"),
         ) {
             Text(
                 text = task.summaryText(),
@@ -95,7 +97,7 @@ fun DownloadTaskDetailScreen(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
                         )
-                        Text(" 继续下载")
+                        Text(" ${task.resumeActionLabel()}")
                     }
                 }
                 OutlinedButton(onClick = onRemoveTask) {
@@ -138,16 +140,26 @@ fun DownloadTaskDetailScreen(
         }
 
         SectionCard(title = "日志") {
-            if (task.logs.isEmpty()) {
-                Text("暂无日志。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    task.logs.forEach { line ->
-                        Text(
-                            text = line,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "下载和导出关键步骤会额外写入独立调试日志。复现后可直接分享这份文件用于排查卓易通/鸿蒙兼容问题。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = onShareDebugLog) {
+                    Text("分享调试日志")
+                }
+                if (task.logs.isEmpty()) {
+                    Text("暂无日志。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        task.logs.forEach { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }

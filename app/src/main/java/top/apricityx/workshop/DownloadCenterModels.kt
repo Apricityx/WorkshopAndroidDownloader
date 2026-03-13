@@ -31,6 +31,8 @@ data class DownloadCenterTaskUiState(
     val publishedFileId: ULong,
     val gameTitle: String,
     val itemTitle: String,
+    val boundAccountId: String? = null,
+    val boundAccountName: String = "匿名",
     val status: DownloadCenterTaskStatus = DownloadCenterTaskStatus.Queued,
     val phase: DownloadState = DownloadState.Idle,
     val logs: List<String> = emptyList(),
@@ -89,6 +91,13 @@ fun DownloadCenterTaskUiState.canPause(): Boolean =
 fun DownloadCenterTaskUiState.canResume(): Boolean =
     status == DownloadCenterTaskStatus.Paused || status == DownloadCenterTaskStatus.Failed
 
+fun DownloadCenterTaskUiState.resumeActionLabel(): String =
+    when (status) {
+        DownloadCenterTaskStatus.Failed -> "重试下载"
+        DownloadCenterTaskStatus.Paused -> "继续下载"
+        else -> "继续下载"
+    }
+
 fun DownloadCenterTaskUiState.removeActionLabel(): String =
     when (status) {
         DownloadCenterTaskStatus.Queued,
@@ -122,21 +131,23 @@ fun DownloadCenterTaskUiState.progressFraction(): Float =
 
 fun DownloadCenterTaskUiState.summaryText(): String =
     when (status) {
-        DownloadCenterTaskStatus.Queued -> "排队中，等待开始下载"
+        DownloadCenterTaskStatus.Queued -> "排队中，等待开始下载 · 账号 $boundAccountName"
         DownloadCenterTaskStatus.Running -> listOfNotNull(
             phase.displayName(),
             progress.percentText(),
             progress.bytesText(),
+            "账号 $boundAccountName",
         ).joinToString(" · ").ifBlank { "正在下载" }
 
         DownloadCenterTaskStatus.Paused -> listOfNotNull(
             "已暂停",
             progress.percentText(),
             progress.bytesText(),
+            "账号 $boundAccountName",
         ).joinToString(" · ").ifBlank { "已暂停，可继续下载" }
 
-        DownloadCenterTaskStatus.Success -> "已完成，可到模组库查看文件"
-        DownloadCenterTaskStatus.Failed -> errorMessage ?: "下载失败，可继续下载"
+        DownloadCenterTaskStatus.Success -> "已完成，可到模组库查看文件 · 账号 $boundAccountName"
+        DownloadCenterTaskStatus.Failed -> listOfNotNull(errorMessage ?: "下载失败，可重试下载", "账号 $boundAccountName").joinToString(" · ")
     }
 
 fun DownloadCenterTaskUiState.statusLabel(): String =

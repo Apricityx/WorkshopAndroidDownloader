@@ -1,5 +1,6 @@
 package top.apricityx.workshop.ui.screen
 
+import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +44,7 @@ import top.apricityx.workshop.WorkshopBrowseTimeWindow
 import top.apricityx.workshop.displayName
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.ui.component.MessageTone
+import top.apricityx.workshop.ui.component.MetricPill
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.SectionHeading
 import top.apricityx.workshop.ui.component.WorkshopCenteredState
@@ -275,6 +278,11 @@ private fun WorkshopItemCard(
     onOpenDetail: () -> Unit,
     onDownload: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val sizeLabel = item.fileSizeBytes?.let { sizeBytes ->
+        "大小 ${Formatter.formatFileSize(context, sizeBytes)}"
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         onClick = onOpenDetail,
@@ -311,6 +319,9 @@ private fun WorkshopItemCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                sizeLabel?.let { label ->
+                    MetricPill(text = label)
+                }
                 if (item.descriptionSnippet.isNotBlank()) {
                     Text(
                         text = item.descriptionSnippet,

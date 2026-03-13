@@ -20,10 +20,12 @@ class ModLibraryRepository(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
 ) {
     suspend fun syncWithLocalStorage(): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
-        val indexed = store.loadEntries()
-        val merged = mergeIndexedAndLocalMods(indexed, localDataSource.listLocalMods(indexed), nowMillis)
-        store.saveEntries(merged)
-        merged
+        store.withFileLock {
+            val indexed = store.loadEntries()
+            val merged = mergeIndexedAndLocalMods(indexed, localDataSource.listLocalMods(indexed), nowMillis)
+            store.saveEntries(merged)
+            merged
+        }
     }
 
     suspend fun upsertDownloadedMod(
@@ -34,34 +36,38 @@ class ModLibraryRepository(
         previewImagePath: String? = null,
         files: List<ExportedDownloadFile>,
     ): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
-        val currentEntries = store.loadEntries()
-        val existingEntry = currentEntries.firstOrNull { it.matches(appId, publishedFileId) }
-        val updatedEntry = DownloadedModEntry(
-            appId = appId,
-            publishedFileId = publishedFileId,
-            gameTitle = gameTitle,
-            itemTitle = itemTitle,
-            previewImagePath = previewImagePath ?: existingEntry?.previewImagePath?.takeIf(::isExistingFile),
-            storedAtMillis = nowMillis(),
-            files = files.sortedBy(ExportedDownloadFile::relativePath),
-        )
-        val updated = (currentEntries.filterNot { it.matches(appId, publishedFileId) } + updatedEntry)
-            .sortedForDisplay()
-        store.saveEntries(updated)
-        updated
+        store.withFileLock {
+            val currentEntries = store.loadEntries()
+            val existingEntry = currentEntries.firstOrNull { it.matches(appId, publishedFileId) }
+            val updatedEntry = DownloadedModEntry(
+                appId = appId,
+                publishedFileId = publishedFileId,
+                gameTitle = gameTitle,
+                itemTitle = itemTitle,
+                previewImagePath = previewImagePath ?: existingEntry?.previewImagePath?.takeIf(::isExistingFile),
+                storedAtMillis = nowMillis(),
+                files = files.sortedBy(ExportedDownloadFile::relativePath),
+            )
+            val updated = (currentEntries.filterNot { it.matches(appId, publishedFileId) } + updatedEntry)
+                .sortedForDisplay()
+            store.saveEntries(updated)
+            updated
+        }
     }
 
     suspend fun deleteMod(entry: DownloadedModEntry): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
-        localDataSource.deleteModFiles(entry)
-        previewImageCache.deleteCachedPreview(entry.previewImagePath)
-        val remainingIndexedEntries = store.loadEntries().filterNot { it.matches(entry.appId, entry.publishedFileId) }
-        val synced = mergeIndexedAndLocalMods(
-            indexedEntries = remainingIndexedEntries,
-            localMods = localDataSource.listLocalMods(remainingIndexedEntries),
-            nowMillis = nowMillis,
-        )
-        store.saveEntries(synced)
-        synced
+        store.withFileLock {
+            localDataSource.deleteModFiles(entry)
+            previewImageCache.deleteCachedPreview(entry.previewImagePath)
+            val remainingIndexedEntries = store.loadEntries().filterNot { it.matches(entry.appId, entry.publishedFileId) }
+            val synced = mergeIndexedAndLocalMods(
+                indexedEntries = remainingIndexedEntries,
+                localMods = localDataSource.listLocalMods(remainingIndexedEntries),
+                nowMillis = nowMillis,
+            )
+            store.saveEntries(synced)
+            synced
+        }
     }
 
     interface ModLibraryLocalDataSource {

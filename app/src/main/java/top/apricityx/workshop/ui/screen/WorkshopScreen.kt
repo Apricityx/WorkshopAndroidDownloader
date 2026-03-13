@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import top.apricityx.workshop.AppThemeMode
+import top.apricityx.workshop.DownloadCenterTaskUiState
 import top.apricityx.workshop.DownloadedModEntry
 import top.apricityx.workshop.ExportedDownloadFile
 import top.apricityx.workshop.WorkshopBrowseSortOption
@@ -33,6 +34,7 @@ data class WorkshopScreenActions(
     val onPauseDownloadTask: (String) -> Unit,
     val onResumeDownloadTask: (String) -> Unit,
     val onRemoveDownloadTask: (String) -> Unit,
+    val onShareDownloadTaskDebugLog: (DownloadCenterTaskUiState) -> Unit,
     val onRetryLibraryLoad: () -> Unit,
     val onRetryModLibrarySync: () -> Unit,
     val onCheckModLibraryUpdates: () -> Unit,
@@ -47,6 +49,16 @@ data class WorkshopScreenActions(
     val onConfirmRemoveMod: () -> Unit,
     val onDismissRemoveMod: () -> Unit,
     val onNavigateToSettings: () -> Unit,
+    val onOpenSteamLoginDialog: () -> Unit,
+    val onDismissSteamLoginDialog: () -> Unit,
+    val onUpdateSteamLoginUsername: (String) -> Unit,
+    val onUpdateSteamLoginPassword: (String) -> Unit,
+    val onUpdateSteamGuardCode: (String) -> Unit,
+    val onSubmitSteamLogin: () -> Unit,
+    val onSwitchToAnonymousSteamAccount: () -> Unit,
+    val onSetActiveSteamAccount: (String) -> Unit,
+    val onReauthenticateSteamAccount: (String) -> Unit,
+    val onRemoveSteamAccount: (String) -> Unit,
     val onUpdateThemeMode: (AppThemeMode) -> Unit,
     val onUpdateAutoCheckUpdates: (Boolean) -> Unit,
     val onUpdatePreferredUpdateSource: (UpdateSource) -> Unit,
@@ -70,6 +82,7 @@ data class WorkshopScreenActions(
     val onLoadMoreWorkshopItems: () -> Unit,
     val onOpenWorkshopItemDetail: (WorkshopBrowseItem) -> Unit,
     val onRetryWorkshopItemDetail: () -> Unit,
+    val onTranslateWorkshopItemDescription: () -> Unit,
     val onDownloadSingleItem: (WorkshopBrowseItem) -> Unit,
 )
 

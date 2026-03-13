@@ -22,6 +22,7 @@ class WorkshopBrowseRepositoryTest {
         repository = WorkshopBrowseRepository(
             client = OkHttpClient(),
             baseUrl = server.url("/"),
+            detailBaseUrl = server.url("/"),
         )
     }
 
@@ -69,5 +70,57 @@ class WorkshopBrowseRepositoryTest {
         assertThat(requestUrl?.queryParameter("browsesort")).isEqualTo("lastupdated")
         assertThat(requestUrl?.queryParameter("actualsort")).isEqualTo("lastupdated")
         assertThat(requestUrl?.queryParameter("days")).isNull()
+    }
+
+    @Test
+    fun browseGameWorkshop_enrichesItemsWithFileSize() = runBlocking {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                <div class="workshopItem">
+                    <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3677098410&searchtext=" class="ugc" data-appid="646570" data-publishedfileid="3677098410">
+                        <div id="sharedfile_3677098410" class="workshopItemPreviewHolder ">
+                            <img class="workshopItemPreviewImage " src="https://example.com/skip.png">
+                        </div>
+                    </a>
+                    <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3677098410&searchtext=" class="item_link"><div class="workshopItemTitle ellipsis">Skip The Spire</div></a>
+                    <div class="workshopItemAuthorName ellipsis">by&nbsp;<a class="workshop_author_link" href="https://steamcommunity.com/id/test/myworkshopfiles/?appid=646570">apricity</a></div>
+                </div>
+                <script>
+                    SharedFileBindMouseHover( "sharedfile_3677098410", false, {"id":"3677098410","title":"Skip The Spire","description":"A fun mod"} );
+                </script>
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "response": {
+                    "publishedfiledetails": [
+                      {
+                        "publishedfileid": "3677098410",
+                        "file_size": "123456"
+                      }
+                    ]
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val result = repository.browseGameWorkshop(
+            appId = 646570u,
+            searchQuery = "",
+        )
+
+        assertThat(result.items).hasSize(1)
+        assertThat(result.items[0].fileSizeBytes).isEqualTo(123456L)
+
+        val detailRequest = server.takeRequest()
+        val fileSizeRequest = server.takeRequest()
+        assertThat(detailRequest.requestUrl?.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(fileSizeRequest.requestUrl?.encodedPath).isEqualTo("/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
+        assertThat(fileSizeRequest.body.readUtf8()).contains("publishedfileids%5B0%5D=3677098410")
     }
 }

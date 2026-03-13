@@ -24,6 +24,7 @@ import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
 
 class MainActivity : ComponentActivity() {
     private val workshopViewModel: WorkshopViewModel by viewModels { WorkshopViewModel.Factory }
+    private val downloadDebugLogManager by lazy { DownloadDebugLogManager(application) }
     private var pendingDownloadItem: WorkshopBrowseItem? = null
     private val legacyStoragePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -115,6 +116,26 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun shareDownloadTaskDebugLog(task: DownloadCenterTaskUiState) {
+        val file = downloadDebugLogManager.shareableFile(task)
+        if (file == null) {
+            Toast.makeText(this, "调试日志还没有生成", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = WorkshopFileShareManager.createShareFileIntent(file)
+        if (intent == null) {
+            Toast.makeText(this, "暂无可分享调试日志", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        launchIntent(
+            intent = intent,
+            notFoundMessage = "没有找到可分享调试日志的应用",
+            failureMessage = "分享调试日志失败",
+        )
+    }
+
     private fun applySystemNightMode(themeMode: AppThemeMode) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return
@@ -156,6 +177,7 @@ class MainActivity : ComponentActivity() {
             onPauseDownloadTask = workshopViewModel::pauseDownloadTask,
             onResumeDownloadTask = workshopViewModel::resumeDownloadTask,
             onRemoveDownloadTask = workshopViewModel::removeDownloadTask,
+            onShareDownloadTaskDebugLog = ::shareDownloadTaskDebugLog,
             onRetryLibraryLoad = workshopViewModel::retryMainScreenNetwork,
             onRetryModLibrarySync = workshopViewModel::retryModLibrarySync,
             onCheckModLibraryUpdates = workshopViewModel::checkModLibraryUpdates,
@@ -170,6 +192,16 @@ class MainActivity : ComponentActivity() {
             onConfirmRemoveMod = workshopViewModel::confirmRemoveMod,
             onDismissRemoveMod = workshopViewModel::dismissRemoveModDialog,
             onNavigateToSettings = workshopViewModel::navigateToSettings,
+            onOpenSteamLoginDialog = workshopViewModel::openSteamLoginDialog,
+            onDismissSteamLoginDialog = workshopViewModel::dismissSteamLoginDialog,
+            onUpdateSteamLoginUsername = workshopViewModel::updateSteamLoginUsername,
+            onUpdateSteamLoginPassword = workshopViewModel::updateSteamLoginPassword,
+            onUpdateSteamGuardCode = workshopViewModel::updateSteamGuardCode,
+            onSubmitSteamLogin = workshopViewModel::submitSteamLogin,
+            onSwitchToAnonymousSteamAccount = workshopViewModel::switchToAnonymousSteamAccount,
+            onSetActiveSteamAccount = workshopViewModel::setActiveSteamAccount,
+            onReauthenticateSteamAccount = workshopViewModel::reauthenticateSteamAccount,
+            onRemoveSteamAccount = workshopViewModel::removeSteamAccount,
             onUpdateThemeMode = workshopViewModel::updateThemeMode,
             onUpdateAutoCheckUpdates = workshopViewModel::updateAutoCheckUpdates,
             onUpdatePreferredUpdateSource = workshopViewModel::updatePreferredUpdateSource,
@@ -193,6 +225,7 @@ class MainActivity : ComponentActivity() {
             onLoadMoreWorkshopItems = workshopViewModel::loadMoreWorkshopItems,
             onOpenWorkshopItemDetail = workshopViewModel::openWorkshopItemDetail,
             onRetryWorkshopItemDetail = workshopViewModel::retryWorkshopItemDetail,
+            onTranslateWorkshopItemDescription = workshopViewModel::translateWorkshopItemDescription,
             onDownloadSingleItem = ::downloadSingleItemWithCompatibilityGuard,
         )
 

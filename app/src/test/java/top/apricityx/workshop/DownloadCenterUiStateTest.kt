@@ -57,4 +57,23 @@ class DownloadCenterUiStateTest {
         assertThat(state.finishedCount).isEqualTo(2)
         assertThat(state.activeCount).isEqualTo(2)
     }
+
+    @Test
+    fun failedTask_usesRetryActionLabel() {
+        val failedTask = DownloadCenterTaskUiState(
+            id = "failed",
+            appId = 431960u,
+            publishedFileId = 3679122549uL,
+            gameTitle = "Wallpaper Engine",
+            itemTitle = "Need Login",
+            status = DownloadCenterTaskStatus.Failed,
+        )
+        val pausedTask = failedTask.copy(
+            id = "paused",
+            status = DownloadCenterTaskStatus.Paused,
+        )
+
+        assertThat(failedTask.resumeActionLabel()).isEqualTo("重试下载")
+        assertThat(pausedTask.resumeActionLabel()).isEqualTo("继续下载")
+    }
 }

@@ -15,17 +15,26 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import top.apricityx.workshop.workshop.DownloadEvent
 import top.apricityx.workshop.workshop.DownloadState
 import top.apricityx.workshop.workshop.WorkshopDownloadEngine
 import top.apricityx.workshop.workshop.WorkshopDownloadRequest
+import top.apricityx.workshop.steam.protocol.CmServer
+import top.apricityx.workshop.steam.protocol.OkHttpSteamCmSession
+import top.apricityx.workshop.steam.protocol.SessionContext
+import top.apricityx.workshop.steam.protocol.SteamAccountSession
+import top.apricityx.workshop.steam.protocol.SteamCmSession
 
 class DownloadCenterManager private constructor(
     private val application: Application,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val bypassSteamCmWebSocket = DeviceCompatibility.shouldBypassSteamCmWebSocket()
+    private val debugLogManager = DownloadDebugLogManager(application)
     private val taskFinalizer = DownloadCenterTaskFinalizer(application)
     private val settingsRepository = DownloadSettingsRepository(application)
+    private val steamAuthRepository = SteamAuthRepository(application)
     private val store = DownloadCenterStore(File(application.filesDir, "download-center/tasks.json"))
     private val _uiState = MutableStateFlow(
         DownloadCenterUiState(tasks = recoverPersistedTasks(store.loadTasks())),
@@ -58,14 +67,21 @@ class DownloadCenterManager private constructor(
 
         val now = System.currentTimeMillis()
         val newTasks = targets.mapIndexed { index, target ->
+            val taskId = UUID.randomUUID().toString()
             DownloadCenterTaskUiState(
-                id = UUID.randomUUID().toString(),
+                id = taskId,
                 appId = appId,
                 publishedFileId = target.publishedFileId,
                 gameTitle = gameTitle,
                 itemTitle = target.itemTitle,
+                boundAccountId = target.boundAccountId,
+                boundAccountName = target.boundAccountName,
                 status = DownloadCenterTaskStatus.Queued,
-                logs = listOf("已加入下载队列。"),
+                logs = listOf(
+                    "已加入下载队列。",
+                    "绑定账号：${target.boundAccountName}",
+                    "调试日志：${debugLogManager.logFilePath(taskId)}",
+                ),
                 enqueuedAtMillis = now + index,
                 updatedAtMillis = now + index,
             )
@@ -76,9 +92,17 @@ class DownloadCenterManager private constructor(
         }
 
         newTasks.forEach { task ->
+            debugLogManager.initializeTaskLog(task)
+            task.logs.forEach { line ->
+                debugLogManager.append(task.id, line)
+            }
+            debugLogManager.append(
+                task.id,
+                "Task queued appId=${task.appId} publishedFileId=${task.publishedFileId} title=${task.itemTitle} account=${task.boundAccountName}",
+            )
             Log.i(
                 WorkshopAppContract.logTag,
-                "Queued download task appId=${task.appId} publishedFileId=${task.publishedFileId} title=${task.itemTitle}",
+                "Queued download task appId=${task.appId} publishedFileId=${task.publishedFileId} title=${task.itemTitle} account=${task.boundAccountName}",
             )
         }
         ensureRunner()
@@ -102,6 +126,7 @@ class DownloadCenterManager private constructor(
                 updatedAtMillis = System.currentTimeMillis(),
             )
         }
+        debugLogManager.append(taskId, "Task paused by user")
 
         if (task.status == DownloadCenterTaskStatus.Running) {
             cancelRunningTask(taskId, "Paused by user")
@@ -114,17 +139,46 @@ class DownloadCenterManager private constructor(
             return
         }
 
+        val retryBinding = if (task.status == DownloadCenterTaskStatus.Failed) {
+            steamAuthRepository.currentDownloadBinding()
+        } else {
+            SteamDownloadBinding(
+                accountId = task.boundAccountId,
+                accountName = task.boundAccountName,
+            )
+        }
+        val bindingChanged = task.status == DownloadCenterTaskStatus.Failed &&
+            (
+                task.boundAccountId != retryBinding.accountId ||
+                    task.boundAccountName != retryBinding.accountName
+            )
+        val retryBindingLog = if (bindingChanged) {
+            "重试时已切换为当前账号：${retryBinding.accountName}。"
+        } else {
+            null
+        }
+        val queueResumeLog = if (task.status == DownloadCenterTaskStatus.Failed) {
+            "任务已重新加入队列，重试时会使用当前登录账号继续下载。"
+        } else {
+            "任务已重新加入队列，将从已缓存的进度继续。"
+        }
+
         clearProgressSample(taskId)
         updateTask(taskId) {
             it.copy(
+                boundAccountId = retryBinding.accountId,
+                boundAccountName = retryBinding.accountName,
                 status = DownloadCenterTaskStatus.Queued,
                 phase = DownloadState.Idle,
                 errorMessage = null,
                 progress = it.progress.copy(speedBytesPerSecond = null),
-                logs = (it.logs + "任务已重新加入队列，将从已缓存的进度继续。").takeLast(MAX_LOG_LINES),
+                logs = (it.logs + listOfNotNull(retryBindingLog, queueResumeLog)).takeLast(MAX_LOG_LINES),
                 updatedAtMillis = System.currentTimeMillis(),
             )
         }
+        retryBindingLog?.let { debugLogManager.append(taskId, it) }
+        debugLogManager.append(taskId, "Retry binding account=${retryBinding.accountName} id=${retryBinding.accountId ?: "anonymous"}")
+        debugLogManager.append(taskId, "Task resumed and re-queued")
         ensureRunner()
     }
 
@@ -136,6 +190,7 @@ class DownloadCenterManager private constructor(
         if (wasActiveTask) {
             cancelRunningTask(taskId, "Canceled by user")
         }
+        debugLogManager.append(taskId, "Task removed from download center")
 
         mutateState { state ->
             state.copy(tasks = state.tasks.filterNot { it.id == taskId })
@@ -177,6 +232,17 @@ class DownloadCenterManager private constructor(
             )
         }
     }
+
+    fun hasRecoverableTasksForAccount(accountId: String): Boolean =
+        _uiState.value.tasks.any { task ->
+            task.boundAccountId == accountId &&
+                (
+                    task.status == DownloadCenterTaskStatus.Queued ||
+                        task.status == DownloadCenterTaskStatus.Running ||
+                        task.status == DownloadCenterTaskStatus.Paused ||
+                        task.status == DownloadCenterTaskStatus.Failed
+                )
+        }
 
     private fun ensureRunner() {
         if (runnerJob?.isActive == true) {
@@ -223,11 +289,56 @@ class DownloadCenterManager private constructor(
             WorkshopAppContract.logTag,
             "Task started appId=${task.appId} publishedFileId=${task.publishedFileId} title=${task.itemTitle}",
         )
+        debugLogManager.append(
+            task.id,
+            "Task started appId=${task.appId} publishedFileId=${task.publishedFileId} title=${task.itemTitle}",
+        )
 
         val outputDir = File(application.filesDir, "workshop/${task.appId}/${task.publishedFileId}")
+        debugLogManager.append(task.id, "Staging directory: ${outputDir.absolutePath}")
+        debugLogManager.append(
+            task.id,
+            "Download settings threads=${settingsRepository.getDownloadThreadCount()} concurrentTasks=${settingsRepository.getConcurrentDownloadTaskCount()}",
+        )
+        debugLogManager.append(task.id, "Bound account id=${task.boundAccountId ?: "anonymous"} name=${task.boundAccountName}")
+        debugLogManager.append(
+            task.id,
+            "Steam CM websocket bypass compatibility mode=$bypassSteamCmWebSocket",
+        )
         var taskSucceeded = false
+        val accountSession = steamAuthRepository.accountSessionFor(task.boundAccountId)
+        if (task.boundAccountId != null && accountSession == null) {
+            val message = "绑定的 Steam 账号已失效，请到设置里重新认证后再重试。"
+            clearProgressSample(task.id)
+            updateTask(task.id) {
+                it.copy(
+                    status = DownloadCenterTaskStatus.Failed,
+                    phase = DownloadState.Failed,
+                    errorMessage = message,
+                    progress = it.progress.copy(speedBytesPerSecond = null),
+                    logs = (it.logs + message).takeLast(MAX_LOG_LINES),
+                    updatedAtMillis = System.currentTimeMillis(),
+                )
+            }
+            debugLogManager.append(task.id, message)
+            return
+        }
+        val taskClient = OkHttpClient.Builder()
+            .addInterceptor(
+                SteamCookieInterceptor(
+                    authRepository = steamAuthRepository,
+                    accountIdProvider = { task.boundAccountId },
+                    fallbackToActiveAccount = false,
+                ),
+            )
+            .build()
         val engine = WorkshopDownloadEngine.createDefault(
+            client = taskClient,
+            sessionFactory = { OkHttpSteamCmSession(taskClient) },
+            sessionConnector = buildSessionConnector(accountSession),
             maxConcurrentChunks = settingsRepository.getDownloadThreadCount(),
+            bypassSteamCmWebSocket = bypassSteamCmWebSocket,
+            allowPublicCdnFallbackOnSessionFailure = accountSession == null,
         )
 
         try {
@@ -240,6 +351,7 @@ class DownloadCenterManager private constructor(
             ).collect { event ->
                 when (event) {
                     is DownloadEvent.StateChanged -> {
+                        debugLogManager.append(task.id, "State changed to ${event.state}")
                         updateTask(task.id) {
                             it.copy(
                                 phase = event.state,
@@ -277,6 +389,10 @@ class DownloadCenterManager private constructor(
                     }
 
                     is DownloadEvent.Completed -> {
+                        debugLogManager.append(
+                            task.id,
+                            "Download completed with ${event.files.size} files; entering finalizer",
+                        )
                         runCatching {
                             taskFinalizer.finalizeSuccessfulDownload(
                                 task = task,
@@ -302,6 +418,10 @@ class DownloadCenterManager private constructor(
                                 WorkshopAppContract.logTag,
                                 "Download completed files=${finalizedDownload.exportedFiles.size}",
                             )
+                            debugLogManager.append(
+                                task.id,
+                                "Finalizer completed exportedFiles=${finalizedDownload.exportedFiles.size}",
+                            )
                         }.onFailure { error ->
                             val message = "Export failed: ${error.message ?: error::class.simpleName}"
                             clearProgressSample(task.id)
@@ -316,6 +436,7 @@ class DownloadCenterManager private constructor(
                                 )
                             }
                             Log.e(WorkshopAppContract.logTag, "Download failed $message", error)
+                            debugLogManager.appendError(task.id, message, error)
                         }
                     }
 
@@ -332,6 +453,7 @@ class DownloadCenterManager private constructor(
                             )
                         }
                         Log.e(WorkshopAppContract.logTag, "Download failed ${event.message}")
+                        debugLogManager.append(task.id, "Download failed: ${event.message}")
                     }
                 }
             }
@@ -340,8 +462,10 @@ class DownloadCenterManager private constructor(
             val current = _uiState.value.tasks.firstOrNull { it.id == task.id }
             if (current?.status == DownloadCenterTaskStatus.Paused) {
                 Log.i(WorkshopAppContract.logTag, "Task paused taskId=${task.id}")
+                debugLogManager.append(task.id, "Task cancellation consumed as pause")
                 return
             }
+            debugLogManager.appendError(task.id, "Task cancelled unexpectedly", error)
             throw error
         }
 
@@ -359,6 +483,10 @@ class DownloadCenterManager private constructor(
                     )
                 }
                 Log.e(WorkshopAppContract.logTag, "Download failed ${current.errorMessage ?: "unknown"}")
+                debugLogManager.append(
+                    task.id,
+                    "Task finished without success; final status=${current.status} error=${current.errorMessage ?: "unknown"}",
+                )
             }
         }
     }
@@ -373,6 +501,7 @@ class DownloadCenterManager private constructor(
                 updatedAtMillis = System.currentTimeMillis(),
             )
         }
+        debugLogManager.append(taskId, line)
         Log.i(WorkshopAppContract.logTag, line)
     }
 
@@ -533,6 +662,8 @@ class DownloadCenterManager private constructor(
     data class QueueTarget(
         val publishedFileId: ULong,
         val itemTitle: String,
+        val boundAccountId: String? = null,
+        val boundAccountName: String = "匿名",
     )
 
     private data class ProgressRateSample(
@@ -554,6 +685,15 @@ class DownloadCenterManager private constructor(
             }
     }
 }
+
+private fun buildSessionConnector(
+    accountSession: SteamAccountSession?,
+): suspend (SteamCmSession, List<CmServer>) -> SessionContext =
+    if (accountSession == null) {
+        { session, servers -> session.connectAnonymous(servers) }
+    } else {
+        { session, servers -> session.connectWithRefreshToken(servers, accountSession) }
+    }
 
 private fun DownloadCenterProgressSnapshot.merge(
     event: DownloadEvent.Progress,

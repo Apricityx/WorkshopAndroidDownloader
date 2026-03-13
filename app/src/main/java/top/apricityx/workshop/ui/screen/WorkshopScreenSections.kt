@@ -357,6 +357,7 @@ private fun WorkshopScreenContent(
                     WorkshopItemDetailScreen(
                         state = detailState,
                         onRetry = actions.onRetryWorkshopItemDetail,
+                        onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onDownload = actions.onDownloadSingleItem,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -386,12 +387,23 @@ private fun WorkshopScreenContent(
                         onPauseTask = { actions.onPauseDownloadTask(task.id) },
                         onResumeTask = { actions.onResumeDownloadTask(task.id) },
                         onRemoveTask = { actions.onRemoveDownloadTask(task.id) },
+                        onShareDebugLog = { actions.onShareDownloadTaskDebugLog(task) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
 
                 WorkshopScreenDestination.Settings -> SettingsScreen(
                     state = state.settingsState,
+                    onOpenSteamLoginDialog = actions.onOpenSteamLoginDialog,
+                    onDismissSteamLoginDialog = actions.onDismissSteamLoginDialog,
+                    onUpdateSteamLoginUsername = actions.onUpdateSteamLoginUsername,
+                    onUpdateSteamLoginPassword = actions.onUpdateSteamLoginPassword,
+                    onUpdateSteamGuardCode = actions.onUpdateSteamGuardCode,
+                    onSubmitSteamLogin = actions.onSubmitSteamLogin,
+                    onSwitchToAnonymousSteamAccount = actions.onSwitchToAnonymousSteamAccount,
+                    onSetActiveSteamAccount = actions.onSetActiveSteamAccount,
+                    onReauthenticateSteamAccount = actions.onReauthenticateSteamAccount,
+                    onRemoveSteamAccount = actions.onRemoveSteamAccount,
                     onThemeModeSelected = actions.onUpdateThemeMode,
                     onAutoCheckUpdatesChanged = actions.onUpdateAutoCheckUpdates,
                     onPreferredUpdateSourceSelected = actions.onUpdatePreferredUpdateSource,

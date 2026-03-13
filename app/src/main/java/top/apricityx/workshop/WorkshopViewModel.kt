@@ -22,6 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import okhttp3.OkHttpClient
+import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.data.GameLibraryRepository
 import top.apricityx.workshop.data.SteamGame
 import top.apricityx.workshop.data.SteamGameRepository
@@ -40,7 +41,10 @@ import top.apricityx.workshop.update.WorkshopUpdateVersioning
 class WorkshopViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
-    private val httpClient = OkHttpClient.Builder().build()
+    private val steamAuthRepository = SteamAuthRepository(application)
+    private val httpClient = OkHttpClient.Builder()
+        .addInterceptor(SteamCookieInterceptor(steamAuthRepository))
+        .build()
     private val gameRepository = SteamGameRepository(httpClient)
     private val browseRepository = WorkshopBrowseRepository(httpClient)
     private val detailRepository = WorkshopDetailRepository(httpClient)
@@ -49,6 +53,7 @@ class WorkshopViewModel(
     private val downloadCenterManager = DownloadCenterManager.getInstance(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val updateService = WorkshopUpdateService(httpClient)
+    private val descriptionTranslator = OnDeviceDescriptionTranslator(application)
 
     private val _uiState = MutableStateFlow(createInitialUiState())
     val uiState: StateFlow<WorkshopUiState> = _uiState.asStateFlow()
@@ -62,6 +67,7 @@ class WorkshopViewModel(
         refreshModLibrary()
         loadFeaturedGames()
         maybeStartAutoUpdateCheck()
+        lastDownloadCenterModSignature = buildModLibrarySyncSignature(downloadCenterManager.uiState.value)
         viewModelScope.launch {
             downloadCenterManager.uiState.collect { downloadCenterState ->
                 val nextSignature = buildModLibrarySyncSignature(downloadCenterState)
@@ -124,6 +130,9 @@ class WorkshopViewModel(
         val currentThreads = settingsRepository.getDownloadThreadCount()
         val currentConcurrentTasks = settingsRepository.getConcurrentDownloadTaskCount()
         val currentThemeMode = settingsRepository.getThemeMode()
+        val currentSteamAuthState = steamAuthRepository.loadSnapshot().toUiState(
+            loginDialogState = _uiState.value.settingsState.steamAuthState.loginDialogState,
+        )
         _uiState.update { state ->
             state.copy(
                 themeMode = currentThemeMode,
@@ -133,6 +142,7 @@ class WorkshopViewModel(
                     concurrentDownloadTaskCountInput = currentConcurrentTasks.toString(),
                     savedConcurrentDownloadTaskCount = currentConcurrentTasks,
                     selectedThemeMode = currentThemeMode,
+                    steamAuthState = currentSteamAuthState,
                     autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
                     preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
                     availableUpdateSources = UpdateSource.userSelectableSources(),
@@ -336,6 +346,143 @@ class WorkshopViewModel(
                 settingsState = state.settingsState.copy(updatePromptState = null),
             )
         }
+    }
+
+    fun openSteamLoginDialog() {
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = SteamLoginDialogUiState(),
+                    ),
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun dismissSteamLoginDialog() {
+        steamAuthRepository.cancelPendingSignIn()
+        syncSteamAuthState(
+            message = null,
+            loginDialogState = null,
+        )
+    }
+
+    fun updateSteamLoginUsername(value: String) {
+        _uiState.update { state ->
+            val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = dialog.copy(
+                            username = value,
+                            errorMessage = null,
+                        ),
+                    ),
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun updateSteamLoginPassword(value: String) {
+        _uiState.update { state ->
+            val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = dialog.copy(
+                            password = value,
+                            errorMessage = null,
+                        ),
+                    ),
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun updateSteamGuardCode(value: String) {
+        _uiState.update { state ->
+            val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = dialog.copy(
+                            guardCode = value,
+                            errorMessage = null,
+                        ),
+                    ),
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun submitSteamLogin() {
+        val dialog = _uiState.value.settingsState.steamAuthState.loginDialogState ?: return
+        viewModelScope.launch {
+            setSteamLoginSubmitting(true)
+            val result = runCatching {
+                when (dialog.challengeType) {
+                    SteamGuardChallengeType.EmailCode,
+                    SteamGuardChallengeType.DeviceCode,
+                    -> steamAuthRepository.submitPendingGuardCode(dialog.guardCode.trim())
+
+                    SteamGuardChallengeType.DeviceConfirmation,
+                    SteamGuardChallengeType.EmailConfirmation,
+                    -> steamAuthRepository.waitForPendingConfirmation()
+
+                    else -> steamAuthRepository.beginSignIn(
+                        username = dialog.username.trim(),
+                        password = dialog.password,
+                        replaceAccountId = dialog.targetAccountId,
+                    )
+                }
+            }
+            result.onSuccess(::applySteamSignInStep)
+                .onFailure { error ->
+                    setSteamLoginSubmitting(false, error.message ?: "Steam 登录失败。")
+                }
+        }
+    }
+
+    fun switchToAnonymousSteamAccount() {
+        steamAuthRepository.setActiveAccount(null)
+        syncSteamAuthState(message = "已切换为匿名浏览。")
+    }
+
+    fun setActiveSteamAccount(accountId: String) {
+        steamAuthRepository.setActiveAccount(accountId)
+        syncSteamAuthState(message = "已切换浏览账号。")
+    }
+
+    fun reauthenticateSteamAccount(accountId: String) {
+        val account = steamAuthRepository.loadSnapshot().accounts.firstOrNull { it.accountId == accountId } ?: return
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = SteamLoginDialogUiState(
+                            mode = SteamLoginDialogMode.Reauthenticate,
+                            username = account.accountName,
+                            targetAccountId = account.accountId,
+                        ),
+                    ),
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun removeSteamAccount(accountId: String) {
+        if (downloadCenterManager.hasRecoverableTasksForAccount(accountId)) {
+            syncSteamAuthState(message = "该账号仍绑定着可恢复的下载任务，暂时不能删除。")
+            return
+        }
+        steamAuthRepository.removeAccount(accountId)
+        syncSteamAuthState(message = "已删除 Steam 账号。")
     }
 
     fun saveDownloadSettings() {
@@ -607,7 +754,9 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                detailRepository.loadWorkshopItemDetail(item)
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    detailRepository.loadWorkshopItemDetail(item)
+                }
             }.onSuccess { detail ->
                 _uiState.update { state ->
                     val current = state.workshopItemDetailState ?: return@update state
@@ -642,6 +791,69 @@ class WorkshopViewModel(
     fun retryWorkshopItemDetail() {
         val item = _uiState.value.workshopItemDetailState?.item ?: return
         openWorkshopItemDetail(item)
+    }
+
+    fun translateWorkshopItemDescription() {
+        val detailState = _uiState.value.workshopItemDetailState ?: return
+        if (detailState.isLoading || detailState.isTranslatingDescription) {
+            return
+        }
+
+        val description = detailState.detail?.description?.trim().orEmpty()
+        if (description.isBlank()) {
+            viewModelScope.launch {
+                _toastMessages.emit("当前没有可翻译的描述。")
+            }
+            return
+        }
+
+        val targetAppId = detailState.item.appId
+        val targetPublishedFileId = detailState.item.publishedFileId
+        _uiState.update { state ->
+            val current = state.workshopItemDetailState ?: return@update state
+            if (current.item.appId != targetAppId || current.item.publishedFileId != targetPublishedFileId) {
+                return@update state
+            }
+            state.copy(
+                workshopItemDetailState = current.copy(
+                    isTranslatingDescription = true,
+                    translationErrorMessage = null,
+                ),
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                descriptionTranslator.translateDescription(description)
+            }.onSuccess { translatedDescription ->
+                _uiState.update { state ->
+                    val current = state.workshopItemDetailState ?: return@update state
+                    if (current.item.appId != targetAppId || current.item.publishedFileId != targetPublishedFileId) {
+                        return@update state
+                    }
+                    state.copy(
+                        workshopItemDetailState = current.copy(
+                            isTranslatingDescription = false,
+                            translatedDescription = translatedDescription,
+                            translationErrorMessage = null,
+                        ),
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update { state ->
+                    val current = state.workshopItemDetailState ?: return@update state
+                    if (current.item.appId != targetAppId || current.item.publishedFileId != targetPublishedFileId) {
+                        return@update state
+                    }
+                    state.copy(
+                        workshopItemDetailState = current.copy(
+                            isTranslatingDescription = false,
+                            translationErrorMessage = error.message ?: "翻译描述失败，请稍后重试。",
+                        ),
+                    )
+                }
+            }
+        }
     }
 
     fun updateWorkshopSearchQuery(value: String) {
@@ -741,6 +953,7 @@ class WorkshopViewModel(
 
         val appId = command.appIdText.toUInt()
         val publishedFileId = command.publishedFileIdText.toULong()
+        val downloadBinding = steamAuthRepository.currentDownloadBinding()
         val enqueued = downloadCenterManager.enqueueDownloads(
             appId = appId,
             gameTitle = "ADB",
@@ -748,6 +961,8 @@ class WorkshopViewModel(
                 DownloadCenterManager.QueueTarget(
                     publishedFileId = publishedFileId,
                     itemTitle = "Workshop $publishedFileId",
+                    boundAccountId = downloadBinding.accountId,
+                    boundAccountName = downloadBinding.accountName,
                 ),
             ),
         )
@@ -959,13 +1174,15 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                browseRepository.browseGameWorkshop(
-                    appId = game.appId,
-                    searchQuery = searchQuery,
-                    sortOption = sortOption,
-                    timeWindow = timeWindow,
-                    page = page,
-                )
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    browseRepository.browseGameWorkshop(
+                        appId = game.appId,
+                        searchQuery = searchQuery,
+                        sortOption = sortOption,
+                        timeWindow = timeWindow,
+                        page = page,
+                    )
+                }
             }.onSuccess { result ->
                 _uiState.update { state ->
                     val current = state.gameWorkshopState ?: return@update state
@@ -1036,6 +1253,13 @@ class WorkshopViewModel(
         gameTitle: String,
         items: List<WorkshopBrowseItem>,
     ) {
+        if (steamAuthRepository.activeAccountRequiresReauthentication()) {
+            viewModelScope.launch {
+                _toastMessages.emit("当前 Steam 账号需要重新认证，新的下载任务暂时不能开始。")
+            }
+            return
+        }
+        val downloadBinding = steamAuthRepository.currentDownloadBinding()
         val enqueuedCount = downloadCenterManager.enqueueDownloads(
             appId = appId,
             gameTitle = gameTitle,
@@ -1043,6 +1267,8 @@ class WorkshopViewModel(
                 DownloadCenterManager.QueueTarget(
                     publishedFileId = item.publishedFileId,
                     itemTitle = item.title,
+                    boundAccountId = downloadBinding.accountId,
+                    boundAccountName = downloadBinding.accountName,
                 )
             },
         )
@@ -1219,6 +1445,96 @@ class WorkshopViewModel(
         }
     }
 
+    private fun syncSteamAuthState(
+        message: String? = _uiState.value.settingsState.message,
+        loginDialogState: SteamLoginDialogUiState? = _uiState.value.settingsState.steamAuthState.loginDialogState,
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = steamAuthRepository.loadSnapshot().toUiState(loginDialogState = loginDialogState),
+                    message = message,
+                ),
+            )
+        }
+    }
+
+    private fun setSteamLoginSubmitting(
+        submitting: Boolean,
+        errorMessage: String? = null,
+    ) {
+        _uiState.update { state ->
+            val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = dialog.copy(
+                            isSubmitting = submitting,
+                            errorMessage = errorMessage,
+                        ),
+                    ),
+                ),
+            )
+        }
+    }
+
+    private fun applySteamSignInStep(step: SteamSignInStep) {
+        when (step) {
+            is SteamSignInStep.RequiresGuardCode -> {
+                _uiState.update { state ->
+                    val dialog = state.settingsState.steamAuthState.loginDialogState ?: SteamLoginDialogUiState()
+                    state.copy(
+                        settingsState = state.settingsState.copy(
+                            steamAuthState = state.settingsState.steamAuthState.copy(
+                                loginDialogState = dialog.copy(
+                                    password = "",
+                                    challengeType = step.challenge.type,
+                                    challengeMessage = step.challenge.message,
+                                    isSubmitting = false,
+                                    errorMessage = null,
+                                ),
+                            ),
+                        ),
+                    )
+                }
+            }
+
+            is SteamSignInStep.AwaitingConfirmation -> {
+                _uiState.update { state ->
+                    val dialog = state.settingsState.steamAuthState.loginDialogState ?: SteamLoginDialogUiState()
+                    state.copy(
+                        settingsState = state.settingsState.copy(
+                            steamAuthState = state.settingsState.steamAuthState.copy(
+                                loginDialogState = dialog.copy(
+                                    password = "",
+                                    challengeType = step.challenge.type,
+                                    challengeMessage = step.challenge.message,
+                                    isSubmitting = false,
+                                    errorMessage = null,
+                                ),
+                            ),
+                        ),
+                    )
+                }
+                viewModelScope.launch {
+                    setSteamLoginSubmitting(true)
+                    runCatching { steamAuthRepository.waitForPendingConfirmation() }
+                        .onSuccess(::applySteamSignInStep)
+                        .onFailure { error ->
+                            setSteamLoginSubmitting(false, error.message ?: "Steam 登录失败。")
+                        }
+                }
+            }
+
+            is SteamSignInStep.Success -> {
+                syncSteamAuthState(
+                    message = "已登录 ${step.account.accountName}。",
+                    loginDialogState = null,
+                )
+            }
+        }
+    }
+
     private fun buildUpdateStatusSummary(): String {
         val lastCheckedAtMs = settingsRepository.getLastUpdateCheckAtMs()
         if (lastCheckedAtMs <= 0L) {
@@ -1347,6 +1663,11 @@ class WorkshopViewModel(
                 }
             }
 
+    override fun onCleared() {
+        descriptionTranslator.close()
+        super.onCleared()
+    }
+
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"
@@ -1376,6 +1697,7 @@ class WorkshopViewModel(
                 concurrentDownloadTaskCountInput = concurrentTaskCount.toString(),
                 savedConcurrentDownloadTaskCount = concurrentTaskCount,
                 selectedThemeMode = themeMode,
+                steamAuthState = steamAuthRepository.loadSnapshot().toUiState(),
                 autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
                 preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
                 availableUpdateSources = UpdateSource.userSelectableSources(),

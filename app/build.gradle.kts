@@ -95,6 +95,7 @@ android {
 
 dependencies {
     implementation(project(":workshop-core"))
+    implementation(project(":steam-protocol"))
     implementation("com.github.luben:zstd-jni:${libs.versions.zstd.get()}@aar")
 
     implementation(libs.androidx.core.ktx)
@@ -106,6 +107,9 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.mlkit.translate)
+    implementation(libs.mlkit.language.id)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

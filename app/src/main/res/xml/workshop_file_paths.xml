@@ -7,6 +7,9 @@
         name="app_external_downloads"
         path="Download/" />
     <files-path
+        name="app_internal_debug"
+        path="debug/" />
+    <files-path
         name="app_internal_exports"
         path="exports/" />
 </paths>

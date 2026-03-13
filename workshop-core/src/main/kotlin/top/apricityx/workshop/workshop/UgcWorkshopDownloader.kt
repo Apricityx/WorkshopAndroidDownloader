@@ -28,7 +28,11 @@ class UgcWorkshopDownloader(
     private val client: OkHttpClient,
     private val directoryClient: SteamDirectoryClient,
     private val maxConcurrentChunks: Int = DEFAULT_MAX_CONCURRENT_CHUNKS,
+    private val bypassSteamCmWebSocket: Boolean = false,
     private val sessionFactory: () -> SteamCmSession = { OkHttpSteamCmSession(client) },
+    private val sessionConnector: suspend (SteamCmSession, List<top.apricityx.workshop.steam.protocol.CmServer>) -> top.apricityx.workshop.steam.protocol.SessionContext =
+        { session, servers -> session.connectAnonymous(servers) },
+    private val allowPublicCdnFallbackOnSessionFailure: Boolean = true,
 ) {
     suspend fun download(
         request: WorkshopDownloadRequest,
@@ -43,9 +47,20 @@ class UgcWorkshopDownloader(
         sessionFactory().use { session ->
             val contentClient = SteamContentClient(session, directoryClient)
 
-            runCatching { session.connectAnonymous(cmServers) }
-                .onSuccess { log("Connected to Steam CM cell=${it.cellId} steamId=${it.steamId}") }
-                .onFailure { log("Steam CM connection failed, continuing with public CDN flow: ${it.message}") }
+            if (bypassSteamCmWebSocket) {
+                log("Compatibility mode enabled; skipping Steam CM websocket and using public CDN flow")
+            } else {
+                val connectResult = runCatching { sessionConnector(session, cmServers) }
+                connectResult
+                    .onSuccess { log("Connected to Steam CM cell=${it.cellId} steamId=${it.steamId}") }
+                    .onFailure {
+                        if (allowPublicCdnFallbackOnSessionFailure) {
+                            log("Steam CM connection failed, continuing with public CDN flow: ${it.message}")
+                        } else {
+                            throw it
+                        }
+                    }
+            }
 
             val manifestRequestCode = runCatching {
                 contentClient.getManifestRequestCode(
@@ -54,7 +69,7 @@ class UgcWorkshopDownloader(
                     manifestId = item.manifestId,
                 )
             }.getOrElse {
-                log("Manifest request code unavailable, retrying without request code")
+                log("Manifest request code unavailable, retrying without request code: ${it.message}")
                 0uL
             }
 
@@ -153,6 +168,7 @@ class UgcWorkshopDownloader(
                 return DepotManifestParser.parse(unzipSingleEntry(bytes))
             } catch (error: Throwable) {
                 lastError = error
+                log("Manifest download failed from ${server.host}: ${error.message}")
             }
         }
         throw WorkshopDownloadException("Unable to download UGC manifest", lastError)
