@@ -1,5 +1,8 @@
 package top.apricityx.workshop.data
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class SteamGame(
     val appId: UInt,
     val name: String,

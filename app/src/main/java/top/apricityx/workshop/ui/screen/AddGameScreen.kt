@@ -37,6 +37,7 @@ fun AddGameScreen(
     onAddById: () -> Unit,
     onAddGame: (SteamGame) -> Unit,
     onOpenGame: (SteamGame) -> Unit,
+    onRetryFeaturedLoad: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -47,10 +48,6 @@ fun AddGameScreen(
             ScreenSummaryCard(
                 title = "添加游戏",
                 subtitle = "你可以搜索游戏名、直接输入 GameID，或者从热门创意工坊游戏里快速加入。",
-                metrics = listOf(
-                    "热门游戏 ${state.featuredGames.size} 款",
-                    if (state.searchResults.isNotEmpty()) "搜索命中 ${state.searchResults.size} 条" else "支持直接填写 GameID",
-                ),
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
@@ -110,7 +107,7 @@ fun AddGameScreen(
             item {
                 WorkshopMessageBanner(
                     message = message,
-                    tone = if (message.contains("失败")) MessageTone.Error else MessageTone.Info,
+                    tone = if (message.contains("失败") || message.contains("超时")) MessageTone.Error else MessageTone.Info,
                 )
             }
         }
@@ -138,7 +135,7 @@ fun AddGameScreen(
                     onSecondaryAction = { onOpenGame(game) },
                 )
             }
-        } else if (state.searchQuery.isNotBlank() && !state.isSearching) {
+        } else if (state.searchQuery.isNotBlank() && !state.isSearching && !state.searchRequestFailed) {
             item {
                 WorkshopCenteredState(
                     title = "没有找到结果",
@@ -150,13 +147,21 @@ fun AddGameScreen(
         item {
             SectionHeading(
                 title = "热门创意工坊游戏",
-                subtitle = "适合作为第一批加入游戏库的常用条目。",
             )
         }
 
         if (state.isLoadingFeatured) {
             item {
                 WorkshopLoadingBlock(label = "正在加载热门创意工坊游戏。")
+            }
+        } else if (state.featuredGames.isEmpty() && !state.featuredErrorMessage.isNullOrBlank()) {
+            item {
+                WorkshopCenteredState(
+                    title = "加载失败",
+                    message = state.featuredErrorMessage,
+                    actionLabel = "重试",
+                    onAction = onRetryFeaturedLoad,
+                )
             }
         } else if (state.featuredGames.isEmpty()) {
             item {

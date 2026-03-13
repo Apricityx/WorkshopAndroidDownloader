@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
@@ -281,6 +282,7 @@ class WorkshopViewModel(
                     addGameState = state.addGameState.copy(
                         searchResults = emptyList(),
                         isSearching = false,
+                        searchRequestFailed = false,
                         message = "输入游戏名，或直接填写 GameID。",
                     ),
                 )
@@ -292,6 +294,7 @@ class WorkshopViewModel(
             state.copy(
                 addGameState = state.addGameState.copy(
                     isSearching = true,
+                    searchRequestFailed = false,
                     message = null,
                     searchResults = emptyList(),
                 ),
@@ -300,12 +303,15 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                gameRepository.searchWorkshopGames(query)
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    gameRepository.searchWorkshopGames(query)
+                }
             }.onSuccess { results ->
                 _uiState.update { state ->
                     state.copy(
                         addGameState = state.addGameState.copy(
                             isSearching = false,
+                            searchRequestFailed = false,
                             searchResults = results,
                             message = if (results.isEmpty()) "没有找到支持创意工坊的游戏。" else null,
                         ),
@@ -316,7 +322,11 @@ class WorkshopViewModel(
                     state.copy(
                         addGameState = state.addGameState.copy(
                             isSearching = false,
-                            message = error.message ?: "搜索游戏失败。",
+                            searchRequestFailed = true,
+                            message = addGameRequestFailureMessage(
+                                error = error,
+                                fallbackMessage = error.message ?: "搜索游戏失败。",
+                            ),
                         ),
                     )
                 }
@@ -340,7 +350,9 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                gameRepository.lookupGame(appId)
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    gameRepository.lookupGame(appId)
+                }
             }.onSuccess { game ->
                 when {
                     game == null -> showAddGameMessage("没有找到这个游戏。")
@@ -348,9 +360,18 @@ class WorkshopViewModel(
                     else -> addGameAndOpen(game)
                 }
             }.onFailure { error ->
-                showAddGameMessage(error.message ?: "加载游戏信息失败。")
+                showAddGameMessage(
+                    addGameRequestFailureMessage(
+                        error = error,
+                        fallbackMessage = error.message ?: "加载游戏信息失败。",
+                    ),
+                )
             }
         }
+    }
+
+    fun retryFeaturedGames() {
+        loadFeaturedGames()
     }
 
     fun addGameToLibrary(game: SteamGame) {
@@ -536,8 +557,19 @@ class WorkshopViewModel(
                 if (appIds.isEmpty()) {
                     emptyList()
                 } else {
-                    withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
-                        gameRepository.lookupGamesByIds(appIds).sortedBy { appIds.indexOf(it.appId) }
+                    val cachedGamesById = libraryRepository.loadGames().associateBy(SteamGame::appId)
+                    val missingIds = appIds.filterNot(cachedGamesById::containsKey)
+                    if (missingIds.isEmpty()) {
+                        appIds.mapNotNull(cachedGamesById::get)
+                    } else {
+                        val loadedGamesById = withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                            gameRepository.lookupGamesByIds(missingIds).associateBy(SteamGame::appId)
+                        }
+                        appIds.mapNotNull { appId ->
+                            cachedGamesById[appId] ?: loadedGamesById[appId]
+                        }.also { mergedGames ->
+                            libraryRepository.replaceGames(mergedGames)
+                        }
                     }
                 }
             }.onSuccess { games ->
@@ -570,7 +602,7 @@ class WorkshopViewModel(
                             libraryMessage = if (currentGames.isEmpty()) {
                                 null
                             } else {
-                                "加载超时，请开启加速器或科学上网后重试。"
+                                "啊哦，加载超时，您的网络环境可能不支持直连创意工坊，请开启加速器加速 steam 或科学上网后重试。"
                             },
                         )
                     }
@@ -604,30 +636,35 @@ class WorkshopViewModel(
             state.copy(
                 addGameState = state.addGameState.copy(
                     isLoadingFeatured = true,
-                    message = null,
+                    featuredErrorMessage = null,
                 ),
             )
         }
 
         viewModelScope.launch {
             runCatching {
-                gameRepository.loadFeaturedWorkshopGames()
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    gameRepository.loadFeaturedWorkshopGames()
+                }
             }.onSuccess { games ->
                 _uiState.update { state ->
                     state.copy(
                         addGameState = state.addGameState.copy(
                             featuredGames = games.filter(SteamGame::supportsWorkshop),
                             isLoadingFeatured = false,
-                            message = state.addGameState.message,
+                            featuredErrorMessage = null,
                         ),
                     )
                 }
             }.onFailure { error ->
-                showAddGameMessage(error.message ?: "加载热门工坊游戏失败。")
                 _uiState.update { state ->
                     state.copy(
                         addGameState = state.addGameState.copy(
                             isLoadingFeatured = false,
+                            featuredErrorMessage = addGameRequestFailureMessage(
+                                error = error,
+                                fallbackMessage = error.message ?: "加载热门工坊游戏失败。",
+                            ),
                         ),
                     )
                 }
@@ -703,7 +740,7 @@ class WorkshopViewModel(
         game: SteamGame,
         openAfterAdd: Boolean = true,
     ) {
-        libraryRepository.addGame(game.appId)
+        libraryRepository.addGame(game)
         _toastMessages.emit("已添加 ${game.name}。")
         _uiState.update { state ->
             val updatedLibrary = (state.libraryGames + game).distinctBy(SteamGame::appId)
@@ -764,6 +801,16 @@ class WorkshopViewModel(
             )
         }
     }
+
+    private fun addGameRequestFailureMessage(
+        error: Throwable,
+        fallbackMessage: String,
+    ): String =
+        if (error.isTimeoutRequestFailure()) {
+            REQUEST_TIMEOUT_MESSAGE
+        } else {
+            fallbackMessage
+        }
 
     private fun maybeStartAutoUpdateCheck() {
         if (!settingsRepository.isAutoCheckUpdatesEnabled()) {
@@ -965,6 +1012,7 @@ class WorkshopViewModel(
 
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
+        private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -994,3 +1042,6 @@ class WorkshopViewModel(
         )
     }
 }
+
+private fun Throwable.isTimeoutRequestFailure(): Boolean =
+    this is SocketTimeoutException || this is TimeoutCancellationException

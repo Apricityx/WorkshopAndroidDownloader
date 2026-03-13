@@ -34,6 +34,8 @@ data class AddGameUiState(
     val directAppIdText: String = "",
     val isLoadingFeatured: Boolean = false,
     val isSearching: Boolean = false,
+    val searchRequestFailed: Boolean = false,
+    val featuredErrorMessage: String? = null,
     val message: String? = null,
 )
 

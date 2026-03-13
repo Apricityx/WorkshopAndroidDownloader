@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
                         onAddGameById = workshopViewModel::addGameById,
                         onAddGameToLibrary = workshopViewModel::addGameToLibrary,
                         onOpenGameWorkshop = workshopViewModel::openGameWorkshop,
+                        onRetryFeaturedGames = workshopViewModel::retryFeaturedGames,
                         onUpdateWorkshopSearchQuery = workshopViewModel::updateWorkshopSearchQuery,
                         onSearchCurrentWorkshop = workshopViewModel::searchCurrentGameWorkshop,
                         onLoadMoreWorkshopItems = workshopViewModel::loadMoreWorkshopItems,

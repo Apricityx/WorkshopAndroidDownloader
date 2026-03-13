@@ -75,6 +75,7 @@ data class WorkshopScreenActions(
     val onAddGameById: () -> Unit,
     val onAddGameToLibrary: (SteamGame) -> Unit,
     val onOpenGameWorkshop: (SteamGame) -> Unit,
+    val onRetryFeaturedGames: () -> Unit,
     val onUpdateWorkshopSearchQuery: (String) -> Unit,
     val onSearchCurrentWorkshop: () -> Unit,
     val onLoadMoreWorkshopItems: () -> Unit,
@@ -274,6 +275,7 @@ fun WorkshopScreen(
                                 onAddById = actions.onAddGameById,
                                 onAddGame = actions.onAddGameToLibrary,
                                 onOpenGame = actions.onOpenGameWorkshop,
+                                onRetryFeaturedLoad = actions.onRetryFeaturedGames,
                                 modifier = Modifier.fillMaxSize(),
                             )
 
