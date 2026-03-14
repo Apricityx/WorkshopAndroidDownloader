@@ -15,6 +15,7 @@ enum class WorkshopScreenDestination {
     DownloadCenter,
     DownloadTaskDetail,
     Settings,
+    BaiduTranslationApiKey,
 }
 
 fun WorkshopScreenDestination.isLibraryRoot(): Boolean =
@@ -30,6 +31,40 @@ enum class AppThemeMode(
     companion object {
         fun fromStorageValue(value: String): AppThemeMode =
             entries.firstOrNull { it.storageValue == value } ?: FollowSystem
+    }
+}
+
+enum class TranslationProvider(
+    val storageValue: String,
+) {
+    OnDevice("on_device"),
+    BaiduGeneralText("baidu_general_text");
+
+    companion object {
+        fun fromStorageValue(value: String): TranslationProvider =
+            entries.firstOrNull { it.storageValue == value } ?: OnDevice
+    }
+}
+
+enum class SteamLanguagePreference(
+    val storageValue: String,
+    val requestValue: String,
+    val acceptLanguageValue: String,
+) {
+    SimplifiedChinese(
+        storageValue = "schinese",
+        requestValue = "schinese",
+        acceptLanguageValue = "zh-CN,zh;q=0.9",
+    ),
+    English(
+        storageValue = "english",
+        requestValue = "english",
+        acceptLanguageValue = "en-US,en;q=0.9",
+    );
+
+    companion object {
+        fun fromStorageValue(value: String): SteamLanguagePreference =
+            entries.firstOrNull { it.storageValue == value } ?: SimplifiedChinese
     }
 }
 
@@ -110,6 +145,7 @@ data class WorkshopUiState(
     val downloadCenterState: DownloadCenterUiState = DownloadCenterUiState(),
     val selectedDownloadTaskId: String? = null,
     val settingsState: SettingsUiState = SettingsUiState(),
+    val baiduTranslationApiKeyState: BaiduTranslationApiKeyUiState = BaiduTranslationApiKeyUiState(),
 )
 
 data class LibraryErrorUiState(
@@ -123,6 +159,10 @@ data class SettingsUiState(
     val concurrentDownloadTaskCountInput: String = "",
     val savedConcurrentDownloadTaskCount: Int = DownloadSettingsRepository.DEFAULT_CONCURRENT_DOWNLOAD_TASKS,
     val selectedThemeMode: AppThemeMode = DownloadSettingsRepository.DEFAULT_THEME_MODE,
+    val selectedSteamLanguagePreference: SteamLanguagePreference =
+        DownloadSettingsRepository.DEFAULT_STEAM_LANGUAGE_PREFERENCE,
+    val selectedTranslationProvider: TranslationProvider = DownloadSettingsRepository.DEFAULT_TRANSLATION_PROVIDER,
+    val baiduTranslationApiKeyConfigured: Boolean = false,
     val steamAuthState: SteamAuthUiState = SteamAuthUiState(),
     val autoCheckUpdatesEnabled: Boolean = DownloadSettingsRepository.DEFAULT_AUTO_CHECK_UPDATES_ENABLED,
     val preferredUpdateSource: UpdateSource = UpdateSource.DEFAULT_PREFERRED_USER_SOURCE,
@@ -131,6 +171,17 @@ data class SettingsUiState(
     val updateStatusSummary: String = "尚未执行过更新检查。",
     val updateCheckInProgress: Boolean = false,
     val updatePromptState: UpdatePromptState? = null,
+    val message: String? = null,
+)
+
+data class BaiduTranslationApiKeyUiState(
+    val appIdInput: String = "",
+    val apiKeyInput: String = "",
+    val hasSavedCredentials: Boolean = false,
+    val isTesting: Boolean = false,
+    val sampleSourceText: String = BAIDU_TRANSLATION_SAMPLE_TEXT,
+    val testResultText: String? = null,
+    val testFailureReason: String? = null,
     val message: String? = null,
 )
 
@@ -175,6 +226,18 @@ fun AppThemeMode.displayName(): String =
         AppThemeMode.Dark -> "深色模式"
     }
 
+fun SteamLanguagePreference.displayName(): String =
+    when (this) {
+        SteamLanguagePreference.SimplifiedChinese -> "简体中文"
+        SteamLanguagePreference.English -> "English"
+    }
+
+fun TranslationProvider.displayName(): String =
+    when (this) {
+        TranslationProvider.OnDevice -> "本地翻译"
+        TranslationProvider.BaiduGeneralText -> "百度大模型文本翻译"
+    }
+
 fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? = null): SteamAuthUiState =
     activeAccount.let { currentActiveAccount ->
         SteamAuthUiState(
@@ -192,3 +255,6 @@ fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? =
             loginDialogState = loginDialogState,
         )
     }
+
+const val BAIDU_TRANSLATION_SAMPLE_TEXT =
+    "This mod adds a new relic and several balance changes for a smoother run."

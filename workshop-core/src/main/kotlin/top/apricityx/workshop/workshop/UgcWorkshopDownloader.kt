@@ -28,7 +28,6 @@ class UgcWorkshopDownloader(
     private val client: OkHttpClient,
     private val directoryClient: SteamDirectoryClient,
     private val maxConcurrentChunks: Int = DEFAULT_MAX_CONCURRENT_CHUNKS,
-    private val bypassSteamCmWebSocket: Boolean = false,
     private val sessionFactory: () -> SteamCmSession = { OkHttpSteamCmSession(client) },
     private val sessionConnector: suspend (SteamCmSession, List<top.apricityx.workshop.steam.protocol.CmServer>) -> top.apricityx.workshop.steam.protocol.SessionContext =
         { session, servers -> session.connectAnonymous(servers) },
@@ -46,21 +45,16 @@ class UgcWorkshopDownloader(
 
         sessionFactory().use { session ->
             val contentClient = SteamContentClient(session, directoryClient)
-
-            if (bypassSteamCmWebSocket) {
-                log("Compatibility mode enabled; skipping Steam CM websocket and using public CDN flow")
-            } else {
-                val connectResult = runCatching { sessionConnector(session, cmServers) }
-                connectResult
-                    .onSuccess { log("Connected to Steam CM cell=${it.cellId} steamId=${it.steamId}") }
-                    .onFailure {
-                        if (allowPublicCdnFallbackOnSessionFailure) {
-                            log("Steam CM connection failed, continuing with public CDN flow: ${it.message}")
-                        } else {
-                            throw it
-                        }
+            val connectResult = runCatching { sessionConnector(session, cmServers) }
+            connectResult
+                .onSuccess { log("Connected to Steam CM cell=${it.cellId} steamId=${it.steamId}") }
+                .onFailure {
+                    if (allowPublicCdnFallbackOnSessionFailure) {
+                        log("Steam CM connection failed, continuing with public CDN flow: ${it.message}")
+                    } else {
+                        throw it
                     }
-            }
+                }
 
             val manifestRequestCode = runCatching {
                 contentClient.getManifestRequestCode(

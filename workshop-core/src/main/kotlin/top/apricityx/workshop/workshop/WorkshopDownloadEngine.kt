@@ -78,7 +78,6 @@ class WorkshopDownloadEngine(
                 session.connectAnonymous(servers)
             },
             maxConcurrentChunks: Int = UgcWorkshopDownloader.DEFAULT_MAX_CONCURRENT_CHUNKS,
-            bypassSteamCmWebSocket: Boolean = false,
             allowPublicCdnFallbackOnSessionFailure: Boolean = true,
         ): WorkshopDownloadEngine {
             val directoryClient = SteamDirectoryClient(client)
@@ -89,7 +88,6 @@ class WorkshopDownloadEngine(
                     client = client,
                     directoryClient = directoryClient,
                     maxConcurrentChunks = maxConcurrentChunks,
-                    bypassSteamCmWebSocket = bypassSteamCmWebSocket,
                     sessionFactory = sessionFactory,
                     sessionConnector = sessionConnector,
                     allowPublicCdnFallbackOnSessionFailure = allowPublicCdnFallbackOnSessionFailure,

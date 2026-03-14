@@ -3,8 +3,8 @@ package top.apricityx.workshop.steam.protocol
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -20,13 +20,13 @@ class SteamDirectoryClientTest {
 
     @After
     fun tearDown() {
-        server.shutdown()
+        server.close()
     }
 
     @Test
     fun `loadServers filters websocket entries`() = runTest {
         server.enqueue(
-            MockResponse().setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -55,7 +55,7 @@ class SteamDirectoryClientTest {
     @Test
     fun `loadContentServers maps response fields`() = runTest {
         server.enqueue(
-            MockResponse().setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -99,7 +99,7 @@ class SteamDirectoryClientTest {
     @Test
     fun `loadContentServers tolerates missing cell id`() = runTest {
         server.enqueue(
-            MockResponse().setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -138,3 +138,12 @@ class SteamDirectoryClientTest {
         assertThat(result.first().host).isEqualTo("cache.example.net")
     }
 }
+
+private fun mockResponse(
+    body: String,
+    code: Int = 200,
+): MockResponse =
+    MockResponse.Builder()
+        .code(code)
+        .body(body)
+        .build()

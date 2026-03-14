@@ -119,7 +119,9 @@ internal fun WorkshopTopBar(
                 }
             }
 
-            if (state.currentScreen != WorkshopScreenDestination.Settings) {
+            if (state.currentScreen != WorkshopScreenDestination.Settings &&
+                state.currentScreen != WorkshopScreenDestination.BaiduTranslationApiKey
+            ) {
                 IconButton(onClick = actions.onNavigateToSettings) {
                     Icon(
                         imageVector = Icons.Default.Settings,
@@ -388,6 +390,7 @@ private fun WorkshopScreenContent(
                         onResumeTask = { actions.onResumeDownloadTask(task.id) },
                         onRemoveTask = { actions.onRemoveDownloadTask(task.id) },
                         onShareDebugLog = { actions.onShareDownloadTaskDebugLog(task) },
+                        onShareRuntimeLog = actions.onShareRuntimeAppLog,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -405,6 +408,9 @@ private fun WorkshopScreenContent(
                     onReauthenticateSteamAccount = actions.onReauthenticateSteamAccount,
                     onRemoveSteamAccount = actions.onRemoveSteamAccount,
                     onThemeModeSelected = actions.onUpdateThemeMode,
+                    onSteamLanguagePreferenceSelected = actions.onUpdateSteamLanguagePreference,
+                    onTranslationProviderSelected = actions.onUpdateTranslationProvider,
+                    onOpenBaiduTranslationApiKeyScreen = actions.onOpenBaiduTranslationApiKeyScreen,
                     onAutoCheckUpdatesChanged = actions.onUpdateAutoCheckUpdates,
                     onPreferredUpdateSourceSelected = actions.onUpdatePreferredUpdateSource,
                     onManualCheckUpdates = actions.onCheckForUpdatesNow,
@@ -412,6 +418,16 @@ private fun WorkshopScreenContent(
                     onThreadCountChange = actions.onUpdateDownloadThreadCountInput,
                     onConcurrentTaskCountChange = actions.onUpdateConcurrentDownloadTaskCountInput,
                     onSave = actions.onSaveDownloadSettings,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                WorkshopScreenDestination.BaiduTranslationApiKey -> BaiduTranslationApiKeyScreen(
+                    state = state.baiduTranslationApiKeyState,
+                    onAppIdChange = actions.onUpdateBaiduTranslationAppIdInput,
+                    onApiKeyChange = actions.onUpdateBaiduTranslationApiKeyInput,
+                    onSave = actions.onSaveBaiduTranslationApiKey,
+                    onTestTranslation = actions.onTestBaiduTranslationApiKey,
+                    onOpenApiKeyGuide = { actions.onOpenExternalUrl(baiduApiKeyGuideUrl) },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -437,4 +453,7 @@ private fun WorkshopUiState.titleForScreen(
         WorkshopScreenDestination.DownloadCenter -> "下载中心"
         WorkshopScreenDestination.DownloadTaskDetail -> selectedTask?.itemTitle ?: "任务详情"
         WorkshopScreenDestination.Settings -> "设置"
+        WorkshopScreenDestination.BaiduTranslationApiKey -> "百度大模型翻译配置"
     }
+
+private const val baiduApiKeyGuideUrl = "https://api.fanyi.baidu.com/manage/apiKey"

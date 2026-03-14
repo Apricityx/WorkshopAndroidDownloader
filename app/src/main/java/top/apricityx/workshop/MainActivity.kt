@@ -136,6 +136,26 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun shareRuntimeAppLog() {
+        val file = AppRuntimeLogManager.shareableLatestLogFile(application)
+        if (file == null) {
+            Toast.makeText(this, "运行日志还没有生成", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = WorkshopFileShareManager.createShareFileIntent(file)
+        if (intent == null) {
+            Toast.makeText(this, "暂无可分享运行日志", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        launchIntent(
+            intent = intent,
+            notFoundMessage = "没有找到可分享运行日志的应用",
+            failureMessage = "分享运行日志失败",
+        )
+    }
+
     private fun applySystemNightMode(themeMode: AppThemeMode) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return
@@ -178,6 +198,7 @@ class MainActivity : ComponentActivity() {
             onResumeDownloadTask = workshopViewModel::resumeDownloadTask,
             onRemoveDownloadTask = workshopViewModel::removeDownloadTask,
             onShareDownloadTaskDebugLog = ::shareDownloadTaskDebugLog,
+            onShareRuntimeAppLog = ::shareRuntimeAppLog,
             onRetryLibraryLoad = workshopViewModel::retryMainScreenNetwork,
             onRetryModLibrarySync = workshopViewModel::retryModLibrarySync,
             onCheckModLibraryUpdates = workshopViewModel::checkModLibraryUpdates,
@@ -203,6 +224,13 @@ class MainActivity : ComponentActivity() {
             onReauthenticateSteamAccount = workshopViewModel::reauthenticateSteamAccount,
             onRemoveSteamAccount = workshopViewModel::removeSteamAccount,
             onUpdateThemeMode = workshopViewModel::updateThemeMode,
+            onUpdateSteamLanguagePreference = workshopViewModel::updateSteamLanguagePreference,
+            onUpdateTranslationProvider = workshopViewModel::updateTranslationProvider,
+            onOpenBaiduTranslationApiKeyScreen = workshopViewModel::openBaiduTranslationApiKeyScreen,
+            onUpdateBaiduTranslationAppIdInput = workshopViewModel::updateBaiduTranslationAppIdInput,
+            onUpdateBaiduTranslationApiKeyInput = workshopViewModel::updateBaiduTranslationApiKeyInput,
+            onSaveBaiduTranslationApiKey = workshopViewModel::saveBaiduTranslationApiKey,
+            onTestBaiduTranslationApiKey = workshopViewModel::testBaiduTranslationConfiguration,
             onUpdateAutoCheckUpdates = workshopViewModel::updateAutoCheckUpdates,
             onUpdatePreferredUpdateSource = workshopViewModel::updatePreferredUpdateSource,
             onCheckForUpdatesNow = workshopViewModel::checkForUpdatesNow,

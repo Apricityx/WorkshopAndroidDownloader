@@ -3,11 +3,12 @@ package top.apricityx.workshop.data
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import top.apricityx.workshop.SteamLanguagePreference
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
 
@@ -28,12 +29,12 @@ class WorkshopBrowseRepositoryTest {
 
     @After
     fun tearDown() {
-        server.shutdown()
+        server.close()
     }
 
     @Test
     fun browseGameWorkshop_includesSelectedPopularWindowInRequest() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("<html></html>"))
+        server.enqueue(mockResponse("<html></html>"))
 
         repository.browseGameWorkshop(
             appId = 646570u,
@@ -44,19 +45,20 @@ class WorkshopBrowseRepositoryTest {
         )
 
         val request = server.takeRequest()
-        val requestUrl = request.requestUrl
-        assertThat(requestUrl?.encodedPath).isEqualTo("/workshop/browse/")
-        assertThat(requestUrl?.queryParameter("appid")).isEqualTo("646570")
-        assertThat(requestUrl?.queryParameter("searchtext")).isEqualTo("spire")
-        assertThat(requestUrl?.queryParameter("browsesort")).isEqualTo("trend")
-        assertThat(requestUrl?.queryParameter("actualsort")).isEqualTo("trend")
-        assertThat(requestUrl?.queryParameter("days")).isEqualTo("30")
-        assertThat(requestUrl?.queryParameter("p")).isEqualTo("3")
+        val requestUrl = request.url
+        assertThat(requestUrl.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(requestUrl.queryParameter("appid")).isEqualTo("646570")
+        assertThat(requestUrl.queryParameter("searchtext")).isEqualTo("spire")
+        assertThat(requestUrl.queryParameter("l")).isEqualTo("schinese")
+        assertThat(requestUrl.queryParameter("browsesort")).isEqualTo("trend")
+        assertThat(requestUrl.queryParameter("actualsort")).isEqualTo("trend")
+        assertThat(requestUrl.queryParameter("days")).isEqualTo("30")
+        assertThat(requestUrl.queryParameter("p")).isEqualTo("3")
     }
 
     @Test
     fun browseGameWorkshop_omitsDaysForNonPopularSort() = runBlocking {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("<html></html>"))
+        server.enqueue(mockResponse("<html></html>"))
 
         repository.browseGameWorkshop(
             appId = 480u,
@@ -66,16 +68,35 @@ class WorkshopBrowseRepositoryTest {
         )
 
         val request = server.takeRequest()
-        val requestUrl = request.requestUrl
-        assertThat(requestUrl?.queryParameter("browsesort")).isEqualTo("lastupdated")
-        assertThat(requestUrl?.queryParameter("actualsort")).isEqualTo("lastupdated")
-        assertThat(requestUrl?.queryParameter("days")).isNull()
+        val requestUrl = request.url
+        assertThat(requestUrl.queryParameter("browsesort")).isEqualTo("lastupdated")
+        assertThat(requestUrl.queryParameter("actualsort")).isEqualTo("lastupdated")
+        assertThat(requestUrl.queryParameter("days")).isNull()
+    }
+
+    @Test
+    fun browseGameWorkshop_usesConfiguredLanguagePreference() = runBlocking {
+        repository = WorkshopBrowseRepository(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            detailBaseUrl = server.url("/"),
+            languagePreferenceProvider = { SteamLanguagePreference.English },
+        )
+        server.enqueue(mockResponse("<html></html>"))
+
+        repository.browseGameWorkshop(
+            appId = 480u,
+            searchQuery = "",
+        )
+
+        val request = server.takeRequest()
+        assertThat(request.url.queryParameter("l")).isEqualTo("english")
     }
 
     @Test
     fun browseGameWorkshop_enrichesItemsWithFileSize() = runBlocking {
         server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
+            mockResponse(
                 """
                 <div class="workshopItem">
                     <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3677098410&searchtext=" class="ugc" data-appid="646570" data-publishedfileid="3677098410">
@@ -93,7 +114,7 @@ class WorkshopBrowseRepositoryTest {
             ),
         )
         server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -119,8 +140,17 @@ class WorkshopBrowseRepositoryTest {
 
         val detailRequest = server.takeRequest()
         val fileSizeRequest = server.takeRequest()
-        assertThat(detailRequest.requestUrl?.encodedPath).isEqualTo("/workshop/browse/")
-        assertThat(fileSizeRequest.requestUrl?.encodedPath).isEqualTo("/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
-        assertThat(fileSizeRequest.body.readUtf8()).contains("publishedfileids%5B0%5D=3677098410")
+        assertThat(detailRequest.url.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(fileSizeRequest.url.encodedPath).isEqualTo("/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
+        assertThat(requireNotNull(fileSizeRequest.body).utf8()).contains("publishedfileids%5B0%5D=3677098410")
     }
 }
+
+private fun mockResponse(
+    body: String,
+    code: Int = 200,
+): MockResponse =
+    MockResponse.Builder()
+        .code(code)
+        .body(body)
+        .build()

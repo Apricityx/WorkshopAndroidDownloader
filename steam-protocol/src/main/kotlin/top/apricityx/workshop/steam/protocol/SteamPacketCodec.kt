@@ -178,7 +178,7 @@ object SteamPacketCodec {
                 val length = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).int
                 require(length > 0) { "Invalid sub-packet length: $length" }
                 val payload = ByteArray(length)
-                stream.readNBytes(payload, 0, length).also { bytesRead ->
+                stream.readFullyCompat(payload).also { bytesRead ->
                     if (bytesRead != length) {
                         throw EOFException("Unexpected EOF while reading multi-packet payload")
                     }

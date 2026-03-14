@@ -3,8 +3,8 @@ package top.apricityx.workshop
 import android.app.Application
 import android.os.Build
 import android.os.Environment
-import android.util.Log
 import androidx.core.content.FileProvider
+import com.elvishew.xlog.XLog.Log
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -39,6 +39,8 @@ class DownloadDebugLogManager(
                             appendLine("# release=${Build.VERSION.RELEASE}")
                             appendLine("# incremental=${Build.VERSION.INCREMENTAL}")
                             appendLine("# logFile=${file.absolutePath}")
+                            appendLine("# runtimeLogDir=${AppRuntimeLogManager.logDirectoryPath(application)}")
+                            appendLine("# runtimeCrashLog=${AppRuntimeLogManager.crashLogPath(application)}")
                         },
                         Charsets.UTF_8,
                     )

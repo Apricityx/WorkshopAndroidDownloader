@@ -1,7 +1,7 @@
 package top.apricityx.workshop
 
 import android.app.Application
-import android.util.Log
+import com.elvishew.xlog.XLog.Log
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -30,7 +30,6 @@ class DownloadCenterManager private constructor(
     private val application: Application,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val bypassSteamCmWebSocket = DeviceCompatibility.shouldBypassSteamCmWebSocket()
     private val debugLogManager = DownloadDebugLogManager(application)
     private val taskFinalizer = DownloadCenterTaskFinalizer(application)
     private val settingsRepository = DownloadSettingsRepository(application)
@@ -301,10 +300,9 @@ class DownloadCenterManager private constructor(
             "Download settings threads=${settingsRepository.getDownloadThreadCount()} concurrentTasks=${settingsRepository.getConcurrentDownloadTaskCount()}",
         )
         debugLogManager.append(task.id, "Bound account id=${task.boundAccountId ?: "anonymous"} name=${task.boundAccountName}")
-        debugLogManager.append(
-            task.id,
-            "Steam CM websocket bypass compatibility mode=$bypassSteamCmWebSocket",
-        )
+        debugLogManager.append(task.id, "Steam CM websocket client=OkHttp 5 default path")
+        debugLogManager.append(task.id, "Runtime app log dir=${AppRuntimeLogManager.logDirectoryPath(application)}")
+        debugLogManager.append(task.id, "Runtime crash log=${AppRuntimeLogManager.crashLogPath(application)}")
         var taskSucceeded = false
         val accountSession = steamAuthRepository.accountSessionFor(task.boundAccountId)
         if (task.boundAccountId != null && accountSession == null) {
@@ -337,7 +335,6 @@ class DownloadCenterManager private constructor(
             sessionFactory = { OkHttpSteamCmSession(taskClient) },
             sessionConnector = buildSessionConnector(accountSession),
             maxConcurrentChunks = settingsRepository.getDownloadThreadCount(),
-            bypassSteamCmWebSocket = bypassSteamCmWebSocket,
             allowPublicCdnFallbackOnSessionFailure = accountSession == null,
         )
 

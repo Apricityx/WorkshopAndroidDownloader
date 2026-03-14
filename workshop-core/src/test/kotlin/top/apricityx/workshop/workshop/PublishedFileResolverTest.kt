@@ -3,8 +3,8 @@ package top.apricityx.workshop.workshop
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -20,13 +20,13 @@ class PublishedFileResolverTest {
 
     @After
     fun tearDown() {
-        server.shutdown()
+        server.close()
     }
 
     @Test
     fun `resolve prefers direct file_url when both values exist`() = runTest {
         server.enqueue(
-            MockResponse().setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -64,7 +64,7 @@ class PublishedFileResolverTest {
     @Test
     fun `resolve falls back to UGC manifest when file_url is missing`() = runTest {
         server.enqueue(
-            MockResponse().setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -100,7 +100,7 @@ class PublishedFileResolverTest {
     @Test
     fun `resolve treats missing file_type as community`() = runTest {
         server.enqueue(
-            MockResponse().setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -135,7 +135,7 @@ class PublishedFileResolverTest {
     @Test(expected = WorkshopDownloadException::class)
     fun `resolve rejects collections`() = runTest {
         server.enqueue(
-            MockResponse().setBody(
+            mockResponse(
                 """
                 {
                   "response": {
@@ -161,3 +161,12 @@ class PublishedFileResolverTest {
         resolver.resolve(550u, 100u)
     }
 }
+
+private fun mockResponse(
+    body: String,
+    code: Int = 200,
+): MockResponse =
+    MockResponse.Builder()
+        .code(code)
+        .body(body)
+        .build()

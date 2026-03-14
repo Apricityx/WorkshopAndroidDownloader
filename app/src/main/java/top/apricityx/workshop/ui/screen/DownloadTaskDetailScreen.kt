@@ -44,6 +44,7 @@ fun DownloadTaskDetailScreen(
     onResumeTask: () -> Unit,
     onRemoveTask: () -> Unit,
     onShareDebugLog: () -> Unit,
+    onShareRuntimeLog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -148,6 +149,9 @@ fun DownloadTaskDetailScreen(
                 )
                 OutlinedButton(onClick = onShareDebugLog) {
                     Text("分享调试日志")
+                }
+                OutlinedButton(onClick = onShareRuntimeLog) {
+                    Text("分享运行日志")
                 }
                 if (task.logs.isEmpty()) {
                     Text("暂无日志。", color = MaterialTheme.colorScheme.onSurfaceVariant)

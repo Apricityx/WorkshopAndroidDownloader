@@ -14,11 +14,13 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import top.apricityx.workshop.SteamLanguagePreference
 
 class SteamGameRepository(
     private val client: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val baseUrl: HttpUrl = "https://store.steampowered.com/".toHttpUrl(),
+    private val languagePreferenceProvider: () -> SteamLanguagePreference = { SteamLanguagePreference.SimplifiedChinese },
 ) {
     suspend fun loadFeaturedWorkshopGames(): List<SteamGame> = lookupGamesByIds(featuredWorkshopGameIds)
 
@@ -65,13 +67,14 @@ class SteamGameRepository(
     }
 
     private fun loadSearchSuggestionIds(query: String): List<UInt> {
+        val languagePreference = languagePreferenceProvider()
         val url = baseUrl.newBuilder()
             .addPathSegments("search/suggest")
             .addQueryParameter("term", query)
             .addQueryParameter("f", "games")
             .addQueryParameter("cc", "US")
             .addQueryParameter("realm", "1")
-            .addQueryParameter("l", "english")
+            .addQueryParameter("l", languagePreference.requestValue)
             .build()
 
         return SteamGameParsers.parseSearchSuggestionIds(executeStringRequest(url))
@@ -95,7 +98,7 @@ class SteamGameRepository(
         baseUrl.newBuilder()
             .addPathSegments("api/appdetails")
             .addQueryParameter("appids", appId.toString())
-            .addQueryParameter("l", "english")
+            .addQueryParameter("l", languagePreferenceProvider().requestValue)
             .addQueryParameter("cc", "US")
             .build()
 

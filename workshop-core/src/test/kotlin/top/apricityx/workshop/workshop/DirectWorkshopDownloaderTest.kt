@@ -3,8 +3,8 @@ package top.apricityx.workshop.workshop
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -14,7 +14,7 @@ class DirectWorkshopDownloaderTest {
     fun download_resumesFromPartialFile() {
         runBlocking {
         val server = MockWebServer()
-        server.enqueue(MockResponse().setResponseCode(206).setBody("world"))
+        server.enqueue(mockResponse("world", code = 206))
         server.start()
 
         val tempDir = Files.createTempDirectory("direct-resume").toFile()
@@ -41,12 +41,12 @@ class DirectWorkshopDownloaderTest {
         )
 
         val request = server.takeRequest()
-        assertThat(request.getHeader("Range")).isEqualTo("bytes=6-")
+        assertThat(request.headers["Range"]).isEqualTo("bytes=6-")
         assertThat(outputFile.readText()).isEqualTo("hello world")
         assertThat(partialFile.exists()).isFalse()
         assertThat(events.filterIsInstance<DownloadEvent.FileCompleted>()).hasSize(1)
 
-        server.shutdown()
+        server.close()
         tempDir.deleteRecursively()
         }
     }
@@ -82,3 +82,12 @@ class DirectWorkshopDownloaderTest {
         }
     }
 }
+
+private fun mockResponse(
+    body: String,
+    code: Int = 200,
+): MockResponse =
+    MockResponse.Builder()
+        .code(code)
+        .body(body)
+        .build()

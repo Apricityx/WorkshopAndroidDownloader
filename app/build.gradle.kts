@@ -98,6 +98,7 @@ dependencies {
     implementation(project(":steam-protocol"))
     implementation("com.github.luben:zstd-jni:${libs.versions.zstd.get()}@aar")
 
+    implementation(platform(libs.okhttpBom))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -110,6 +111,7 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
+    implementation(libs.xlog)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -122,9 +124,10 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
+    testImplementation(platform(libs.okhttpBom))
     testImplementation(libs.junit4)
     testImplementation(libs.truth)
-    testImplementation(libs.mockwebserver)
+    testImplementation(libs.mockwebserver3)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.junit)

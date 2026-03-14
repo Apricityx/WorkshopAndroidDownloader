@@ -42,6 +42,8 @@ import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadSettingsRepository
 import top.apricityx.workshop.SettingsUiState
 import top.apricityx.workshop.SteamLoginDialogMode
+import top.apricityx.workshop.SteamLanguagePreference
+import top.apricityx.workshop.TranslationProvider
 import top.apricityx.workshop.displayName
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.update.UpdateSource
@@ -63,6 +65,9 @@ fun SettingsScreen(
     onReauthenticateSteamAccount: (String) -> Unit,
     onRemoveSteamAccount: (String) -> Unit,
     onThemeModeSelected: (AppThemeMode) -> Unit,
+    onSteamLanguagePreferenceSelected: (SteamLanguagePreference) -> Unit,
+    onTranslationProviderSelected: (TranslationProvider) -> Unit,
+    onOpenBaiduTranslationApiKeyScreen: () -> Unit,
     onAutoCheckUpdatesChanged: (Boolean) -> Unit,
     onPreferredUpdateSourceSelected: (UpdateSource) -> Unit,
     onManualCheckUpdates: () -> Unit,
@@ -143,6 +148,68 @@ fun SettingsScreen(
         }
 
         WorkshopPanelCard {
+            Text("翻译设置", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "描述翻译支持本地模型和百度大模型文本翻译两种方式；切到百度后可单独配置 AppID 和 API Key。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Column(
+                modifier = Modifier.selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TranslationProvider.entries.forEach { provider ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = state.selectedTranslationProvider == provider,
+                                onClick = { onTranslationProviderSelected(provider) },
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        RadioButton(
+                            selected = state.selectedTranslationProvider == provider,
+                            onClick = null,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = provider.displayName(),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                text = translationProviderDescription(
+                                    provider = provider,
+                                    baiduApiKeyConfigured = state.baiduTranslationApiKeyConfigured,
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (state.selectedTranslationProvider == TranslationProvider.BaiduGeneralText) {
+                OutlinedButton(
+                    onClick = onOpenBaiduTranslationApiKeyScreen,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (state.baiduTranslationApiKeyConfigured) {
+                            "配置百度大模型文本翻译凭据"
+                        } else {
+                            "添加百度大模型文本翻译凭据"
+                        },
+                    )
+                }
+            }
+        }
+
+        WorkshopPanelCard {
             Text("外观设置", style = MaterialTheme.typography.titleLarge)
             Text(
                 "支持亮色、深色和跟随系统主题，切换后会立即生效。",
@@ -181,6 +248,50 @@ fun SettingsScreen(
                                     AppThemeMode.Light -> "始终使用亮色界面。"
                                     AppThemeMode.Dark -> "始终使用深色界面。"
                                 },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        WorkshopPanelCard {
+            Text("语言偏好", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "影响添加游戏时的 Steam 商店搜索，以及浏览模组时的工坊列表语言偏好。默认使用简体中文。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Column(
+                modifier = Modifier.selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SteamLanguagePreference.entries.forEach { preference ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = state.selectedSteamLanguagePreference == preference,
+                                onClick = { onSteamLanguagePreferenceSelected(preference) },
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        RadioButton(
+                            selected = state.selectedSteamLanguagePreference == preference,
+                            onClick = null,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = preference.displayName(),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                text = steamLanguagePreferenceDescription(preference),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -558,6 +669,27 @@ private fun sourceDescription(source: UpdateSource): String =
         UpdateSource.GH_LLKK -> "支持元数据和下载代理，可作为另一条回退线路。"
         UpdateSource.GH_PROXY_NET -> "自动回退源，不在设置里手动选择。"
         UpdateSource.OFFICIAL -> "官方 GitHub 直连地址。"
+    }
+
+private fun translationProviderDescription(
+    provider: TranslationProvider,
+    baiduApiKeyConfigured: Boolean,
+): String =
+    when (provider) {
+        TranslationProvider.OnDevice -> "直接使用设备本地翻译模型，不依赖第三方翻译接口。"
+        TranslationProvider.BaiduGeneralText -> if (baiduApiKeyConfigured) {
+            "当前已配置 AppID 和 API Key，描述翻译会优先走百度大模型文本翻译。"
+        } else {
+            "需要先配置 AppID 和 API Key，配置完成后再切换过去更合适。"
+        }
+    }
+
+private fun steamLanguagePreferenceDescription(
+    preference: SteamLanguagePreference,
+): String =
+    when (preference) {
+        SteamLanguagePreference.SimplifiedChinese -> "添加游戏和工坊浏览会优先按中文界面与中文偏好请求。"
+        SteamLanguagePreference.English -> "添加游戏和工坊浏览会优先按英文界面与英文偏好请求。"
     }
 
 private const val repositoryUrl = "https://github.com/Apricityx/WorkshopAndroidDownloader"

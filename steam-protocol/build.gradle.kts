@@ -11,14 +11,16 @@ kotlin {
 dependencies {
     api(libs.protobuf.kotlin.lite)
     api(libs.protobuf.javalite)
+    implementation(platform(libs.okhttpBom))
     implementation(libs.coroutines.core)
     implementation(libs.serialization.json)
     implementation(libs.okhttp)
 
+    testImplementation(platform(libs.okhttpBom))
     testImplementation(libs.junit4)
     testImplementation(libs.truth)
     testImplementation(libs.coroutines.test)
-    testImplementation(libs.mockwebserver)
+    testImplementation(libs.mockwebserver3)
 }
 
 

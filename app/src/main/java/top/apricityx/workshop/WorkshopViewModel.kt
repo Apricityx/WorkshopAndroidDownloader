@@ -1,7 +1,7 @@
 package top.apricityx.workshop
 
 import android.app.Application
-import android.util.Log
+import com.elvishew.xlog.XLog.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -42,18 +42,30 @@ class WorkshopViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val steamAuthRepository = SteamAuthRepository(application)
+    private val baiduTranslationCredentialsRepository = BaiduTranslationCredentialsRepository(application)
+    private val settingsRepository = DownloadSettingsRepository(application)
     private val httpClient = OkHttpClient.Builder()
         .addInterceptor(SteamCookieInterceptor(steamAuthRepository))
+        .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
         .build()
-    private val gameRepository = SteamGameRepository(httpClient)
-    private val browseRepository = WorkshopBrowseRepository(httpClient)
-    private val detailRepository = WorkshopDetailRepository(httpClient)
+    private val gameRepository = SteamGameRepository(
+        client = httpClient,
+        languagePreferenceProvider = settingsRepository::getSteamLanguagePreference,
+    )
+    private val browseRepository = WorkshopBrowseRepository(
+        client = httpClient,
+        languagePreferenceProvider = settingsRepository::getSteamLanguagePreference,
+    )
+    private val detailRepository = WorkshopDetailRepository(
+        client = httpClient,
+        languagePreferenceProvider = settingsRepository::getSteamLanguagePreference,
+    )
     private val libraryRepository = GameLibraryRepository(application)
     private val modLibraryRepository = ModLibraryRepository(application)
     private val downloadCenterManager = DownloadCenterManager.getInstance(application)
-    private val settingsRepository = DownloadSettingsRepository(application)
     private val updateService = WorkshopUpdateService(httpClient)
     private val descriptionTranslator = OnDeviceDescriptionTranslator(application)
+    private val baiduAiTextTranslationClient = BaiduAiTextTranslationClient()
 
     private val _uiState = MutableStateFlow(createInitialUiState())
     val uiState: StateFlow<WorkshopUiState> = _uiState.asStateFlow()
@@ -104,6 +116,9 @@ class WorkshopViewModel(
             WorkshopScreenDestination.Settings,
             -> navigateTo(state.previousScreen, rememberPrevious = false)
 
+            WorkshopScreenDestination.BaiduTranslationApiKey ->
+                navigateTo(WorkshopScreenDestination.Settings, rememberPrevious = false)
+
             WorkshopScreenDestination.DownloadTaskDetail -> {
                 _uiState.update { it.copy(selectedDownloadTaskId = null) }
                 navigateTo(WorkshopScreenDestination.DownloadCenter, rememberPrevious = false)
@@ -130,6 +145,8 @@ class WorkshopViewModel(
         val currentThreads = settingsRepository.getDownloadThreadCount()
         val currentConcurrentTasks = settingsRepository.getConcurrentDownloadTaskCount()
         val currentThemeMode = settingsRepository.getThemeMode()
+        val currentSteamLanguagePreference = settingsRepository.getSteamLanguagePreference()
+        val currentTranslationProvider = settingsRepository.getTranslationProvider()
         val currentSteamAuthState = steamAuthRepository.loadSnapshot().toUiState(
             loginDialogState = _uiState.value.settingsState.steamAuthState.loginDialogState,
         )
@@ -142,12 +159,18 @@ class WorkshopViewModel(
                     concurrentDownloadTaskCountInput = currentConcurrentTasks.toString(),
                     savedConcurrentDownloadTaskCount = currentConcurrentTasks,
                     selectedThemeMode = currentThemeMode,
+                    selectedSteamLanguagePreference = currentSteamLanguagePreference,
+                    selectedTranslationProvider = currentTranslationProvider,
+                    baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
                     steamAuthState = currentSteamAuthState,
                     autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
                     preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
                     availableUpdateSources = UpdateSource.userSelectableSources(),
                     currentVersionText = BuildConfig.VERSION_NAME,
                     updateStatusSummary = buildUpdateStatusSummary(),
+                    message = null,
+                ),
+                baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
                     message = null,
                 ),
             )
@@ -320,6 +343,155 @@ class WorkshopViewModel(
                     message = "已切换为${themeMode.displayName()}。",
                 ),
             )
+        }
+    }
+
+    fun updateSteamLanguagePreference(languagePreference: SteamLanguagePreference) {
+        settingsRepository.setSteamLanguagePreference(languagePreference)
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    selectedSteamLanguagePreference = languagePreference,
+                    message = "已切换 Steam 语言偏好：${languagePreference.displayName()}。",
+                ),
+            )
+        }
+    }
+
+    fun updateTranslationProvider(provider: TranslationProvider) {
+        settingsRepository.setTranslationProvider(provider)
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    selectedTranslationProvider = provider,
+                    baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
+                    message = "已切换描述翻译方式：${provider.displayName()}。",
+                ),
+            )
+        }
+    }
+
+    fun openBaiduTranslationApiKeyScreen() {
+        val savedCredentials = baiduTranslationCredentialsRepository.getCredentials()
+        _uiState.update { state ->
+            state.copy(
+                baiduTranslationApiKeyState = BaiduTranslationApiKeyUiState(
+                    appIdInput = savedCredentials.appId,
+                    apiKeyInput = savedCredentials.apiKey,
+                    hasSavedCredentials = savedCredentials.isConfigured(),
+                    testFailureReason = null,
+                    message = null,
+                ),
+                settingsState = state.settingsState.copy(message = null),
+            )
+        }
+        navigateTo(WorkshopScreenDestination.BaiduTranslationApiKey, rememberPrevious = false)
+    }
+
+    fun updateBaiduTranslationAppIdInput(value: String) {
+        _uiState.update { state ->
+            state.copy(
+                baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                    appIdInput = value.trim(),
+                    testFailureReason = null,
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun updateBaiduTranslationApiKeyInput(value: String) {
+        _uiState.update { state ->
+            state.copy(
+                baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                    apiKeyInput = value.trim(),
+                    testFailureReason = null,
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun saveBaiduTranslationApiKey() {
+        val currentState = _uiState.value.baiduTranslationApiKeyState
+        val credentials = BaiduTranslationCredentials(
+            appId = currentState.appIdInput,
+            apiKey = currentState.apiKeyInput,
+        )
+        baiduTranslationCredentialsRepository.setCredentials(credentials)
+        val savedCredentials = baiduTranslationCredentialsRepository.getCredentials()
+        val hasSavedCredentials = savedCredentials.isConfigured()
+        val statusMessage = when {
+            hasSavedCredentials -> "已保存百度大模型文本翻译的 AppID 和 API Key。"
+            savedCredentials.appId.isBlank() && savedCredentials.apiKey.isBlank() ->
+                "已清除百度大模型文本翻译的 AppID 和 API Key。"
+            else -> "已保存当前填写内容，但要同时提供 AppID 和 API Key 才能调用百度大模型文本翻译。"
+        }
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    baiduTranslationApiKeyConfigured = hasSavedCredentials,
+                    message = statusMessage,
+                ),
+                baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                    appIdInput = savedCredentials.appId,
+                    apiKeyInput = savedCredentials.apiKey,
+                    hasSavedCredentials = hasSavedCredentials,
+                    testFailureReason = null,
+                    message = statusMessage,
+                ),
+            )
+        }
+    }
+
+    fun testBaiduTranslationConfiguration() {
+        val currentState = _uiState.value.baiduTranslationApiKeyState
+        if (currentState.isTesting) {
+            return
+        }
+
+        val credentials = BaiduTranslationCredentials(
+            appId = currentState.appIdInput.trim(),
+            apiKey = currentState.apiKeyInput.trim(),
+        )
+        _uiState.update { state ->
+            state.copy(
+                baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                    isTesting = true,
+                    testResultText = null,
+                    testFailureReason = null,
+                    message = null,
+                ),
+            )
+        }
+
+        viewModelScope.launch {
+            val fallbackReason = validateBaiduTranslationCredentials(credentials)
+            if (fallbackReason != null) {
+                runBaiduTestFallback(fallbackReason)
+                return@launch
+            }
+
+            runCatching {
+                translateWithBaiduCredentials(
+                    text = BAIDU_TRANSLATION_SAMPLE_TEXT,
+                    credentials = credentials,
+                    targetLocale = Locale.CHINESE,
+                )
+            }.onSuccess { translatedText ->
+                _uiState.update { state ->
+                    state.copy(
+                        baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                            isTesting = false,
+                            testResultText = translatedText,
+                            testFailureReason = null,
+                            message = "百度大模型文本翻译测试成功。",
+                        ),
+                    )
+                }
+            }.onFailure { error ->
+                runBaiduTestFallback(error.message ?: "百度大模型文本翻译测试失败，请稍后重试。")
+            }
         }
     }
 
@@ -824,8 +996,8 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                descriptionTranslator.translateDescription(description)
-            }.onSuccess { translatedDescription ->
+                translateDescriptionWithSelectedProvider(description)
+            }.onSuccess { result ->
                 _uiState.update { state ->
                     val current = state.workshopItemDetailState ?: return@update state
                     if (current.item.appId != targetAppId || current.item.publishedFileId != targetPublishedFileId) {
@@ -834,10 +1006,13 @@ class WorkshopViewModel(
                     state.copy(
                         workshopItemDetailState = current.copy(
                             isTranslatingDescription = false,
-                            translatedDescription = translatedDescription,
+                            translatedDescription = result.translatedText,
                             translationErrorMessage = null,
                         ),
                     )
+                }
+                result.fallbackToastMessage?.let { fallbackToastMessage ->
+                    _toastMessages.emit(fallbackToastMessage)
                 }
             }.onFailure { error ->
                 _uiState.update { state ->
@@ -852,6 +1027,134 @@ class WorkshopViewModel(
                         ),
                     )
                 }
+            }
+        }
+    }
+
+    private suspend fun translateDescriptionWithSelectedProvider(
+        description: String,
+    ): DescriptionTranslationResult {
+        val provider = settingsRepository.getTranslationProvider()
+        return when (provider) {
+            TranslationProvider.OnDevice -> DescriptionTranslationResult(
+                translatedText = descriptionTranslator.translateDescription(description),
+            )
+
+            TranslationProvider.BaiduGeneralText -> translateDescriptionWithBaiduFallback(description)
+        }
+    }
+
+    private suspend fun translateDescriptionWithBaiduFallback(
+        description: String,
+    ): DescriptionTranslationResult {
+        val credentials = baiduTranslationCredentialsRepository.getCredentials()
+        val validationMessage = validateBaiduTranslationCredentials(credentials)
+        if (validationMessage != null) {
+            return DescriptionTranslationResult(
+                translatedText = descriptionTranslator.translateDescription(description),
+                fallbackToastMessage = "百度大模型文本翻译不可用，已自动回退到本地翻译。",
+            )
+        }
+
+        return runCatching {
+            translateWithBaiduCredentials(
+                text = description,
+                credentials = credentials,
+            )
+        }.fold(
+            onSuccess = { translatedText ->
+                DescriptionTranslationResult(translatedText = translatedText)
+            },
+            onFailure = {
+                DescriptionTranslationResult(
+                    translatedText = descriptionTranslator.translateDescription(description),
+                    fallbackToastMessage = "百度大模型文本翻译不可用，已自动回退到本地翻译。",
+                )
+            },
+        )
+    }
+
+    private suspend fun translateWithBaiduCredentials(
+        text: String,
+        credentials: BaiduTranslationCredentials,
+        targetLocale: Locale = Locale.getDefault(),
+    ): String {
+        val normalizedText = text.trim()
+        if (normalizedText.isBlank()) {
+            return normalizedText
+        }
+
+        validateBaiduTranslationCredentials(credentials)?.let { validationMessage ->
+            throw IllegalStateException(validationMessage)
+        }
+
+        val sourceLanguage = mapMlKitLanguageToBaiduLanguage(
+            descriptionTranslator.detectSourceLanguage(normalizedText),
+        ) ?: throw IllegalStateException("暂时无法把这段描述的语言映射到百度大模型文本翻译支持的语种。")
+        val targetLanguage = mapMlKitLanguageToBaiduLanguage(
+            OnDeviceDescriptionTranslator.resolveTargetLanguage(targetLocale),
+        ) ?: "zh"
+        if (sourceLanguage == targetLanguage) {
+            return normalizedText
+        }
+
+        return baiduAiTextTranslationClient.translate(
+            text = normalizedText,
+            sourceLanguage = sourceLanguage,
+            targetLanguage = targetLanguage,
+            credentials = credentials,
+        )
+    }
+
+    private fun validateBaiduTranslationCredentials(
+        credentials: BaiduTranslationCredentials,
+    ): String? =
+        when {
+            credentials.appId.isBlank() && credentials.apiKey.isBlank() ->
+                "未填写百度大模型文本翻译的 AppID 和 API Key。"
+
+            credentials.appId.isBlank() ->
+                "未填写百度大模型文本翻译的 AppID。"
+
+            credentials.apiKey.isBlank() ->
+                "未填写百度大模型文本翻译的 API Key。"
+
+            else -> null
+        }
+
+    private suspend fun runBaiduTestFallback(reason: String) {
+        runCatching {
+            descriptionTranslator.translateDescription(
+                text = BAIDU_TRANSLATION_SAMPLE_TEXT,
+                targetLocale = Locale.CHINESE,
+            )
+        }.onSuccess { translatedText ->
+            _uiState.update { state ->
+                state.copy(
+                    baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                        isTesting = false,
+                        testResultText = translatedText,
+                        testFailureReason = reason,
+                        message = null,
+                    ),
+                )
+            }
+            _toastMessages.emit("百度大模型文本翻译不可用，已自动回退到本地翻译。")
+        }.onFailure { fallbackError ->
+            val combinedReason = buildString {
+                append(reason)
+                append(" 本地翻译回退也失败了：")
+                append(fallbackError.message ?: "请稍后重试。")
+            }
+            _uiState.update { state ->
+                state.copy(
+                    baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                        isTesting = false,
+                        testResultText = null,
+                        testFailureReason = combinedReason,
+                        message = null,
+                    ),
+                )
             }
         }
     }
@@ -1683,8 +1986,12 @@ class WorkshopViewModel(
 
     private fun createInitialUiState(): WorkshopUiState {
         val themeMode = settingsRepository.getThemeMode()
+        val steamLanguagePreference = settingsRepository.getSteamLanguagePreference()
+        val translationProvider = settingsRepository.getTranslationProvider()
         val threadCount = settingsRepository.getDownloadThreadCount()
         val concurrentTaskCount = settingsRepository.getConcurrentDownloadTaskCount()
+        val savedBaiduCredentials = baiduTranslationCredentialsRepository.getCredentials()
+        val hasSavedBaiduCredentials = savedBaiduCredentials.isConfigured()
         return WorkshopUiState(
             themeMode = themeMode,
             modLibraryState = ModLibraryUiState(
@@ -1697,6 +2004,9 @@ class WorkshopViewModel(
                 concurrentDownloadTaskCountInput = concurrentTaskCount.toString(),
                 savedConcurrentDownloadTaskCount = concurrentTaskCount,
                 selectedThemeMode = themeMode,
+                selectedSteamLanguagePreference = steamLanguagePreference,
+                selectedTranslationProvider = translationProvider,
+                baiduTranslationApiKeyConfigured = hasSavedBaiduCredentials,
                 steamAuthState = steamAuthRepository.loadSnapshot().toUiState(),
                 autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
                 preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
@@ -1704,9 +2014,19 @@ class WorkshopViewModel(
                 currentVersionText = BuildConfig.VERSION_NAME,
                 updateStatusSummary = buildUpdateStatusSummary(),
             ),
+            baiduTranslationApiKeyState = BaiduTranslationApiKeyUiState(
+                appIdInput = savedBaiduCredentials.appId,
+                apiKeyInput = savedBaiduCredentials.apiKey,
+                hasSavedCredentials = hasSavedBaiduCredentials,
+            ),
         )
     }
 }
+
+private data class DescriptionTranslationResult(
+    val translatedText: String,
+    val fallbackToastMessage: String? = null,
+)
 
 private fun Throwable.isTimeoutRequestFailure(): Boolean =
     this is SocketTimeoutException || this is TimeoutCancellationException

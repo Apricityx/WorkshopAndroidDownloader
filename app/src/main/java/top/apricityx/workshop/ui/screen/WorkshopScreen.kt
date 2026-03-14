@@ -15,6 +15,8 @@ import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadCenterTaskUiState
 import top.apricityx.workshop.DownloadedModEntry
 import top.apricityx.workshop.ExportedDownloadFile
+import top.apricityx.workshop.SteamLanguagePreference
+import top.apricityx.workshop.TranslationProvider
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
 import top.apricityx.workshop.WorkshopUiState
@@ -35,6 +37,7 @@ data class WorkshopScreenActions(
     val onResumeDownloadTask: (String) -> Unit,
     val onRemoveDownloadTask: (String) -> Unit,
     val onShareDownloadTaskDebugLog: (DownloadCenterTaskUiState) -> Unit,
+    val onShareRuntimeAppLog: () -> Unit,
     val onRetryLibraryLoad: () -> Unit,
     val onRetryModLibrarySync: () -> Unit,
     val onCheckModLibraryUpdates: () -> Unit,
@@ -60,6 +63,13 @@ data class WorkshopScreenActions(
     val onReauthenticateSteamAccount: (String) -> Unit,
     val onRemoveSteamAccount: (String) -> Unit,
     val onUpdateThemeMode: (AppThemeMode) -> Unit,
+    val onUpdateSteamLanguagePreference: (SteamLanguagePreference) -> Unit,
+    val onUpdateTranslationProvider: (TranslationProvider) -> Unit,
+    val onOpenBaiduTranslationApiKeyScreen: () -> Unit,
+    val onUpdateBaiduTranslationAppIdInput: (String) -> Unit,
+    val onUpdateBaiduTranslationApiKeyInput: (String) -> Unit,
+    val onSaveBaiduTranslationApiKey: () -> Unit,
+    val onTestBaiduTranslationApiKey: () -> Unit,
     val onUpdateAutoCheckUpdates: (Boolean) -> Unit,
     val onUpdatePreferredUpdateSource: (UpdateSource) -> Unit,
     val onCheckForUpdatesNow: () -> Unit,

@@ -2,6 +2,7 @@ package top.apricityx.workshop.workshop
 
 import top.apricityx.workshop.steam.proto.ContentManifestMetadata
 import top.apricityx.workshop.steam.proto.ContentManifestPayload
+import top.apricityx.workshop.steam.protocol.readExactlyCompat
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
 import java.io.EOFException
@@ -66,12 +67,12 @@ object DepotManifestParser {
             when (magic) {
                 PROTOBUF_PAYLOAD_MAGIC -> {
                     val length = readUInt32Le(input).toInt()
-                    payload = ContentManifestPayload.parseFrom(input.readNBytes(length))
+                    payload = ContentManifestPayload.parseFrom(input.readExactlyCompat(length))
                 }
 
                 PROTOBUF_METADATA_MAGIC -> {
                     val length = readUInt32Le(input).toInt()
-                    metadata = ContentManifestMetadata.parseFrom(input.readNBytes(length))
+                    metadata = ContentManifestMetadata.parseFrom(input.readExactlyCompat(length))
                 }
 
                 PROTOBUF_SIGNATURE_MAGIC -> {
@@ -114,10 +115,7 @@ object DepotManifestParser {
     }
 
     private fun readUInt32Le(input: DataInputStream): UInt {
-        val bytes = input.readNBytes(4)
-        if (bytes.size != 4) {
-            throw EOFException()
-        }
+        val bytes = input.readExactlyCompat(4)
         return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).int.toUInt()
     }
 }

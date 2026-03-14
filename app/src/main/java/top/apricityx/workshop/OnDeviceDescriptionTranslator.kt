@@ -34,7 +34,7 @@ class OnDeviceDescriptionTranslator(
         }
 
         val targetLanguage = resolveTargetLanguage(targetLocale)
-        val sourceLanguage = detectSupportedSourceLanguage(normalizedText)
+        val sourceLanguage = detectSourceLanguage(normalizedText)
         if (sourceLanguage == targetLanguage) {
             return@withContext normalizedText
         }
@@ -52,6 +52,15 @@ class OnDeviceDescriptionTranslator(
         } finally {
             translator.close()
         }
+    }
+
+    suspend fun detectSourceLanguage(text: String): String = withContext(Dispatchers.IO) {
+        val normalizedText = text.trim()
+        if (normalizedText.isBlank()) {
+            throw IllegalStateException("暂时无法识别空文本的语言。")
+        }
+
+        detectSupportedSourceLanguage(normalizedText)
     }
 
     override fun close() {

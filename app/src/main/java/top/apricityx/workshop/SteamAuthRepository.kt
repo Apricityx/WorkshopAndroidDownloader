@@ -412,6 +412,23 @@ class SteamCookieInterceptor(
     }
 }
 
+class SteamLanguageInterceptor(
+    private val languagePreferenceProvider: () -> SteamLanguagePreference,
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+        if (!originalRequest.url.host.isSteamDomain()) {
+            return chain.proceed(originalRequest)
+        }
+        val languagePreference = languagePreferenceProvider()
+        return chain.proceed(
+            originalRequest.newBuilder()
+                .header("Accept-Language", languagePreference.acceptLanguageValue)
+                .build(),
+        )
+    }
+}
+
 @Serializable
 private data class StoredSteamState(
     val accounts: List<StoredSteamAccount> = emptyList(),
@@ -437,6 +454,5 @@ private fun StoredSteamAccount.toProtocolSession(): SteamAccountSession =
         refreshToken = refreshToken,
     )
 
-private fun HttpUrl.hostIs(host: String): Boolean = this.host == host
 private fun String.isSteamDomain(): Boolean =
     endsWith("steamcommunity.com") || this == "store.steampowered.com" || this == "api.steampowered.com"
