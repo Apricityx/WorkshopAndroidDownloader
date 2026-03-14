@@ -45,6 +45,8 @@ import top.apricityx.workshop.ModLibraryDisplayMode
 import top.apricityx.workshop.WorkshopScreenDestination
 import top.apricityx.workshop.WorkshopUiState
 import top.apricityx.workshop.isLibraryRoot
+import top.apricityx.workshop.showsDownloadCenterShortcut
+import top.apricityx.workshop.showsSettingsShortcut
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,9 +71,7 @@ internal fun WorkshopTopBar(
             }
         },
         actions = {
-            if (state.currentScreen != WorkshopScreenDestination.DownloadCenter &&
-                state.currentScreen != WorkshopScreenDestination.DownloadTaskDetail
-            ) {
+            if (state.currentScreen.showsDownloadCenterShortcut()) {
                 IconButton(onClick = actions.onNavigateToDownloadCenter) {
                     BadgedBox(
                         badge = {
@@ -119,9 +119,7 @@ internal fun WorkshopTopBar(
                 }
             }
 
-            if (state.currentScreen != WorkshopScreenDestination.Settings &&
-                state.currentScreen != WorkshopScreenDestination.BaiduTranslationApiKey
-            ) {
+            if (state.currentScreen.showsSettingsShortcut()) {
                 IconButton(onClick = actions.onNavigateToSettings) {
                     Icon(
                         imageVector = Icons.Default.Settings,
@@ -456,4 +454,4 @@ private fun WorkshopUiState.titleForScreen(
         WorkshopScreenDestination.BaiduTranslationApiKey -> "百度大模型翻译配置"
     }
 
-private const val baiduApiKeyGuideUrl = "https://api.fanyi.baidu.com/manage/apiKey"
+private const val baiduApiKeyGuideUrl = "https://fanyi-api.baidu.com/product/13"

@@ -21,6 +21,18 @@ enum class WorkshopScreenDestination {
 fun WorkshopScreenDestination.isLibraryRoot(): Boolean =
     this == WorkshopScreenDestination.GameLibrary || this == WorkshopScreenDestination.ModLibrary
 
+fun WorkshopScreenDestination.showsDownloadCenterShortcut(): Boolean =
+    this != WorkshopScreenDestination.DownloadCenter &&
+        this != WorkshopScreenDestination.DownloadTaskDetail &&
+        this != WorkshopScreenDestination.Settings &&
+        this != WorkshopScreenDestination.BaiduTranslationApiKey
+
+fun WorkshopScreenDestination.showsSettingsShortcut(): Boolean =
+    this != WorkshopScreenDestination.DownloadCenter &&
+        this != WorkshopScreenDestination.DownloadTaskDetail &&
+        this != WorkshopScreenDestination.Settings &&
+        this != WorkshopScreenDestination.BaiduTranslationApiKey
+
 enum class AppThemeMode(
     val storageValue: String,
 ) {

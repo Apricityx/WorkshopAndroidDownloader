@@ -1,6 +1,4 @@
 package top.apricityx.workshop.ui.screen
-
-import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,12 +12,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import top.apricityx.workshop.DownloadedModEntry
 import top.apricityx.workshop.ExportedDownloadFile
+import top.apricityx.workshop.formatBinaryFileSize
 import top.apricityx.workshop.primaryFile
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ModPreviewImage
@@ -36,7 +34,6 @@ fun ModDetailScreen(
     onRemoveMod: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -82,7 +79,7 @@ fun ModDetailScreen(
                     entry.files.forEach { file ->
                         FileRow(
                             file = file,
-                            sizeText = Formatter.formatFileSize(context, file.sizeBytes),
+                            sizeText = formatBinaryFileSize(file.sizeBytes),
                             onOpenFile = { onOpenFile(file) },
                             onShareFile = { onShareFile(file) },
                         )

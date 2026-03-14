@@ -181,10 +181,10 @@ private fun DownloadCenterProgressSnapshot.percentText(): String? =
 private fun DownloadCenterProgressSnapshot.bytesText(): String? =
     when {
         writtenBytes > 0L && totalBytes != null && totalBytes > 0L ->
-            "${formatBytes(writtenBytes)} / ${formatBytes(totalBytes)}"
+            "${formatBinaryFileSize(writtenBytes)} / ${formatBinaryFileSize(totalBytes)}"
 
-        writtenBytes > 0L -> formatBytes(writtenBytes)
-        totalBytes != null && totalBytes > 0L -> "0 B / ${formatBytes(totalBytes)}"
+        writtenBytes > 0L -> formatBinaryFileSize(writtenBytes)
+        totalBytes != null && totalBytes > 0L -> "0 B / ${formatBinaryFileSize(totalBytes)}"
         else -> null
     }
 
@@ -196,7 +196,7 @@ private fun DownloadCenterProgressSnapshot.fileText(): String? =
 
 private fun DownloadCenterProgressSnapshot.speedText(): String? =
     speedBytesPerSecond?.takeIf { it > 0L }?.let { speed ->
-        "${formatBytes(speed)}/s"
+        "${formatBinaryFileSize(speed)}/s"
     }
 
 private fun DownloadState.displayName(): String =
@@ -218,21 +218,6 @@ fun DownloadCenterTaskStatus.displayName(): String =
         DownloadCenterTaskStatus.Success -> "已完成"
         DownloadCenterTaskStatus.Failed -> "失败"
     }
-
-private fun formatBytes(bytes: Long): String {
-    if (bytes < 1024L) {
-        return "$bytes B"
-    }
-
-    val units = arrayOf("KB", "MB", "GB", "TB")
-    var value = bytes.toDouble()
-    var unitIndex = -1
-    while (value >= 1024.0 && unitIndex < units.lastIndex) {
-        value /= 1024.0
-        unitIndex++
-    }
-    return "${DecimalFormat("0.0").format(value)} ${units[unitIndex.coerceAtLeast(0)]}"
-}
 
 private fun DownloadCenterTaskStatus.sortOrder(): Int =
     when (this) {

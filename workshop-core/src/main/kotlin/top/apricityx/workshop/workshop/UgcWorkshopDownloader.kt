@@ -20,7 +20,6 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.RandomAccessFile
-import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipInputStream
 
@@ -96,12 +95,31 @@ class UgcWorkshopDownloader(
                 contentClient = contentClient,
                 log = log,
             )
+            val preparedManifest = when {
+                manifest.filenamesEncrypted && depotKey != null -> {
+                    log("Decrypting encrypted manifest filenames with depot key")
+                    runCatching { manifest.decryptFilenames(depotKey) }
+                        .getOrElse {
+                            log("Manifest filename decryption failed; continuing with encoded names: ${it.message}")
+                            manifest
+                        }
+                }
+
+                manifest.filenamesEncrypted -> {
+                    log("Manifest filenames are encrypted but depot key is unavailable; continuing with encoded names")
+                    manifest
+                }
+
+                else -> manifest
+            }
 
             emit(DownloadEvent.StateChanged(DownloadState.Downloading))
-            val chunks = manifest.uniqueChunks()
+            val chunks = preparedManifest.uniqueChunks()
             val totalBytes = chunks.sumOf { it.uncompressedLength.toLong() }
-            val totalFiles = manifest.files.count { it.linkTarget.isNullOrBlank() }
-            log("Manifest ${manifest.manifestId} contains ${manifest.files.size} files and ${chunks.size} unique chunks")
+            val totalFiles = preparedManifest.files.count {
+                it.linkTarget.isNullOrBlank() && !preparedManifest.requiresDirectory(it)
+            }
+            log("Manifest ${preparedManifest.manifestId} contains ${preparedManifest.files.size} files and ${chunks.size} unique chunks")
             emit(
                 DownloadEvent.Progress(
                     writtenBytes = 0L,
@@ -128,7 +146,7 @@ class UgcWorkshopDownloader(
             )
 
             assembleFiles(
-                manifest = manifest,
+                manifest = preparedManifest,
                 outputDir = request.outputDir,
                 stageDir = stageDir,
                 totalBytes = totalBytes,
@@ -307,10 +325,27 @@ class UgcWorkshopDownloader(
                 return@forEach
             }
 
-            val target = File(outputDir, file.path.replace('/', File.separatorChar))
-            target.parentFile?.mkdirs()
+            val preparedEntry = WorkshopOutputPathManager.prepare(
+                outputDir = outputDir,
+                manifest = manifest,
+                file = file,
+            )
+            if (preparedEntry is PreparedManifestEntry.DirectoryEntry) {
+                log("Created directory entry ${file.path}")
+                return@forEach
+            }
+            val target = (preparedEntry as PreparedManifestEntry.FileEntry).target
 
-            val reuse = target.exists() && target.length() == file.size && validateFileSha(target, file.shaContent)
+            val existingValidation = target
+                .takeIf { it.exists() && it.length() == file.size }
+                ?.let { WorkshopFileIntegrityVerifier.assess(it, file) }
+            val reuse = existingValidation != null && existingValidation !is AssembledFileValidation.Invalid
+            if (existingValidation is AssembledFileValidation.ChunkVerifiedHashMismatch) {
+                log(
+                    "Reusing ${file.path} despite SHA-1 mismatch because all chunk ranges validated " +
+                        "expected=${existingValidation.expectedShaHex} actual=${existingValidation.actualShaHex}",
+                )
+            }
             if (!reuse) {
                 RandomAccessFile(target, "rw").use { output ->
                     output.setLength(file.size)
@@ -330,8 +365,24 @@ class UgcWorkshopDownloader(
                     }
                 }
 
-                if (file.shaContent.isNotEmpty() && !validateFileSha(target, file.shaContent)) {
-                    throw WorkshopDownloadException("Assembled file checksum mismatch for ${file.path}")
+                when (val validation = WorkshopFileIntegrityVerifier.assess(target, file)) {
+                    AssembledFileValidation.Verified -> Unit
+
+                    is AssembledFileValidation.ChunkVerifiedHashMismatch -> {
+                        log(
+                            "Assembled ${file.path} with valid chunk coverage, but manifest SHA-1 differed; " +
+                                "continuing expected=${validation.expectedShaHex} actual=${validation.actualShaHex}",
+                        )
+                    }
+
+                    is AssembledFileValidation.Invalid -> {
+                        throw WorkshopDownloadException(
+                            "Assembled file checksum mismatch for ${file.path} " +
+                                "(expected=${validation.expectedShaHex} actual=${validation.actualShaHex} " +
+                                "exactChunkCoverage=${validation.exactChunkCoverage} " +
+                                "chunkChecksumsValid=${validation.chunkChecksumsValid})",
+                        )
+                    }
                 }
             }
 
@@ -422,25 +473,6 @@ class UgcWorkshopDownloader(
             val checksum = steamAdler32(input)
             return checksum == chunk.checksum
         }
-    }
-
-    private fun validateFileSha(file: File, expectedSha: ByteArray): Boolean {
-        if (expectedSha.isEmpty()) {
-            return true
-        }
-        val digest = MessageDigest.getInstance("SHA-1")
-        file.inputStream().buffered().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                val read = input.read(buffer)
-                if (read == -1) {
-                    break
-                }
-                digest.update(buffer, 0, read)
-            }
-        }
-        val actual = digest.digest()
-        return actual.contentEquals(expectedSha)
     }
 
     private fun writeAtomically(target: File, bytes: ByteArray) {

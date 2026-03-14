@@ -1,6 +1,4 @@
 package top.apricityx.workshop.ui.screen
-
-import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -32,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import top.apricityx.workshop.WorkshopItemDetailUiState
+import top.apricityx.workshop.formatBinaryFileSize
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
@@ -50,14 +48,13 @@ fun WorkshopItemDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val detail = state.detail
-    val context = LocalContext.current
     val description = detail?.description?.ifBlank { state.item.descriptionSnippet }.orEmpty()
     val canTranslateDescription = detail != null && description.isNotBlank()
     val metrics = buildList {
         add("作者 ${detail?.authorName ?: state.item.authorName}")
         detail?.subscriptions?.let { add("订阅 ${formatCount(it)}") }
         detail?.views?.let { add("浏览 ${formatCount(it)}") }
-        detail?.fileSizeBytes?.let { add("大小 ${Formatter.formatFileSize(context, it)}") }
+        detail?.fileSizeBytes?.let { add("大小 ${formatBinaryFileSize(it)}") }
     }
 
     if (state.showConnectionErrorState) {
@@ -199,7 +196,7 @@ fun WorkshopItemDetailScreen(
                     )
                     DetailLine(
                         label = "文件大小",
-                        value = it.fileSizeBytes?.let { bytes -> Formatter.formatFileSize(context, bytes) } ?: "未知",
+                        value = it.fileSizeBytes?.let(::formatBinaryFileSize) ?: "未知",
                     )
                     DetailLine(label = "更新时间", value = it.timeUpdatedEpochSeconds?.let(::formatUpdatedTime) ?: "未知")
                     DetailLine(label = "订阅数", value = it.subscriptions?.let(::formatCount) ?: "未知")

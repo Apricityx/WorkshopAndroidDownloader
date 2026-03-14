@@ -1,6 +1,4 @@
 package top.apricityx.workshop.ui.screen
-
-import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -32,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +39,7 @@ import top.apricityx.workshop.GameWorkshopUiState
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
 import top.apricityx.workshop.displayName
+import top.apricityx.workshop.formatBinaryFileSize
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricPill
@@ -278,9 +276,8 @@ private fun WorkshopItemCard(
     onOpenDetail: () -> Unit,
     onDownload: () -> Unit,
 ) {
-    val context = LocalContext.current
     val sizeLabel = item.fileSizeBytes?.let { sizeBytes ->
-        "大小 ${Formatter.formatFileSize(context, sizeBytes)}"
+        "大小 ${formatBinaryFileSize(sizeBytes)}"
     }
 
     Card(

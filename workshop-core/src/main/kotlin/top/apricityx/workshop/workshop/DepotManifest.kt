@@ -9,12 +9,17 @@ import java.io.EOFException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.time.Instant
+import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 data class DepotManifest(
     val depotId: UInt,
     val manifestId: ULong,
     val createdAt: Instant,
     val encryptedCrc: UInt,
+    val filenamesEncrypted: Boolean,
     val files: List<ManifestFile>,
 ) {
     fun uniqueChunks(): List<ManifestChunk> {
@@ -25,6 +30,51 @@ data class DepotManifest(
             }
         }
         return unique.values.toList()
+    }
+
+    fun decryptFilenames(depotKey: ByteArray): DepotManifest {
+        if (!filenamesEncrypted) {
+            return this
+        }
+        require(depotKey.size == 32) { "Depot key must be 32 bytes" }
+
+        val ecb = Cipher.getInstance("AES/ECB/NoPadding").apply {
+            init(Cipher.DECRYPT_MODE, SecretKeySpec(depotKey, "AES"))
+        }
+        val cbc = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        val decryptedFiles = files
+            .map { file ->
+                file.copy(
+                    path = decryptManifestName(file.path, depotKey, ecb, cbc),
+                    linkTarget = file.linkTarget?.let { decryptManifestName(it, depotKey, ecb, cbc) },
+                )
+            }
+            .sortedWith { left, right -> left.path.compareTo(right.path, ignoreCase = true) }
+        return copy(
+            filenamesEncrypted = false,
+            files = decryptedFiles,
+        )
+    }
+
+    private fun decryptManifestName(
+        encoded: String,
+        depotKey: ByteArray,
+        ecb: Cipher,
+        cbc: Cipher,
+    ): String {
+        val sanitizedEncoded = encoded.sanitizeManifestString()
+        val encrypted = runCatching { Base64.getDecoder().decode(sanitizedEncoded) }
+            .getOrElse { throw WorkshopDownloadException("Failed to base64 decode encrypted manifest name", it) }
+        if (encrypted.size <= 16) {
+            throw WorkshopDownloadException("Encrypted manifest name payload was too short")
+        }
+
+        val iv = ecb.doFinal(encrypted.copyOfRange(0, 16))
+        cbc.init(Cipher.DECRYPT_MODE, SecretKeySpec(depotKey, "AES"), IvParameterSpec(iv))
+        val decrypted = runCatching { cbc.doFinal(encrypted.copyOfRange(16, encrypted.size)) }
+            .getOrElse { throw WorkshopDownloadException("Failed to decrypt manifest name", it) }
+        val trimmed = decrypted.dropLastWhile { it == 0.toByte() }.toByteArray()
+        return trimmed.decodeToString().replace('\\', '/')
     }
 }
 
@@ -93,13 +143,22 @@ object DepotManifestParser {
             manifestId = parsedMetadata.gidManifest.toULong(),
             createdAt = Instant.ofEpochSecond(parsedMetadata.creationTime.toLong()),
             encryptedCrc = parsedMetadata.crcEncrypted.toUInt(),
+            filenamesEncrypted = parsedMetadata.filenamesEncrypted,
             files = parsedPayload.mappingsList.map { mapping ->
+                val path = mapping.filename.sanitizeManifestString()
+                val linkTarget = mapping.linktarget
+                    .sanitizeManifestString()
+                    .takeIf(String::isNotBlank)
                 ManifestFile(
-                    path = mapping.filename.replace('\\', '/'),
+                    path = if (parsedMetadata.filenamesEncrypted) path else path.replace('\\', '/'),
                     size = mapping.size,
                     flags = mapping.flags.toUInt(),
                     shaContent = mapping.shaContent.toByteArray(),
-                    linkTarget = mapping.linktarget.takeIf(String::isNotBlank),
+                    linkTarget = when {
+                        linkTarget == null -> null
+                        parsedMetadata.filenamesEncrypted -> linkTarget
+                        else -> linkTarget.replace('\\', '/')
+                    },
                     chunks = mapping.chunksList.map { chunk ->
                         ManifestChunk(
                             id = chunk.sha.toByteArray(),
@@ -119,3 +178,5 @@ object DepotManifestParser {
         return ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).int.toUInt()
     }
 }
+
+private fun String.sanitizeManifestString(): String = trim { it <= ' ' || it == '\u0000' }

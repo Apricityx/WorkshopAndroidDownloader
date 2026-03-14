@@ -50,21 +50,6 @@ fun BaiduTranslationApiKeyScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         WorkshopPanelCard {
-            Text("获取教程", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "1. 打开百度翻译开放平台凭据管理页。\n2. 登录后记录大模型文本翻译对应的 AppID 和 API Key。\n3. 返回此页面填入 AppID 与 API Key 并保存。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(
-                onClick = onOpenApiKeyGuide,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("前往管理凭据")
-            }
-        }
-
-        WorkshopPanelCard {
             Text("百度大模型文本翻译凭据", style = MaterialTheme.typography.titleLarge)
             Text(
                 text = if (state.hasSavedCredentials) {
@@ -171,13 +156,7 @@ private fun BaiduTranslationTutorialCard(
 ) {
     WorkshopPanelCard {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("内置教程", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "下面这套图文步骤来自项目里的教程稿，可以直接按顺序操作完成百度大模型文本翻译开通。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
+            Text("教程", style = MaterialTheme.typography.titleLarge)
             OutlinedButton(
                 onClick = onOpenApiKeyGuide,
                 modifier = Modifier.fillMaxWidth(),
