@@ -84,11 +84,19 @@ enum class ModLibraryDisplayMode(
     val storageValue: String,
 ) {
     LargePreview("large_preview"),
-    CompactList("compact_list");
+    CompactList("compact_list"),
+    Overview("overview");
+
+    fun next(): ModLibraryDisplayMode =
+        when (this) {
+            LargePreview -> CompactList
+            CompactList -> Overview
+            Overview -> LargePreview
+        }
 
     companion object {
         fun fromStorageValue(value: String): ModLibraryDisplayMode =
-            entries.firstOrNull { it.storageValue == value } ?: LargePreview
+            entries.firstOrNull { it.storageValue == value } ?: CompactList
     }
 }
 
@@ -170,6 +178,8 @@ data class SettingsUiState(
     val savedDownloadThreadCount: Int = DownloadSettingsRepository.DEFAULT_DOWNLOAD_THREADS,
     val concurrentDownloadTaskCountInput: String = "",
     val savedConcurrentDownloadTaskCount: Int = DownloadSettingsRepository.DEFAULT_CONCURRENT_DOWNLOAD_TASKS,
+    val modUpdateConcurrentCheckCountInput: String = "",
+    val savedModUpdateConcurrentCheckCount: Int = DownloadSettingsRepository.DEFAULT_MOD_UPDATE_CONCURRENT_CHECKS,
     val selectedThemeMode: AppThemeMode = DownloadSettingsRepository.DEFAULT_THEME_MODE,
     val selectedSteamLanguagePreference: SteamLanguagePreference =
         DownloadSettingsRepository.DEFAULT_STEAM_LANGUAGE_PREFERENCE,
@@ -248,6 +258,33 @@ fun TranslationProvider.displayName(): String =
     when (this) {
         TranslationProvider.OnDevice -> "本地翻译"
         TranslationProvider.BaiduGeneralText -> "百度大模型文本翻译"
+    }
+
+fun ModLibraryDisplayMode.screenSubtitle(): String =
+    when (this) {
+        ModLibraryDisplayMode.LargePreview ->
+            "当前为大图显示，这里展示已经导出到本地的模组文件，会在启动和下载完成后自动同步。"
+        ModLibraryDisplayMode.CompactList ->
+            "当前为精简列表显示，这里展示已经导出到本地的模组文件，会在启动和下载完成后自动同步。"
+        ModLibraryDisplayMode.Overview ->
+            "当前为总览模式，这里会优先展示模组预览图，方便快速浏览本地模组。"
+    }
+
+fun ModLibraryDisplayMode.sectionSubtitle(): String =
+    when (this) {
+        ModLibraryDisplayMode.LargePreview ->
+            "列表操作默认作用于主文件，进入详情后可以逐个文件处理。"
+        ModLibraryDisplayMode.CompactList ->
+            "点击条目进入详情后，可以打开、分享或删除文件。"
+        ModLibraryDisplayMode.Overview ->
+            "点击缩略图进入详情，适合快速浏览已经下载的模组封面。"
+    }
+
+fun ModLibraryDisplayMode.toggleContentDescription(): String =
+    when (next()) {
+        ModLibraryDisplayMode.LargePreview -> "切换为大图显示"
+        ModLibraryDisplayMode.CompactList -> "切换为精简列表"
+        ModLibraryDisplayMode.Overview -> "切换为总览模式"
     }
 
 fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? = null): SteamAuthUiState =

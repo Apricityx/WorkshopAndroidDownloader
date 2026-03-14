@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
@@ -47,6 +48,7 @@ import top.apricityx.workshop.WorkshopUiState
 import top.apricityx.workshop.isLibraryRoot
 import top.apricityx.workshop.showsDownloadCenterShortcut
 import top.apricityx.workshop.showsSettingsShortcut
+import top.apricityx.workshop.toggleContentDescription
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,13 +102,11 @@ internal fun WorkshopTopBar(
             }
 
             if (state.currentScreen == WorkshopScreenDestination.ModLibrary) {
-                val toggleContentDescription = when (state.modLibraryState.displayMode) {
-                    ModLibraryDisplayMode.LargePreview -> "切换为精简列表"
-                    ModLibraryDisplayMode.CompactList -> "切换为大图显示"
-                }
+                val toggleContentDescription = state.modLibraryState.displayMode.toggleContentDescription()
                 val toggleIcon = when (state.modLibraryState.displayMode) {
                     ModLibraryDisplayMode.LargePreview -> Icons.AutoMirrored.Filled.ViewList
-                    ModLibraryDisplayMode.CompactList -> Icons.Default.ViewModule
+                    ModLibraryDisplayMode.CompactList -> Icons.Default.Dashboard
+                    ModLibraryDisplayMode.Overview -> Icons.Default.ViewModule
                 }
                 IconButton(
                     onClick = actions.onToggleModLibraryDisplayMode,
@@ -415,6 +415,7 @@ private fun WorkshopScreenContent(
                     onOpenExternalUrl = actions.onOpenExternalUrl,
                     onThreadCountChange = actions.onUpdateDownloadThreadCountInput,
                     onConcurrentTaskCountChange = actions.onUpdateConcurrentDownloadTaskCountInput,
+                    onModUpdateConcurrentCheckCountChange = actions.onUpdateModUpdateConcurrentCheckCountInput,
                     onSave = actions.onSaveDownloadSettings,
                     modifier = Modifier.fillMaxSize(),
                 )

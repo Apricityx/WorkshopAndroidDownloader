@@ -23,8 +23,10 @@ class MainActivityTest {
     fun modLibraryDisplayModeToggle_switchesMode() {
         composeRule.onNodeWithTag("modLibraryTab").performClick()
         composeRule.onNodeWithContentDescription("检查模组更新").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("切换为精简列表").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("切换为总览模式").assertIsDisplayed()
         composeRule.onNodeWithTag("modLibraryDisplayModeToggle").performClick()
         composeRule.onNodeWithContentDescription("切换为大图显示").assertIsDisplayed()
+        composeRule.onNodeWithTag("modLibraryDisplayModeToggle").performClick()
+        composeRule.onNodeWithContentDescription("切换为精简列表").assertIsDisplayed()
     }
 }

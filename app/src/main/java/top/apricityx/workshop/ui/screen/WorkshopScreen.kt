@@ -77,6 +77,7 @@ data class WorkshopScreenActions(
     val onOpenExternalUrl: (String) -> Unit,
     val onUpdateDownloadThreadCountInput: (String) -> Unit,
     val onUpdateConcurrentDownloadTaskCountInput: (String) -> Unit,
+    val onUpdateModUpdateConcurrentCheckCountInput: (String) -> Unit,
     val onSaveDownloadSettings: () -> Unit,
     val onUpdateAddGameSearchQuery: (String) -> Unit,
     val onSearchGames: () -> Unit,

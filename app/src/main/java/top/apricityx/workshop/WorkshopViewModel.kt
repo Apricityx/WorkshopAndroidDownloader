@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,8 +16,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
@@ -239,44 +244,52 @@ class WorkshopViewModel(
         }
 
         viewModelScope.launch {
-            val results = linkedMapOf<String, ModUpdateCheckResult>()
-            entries.forEach { entry ->
-                val checkedAtMillis = System.currentTimeMillis()
-                val result = runCatching {
-                    withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
-                        detailRepository.loadWorkshopItemDetail(entry.toWorkshopBrowseItem())
+            val concurrency = settingsRepository.getModUpdateConcurrentCheckCount()
+            val results = supervisorScope {
+                val semaphore = Semaphore(concurrency)
+                entries.map { entry ->
+                    async {
+                        semaphore.withPermit {
+                            val checkedAtMillis = System.currentTimeMillis()
+                            val result = runCatching {
+                                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                                    detailRepository.loadWorkshopItemDetail(entry.toWorkshopBrowseItem())
+                                }
+                            }.fold(
+                                onSuccess = { detail ->
+                                    evaluateModUpdate(
+                                        entry = entry,
+                                        remoteUpdatedEpochSeconds = detail.timeUpdatedEpochSeconds,
+                                        checkedAtMillis = checkedAtMillis,
+                                    )
+                                },
+                                onFailure = { error ->
+                                    ModUpdateCheckResult(
+                                        status = ModUpdateCheckStatus.Failed,
+                                        checkedAtMillis = checkedAtMillis,
+                                        message = if (error.isTimeoutRequestFailure()) {
+                                            REQUEST_TIMEOUT_MESSAGE
+                                        } else {
+                                            error.message ?: "检查更新失败。"
+                                        },
+                                    )
+                                },
+                            )
+                            val key = entry.modLibraryKey()
+                            _uiState.update { state ->
+                                val nextUpdateCheckState = state.modLibraryState.updateCheckState.copy(
+                                    results = state.modLibraryState.updateCheckState.results + (key to result),
+                                ).filterForEntries(state.modLibraryState.items)
+                                state.copy(
+                                    modLibraryState = state.modLibraryState.copy(
+                                        updateCheckState = nextUpdateCheckState,
+                                    ),
+                                )
+                            }
+                            key to result
+                        }
                     }
-                }.fold(
-                    onSuccess = { detail ->
-                        evaluateModUpdate(
-                            entry = entry,
-                            remoteUpdatedEpochSeconds = detail.timeUpdatedEpochSeconds,
-                            checkedAtMillis = checkedAtMillis,
-                        )
-                    },
-                    onFailure = { error ->
-                        ModUpdateCheckResult(
-                            status = ModUpdateCheckStatus.Failed,
-                            checkedAtMillis = checkedAtMillis,
-                            message = if (error.isTimeoutRequestFailure()) {
-                                REQUEST_TIMEOUT_MESSAGE
-                            } else {
-                                error.message ?: "检查更新失败。"
-                            },
-                        )
-                    },
-                )
-                results[entry.modLibraryKey()] = result
-                _uiState.update { state ->
-                    val nextUpdateCheckState = state.modLibraryState.updateCheckState.copy(
-                        results = state.modLibraryState.updateCheckState.results + (entry.modLibraryKey() to result),
-                    ).filterForEntries(state.modLibraryState.items)
-                    state.copy(
-                        modLibraryState = state.modLibraryState.copy(
-                            updateCheckState = nextUpdateCheckState,
-                        ),
-                    )
-                }
+                }.awaitAll().toMap(linkedMapOf())
             }
 
             val summaryMessage = buildModUpdateCheckSummary(results.values)
@@ -299,10 +312,7 @@ class WorkshopViewModel(
     }
 
     fun toggleModLibraryDisplayMode() {
-        val nextMode = when (_uiState.value.modLibraryState.displayMode) {
-            ModLibraryDisplayMode.LargePreview -> ModLibraryDisplayMode.CompactList
-            ModLibraryDisplayMode.CompactList -> ModLibraryDisplayMode.LargePreview
-        }
+        val nextMode = _uiState.value.modLibraryState.displayMode.next()
         settingsRepository.setModLibraryDisplayMode(nextMode)
         _uiState.update { state ->
             state.copy(
@@ -327,6 +337,17 @@ class WorkshopViewModel(
             state.copy(
                 settingsState = state.settingsState.copy(
                     concurrentDownloadTaskCountInput = value.filter(Char::isDigit),
+                    message = null,
+                ),
+            )
+        }
+    }
+
+    fun updateModUpdateConcurrentCheckCountInput(value: String) {
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    modUpdateConcurrentCheckCountInput = value.filter(Char::isDigit),
                     message = null,
                 ),
             )
@@ -661,12 +682,13 @@ class WorkshopViewModel(
         val settingsState = _uiState.value.settingsState
         val parsedThreadCount = settingsState.downloadThreadCountInput.toIntOrNull()
         val parsedConcurrentTasks = settingsState.concurrentDownloadTaskCountInput.toIntOrNull()
+        val parsedModUpdateConcurrentChecks = settingsState.modUpdateConcurrentCheckCountInput.toIntOrNull()
 
-        if (parsedThreadCount == null || parsedConcurrentTasks == null) {
+        if (parsedThreadCount == null || parsedConcurrentTasks == null || parsedModUpdateConcurrentChecks == null) {
             _uiState.update { state ->
                 state.copy(
                     settingsState = state.settingsState.copy(
-                        message = "请输入有效的下载设置。",
+                        message = "请输入有效的下载与检查设置。",
                     ),
                 )
             }
@@ -681,9 +703,14 @@ class WorkshopViewModel(
             DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS,
             DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS,
         )
+        val clampedModUpdateConcurrentChecks = parsedModUpdateConcurrentChecks.coerceIn(
+            DownloadSettingsRepository.MIN_MOD_UPDATE_CONCURRENT_CHECKS,
+            DownloadSettingsRepository.MAX_MOD_UPDATE_CONCURRENT_CHECKS,
+        )
 
         settingsRepository.setDownloadThreadCount(clampedThreadCount)
         settingsRepository.setConcurrentDownloadTaskCount(clampedConcurrentTasks)
+        settingsRepository.setModUpdateConcurrentCheckCount(clampedModUpdateConcurrentChecks)
         _uiState.update { state ->
             state.copy(
                 settingsState = state.settingsState.copy(
@@ -691,7 +718,9 @@ class WorkshopViewModel(
                     savedDownloadThreadCount = clampedThreadCount,
                     concurrentDownloadTaskCountInput = clampedConcurrentTasks.toString(),
                     savedConcurrentDownloadTaskCount = clampedConcurrentTasks,
-                    message = "已保存下载设置：线程 $clampedThreadCount，同时任务 $clampedConcurrentTasks",
+                    modUpdateConcurrentCheckCountInput = clampedModUpdateConcurrentChecks.toString(),
+                    savedModUpdateConcurrentCheckCount = clampedModUpdateConcurrentChecks,
+                    message = "已保存设置：线程 $clampedThreadCount，同时任务 $clampedConcurrentTasks，并发检查 $clampedModUpdateConcurrentChecks",
                 ),
             )
         }
@@ -1990,6 +2019,7 @@ class WorkshopViewModel(
         val translationProvider = settingsRepository.getTranslationProvider()
         val threadCount = settingsRepository.getDownloadThreadCount()
         val concurrentTaskCount = settingsRepository.getConcurrentDownloadTaskCount()
+        val modUpdateConcurrentChecks = settingsRepository.getModUpdateConcurrentCheckCount()
         val savedBaiduCredentials = baiduTranslationCredentialsRepository.getCredentials()
         val hasSavedBaiduCredentials = savedBaiduCredentials.isConfigured()
         return WorkshopUiState(
@@ -2003,6 +2033,8 @@ class WorkshopViewModel(
                 savedDownloadThreadCount = threadCount,
                 concurrentDownloadTaskCountInput = concurrentTaskCount.toString(),
                 savedConcurrentDownloadTaskCount = concurrentTaskCount,
+                modUpdateConcurrentCheckCountInput = modUpdateConcurrentChecks.toString(),
+                savedModUpdateConcurrentCheckCount = modUpdateConcurrentChecks,
                 selectedThemeMode = themeMode,
                 selectedSteamLanguagePreference = steamLanguagePreference,
                 selectedTranslationProvider = translationProvider,

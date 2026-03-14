@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
             onOpenExternalUrl = ::openExternalUrl,
             onUpdateDownloadThreadCountInput = workshopViewModel::updateDownloadThreadCountInput,
             onUpdateConcurrentDownloadTaskCountInput = workshopViewModel::updateConcurrentDownloadTaskCountInput,
+            onUpdateModUpdateConcurrentCheckCountInput = workshopViewModel::updateModUpdateConcurrentCheckCountInput,
             onSaveDownloadSettings = workshopViewModel::saveDownloadSettings,
             onUpdateAddGameSearchQuery = workshopViewModel::updateAddGameSearchQuery,
             onSearchGames = workshopViewModel::searchGames,

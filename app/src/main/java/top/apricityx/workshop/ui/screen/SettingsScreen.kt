@@ -74,6 +74,7 @@ fun SettingsScreen(
     onOpenExternalUrl: (String) -> Unit,
     onThreadCountChange: (String) -> Unit,
     onConcurrentTaskCountChange: (String) -> Unit,
+    onModUpdateConcurrentCheckCountChange: (String) -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -409,9 +410,9 @@ fun SettingsScreen(
         }
 
         WorkshopPanelCard {
-            Text("下载设置", style = MaterialTheme.typography.titleLarge)
+            Text("下载与检查设置", style = MaterialTheme.typography.titleLarge)
             Text(
-                "单任务线程数影响模组分块下载；同时下载任务数影响下载中心里并行跑的任务数量。",
+                "单任务线程数影响模组分块下载；同时下载任务数影响下载中心里并行跑的任务数量；并发检查数影响模组库检查更新时同时发起的工坊详情请求数量。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -434,6 +435,18 @@ fun SettingsScreen(
                 label = { Text("同时下载任务数") },
                 supportingText = {
                     Text("范围 ${DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS} - ${DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS}")
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+
+            OutlinedTextField(
+                value = state.modUpdateConcurrentCheckCountInput,
+                onValueChange = onModUpdateConcurrentCheckCountChange,
+                label = { Text("模组更新并发检查数") },
+                supportingText = {
+                    Text("范围 ${DownloadSettingsRepository.MIN_MOD_UPDATE_CONCURRENT_CHECKS} - ${DownloadSettingsRepository.MAX_MOD_UPDATE_CONCURRENT_CHECKS}")
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),

@@ -20,6 +20,19 @@ class DownloadSettingsRepository(context: Context) {
         prefs.edit().putInt(KEY_CONCURRENT_DOWNLOAD_TASKS, value).apply()
     }
 
+    fun getModUpdateConcurrentCheckCount(): Int =
+        prefs.getInt(KEY_MOD_UPDATE_CONCURRENT_CHECKS, DEFAULT_MOD_UPDATE_CONCURRENT_CHECKS)
+            .coerceIn(MIN_MOD_UPDATE_CONCURRENT_CHECKS, MAX_MOD_UPDATE_CONCURRENT_CHECKS)
+
+    fun setModUpdateConcurrentCheckCount(value: Int) {
+        prefs.edit()
+            .putInt(
+                KEY_MOD_UPDATE_CONCURRENT_CHECKS,
+                value.coerceIn(MIN_MOD_UPDATE_CONCURRENT_CHECKS, MAX_MOD_UPDATE_CONCURRENT_CHECKS),
+            )
+            .apply()
+    }
+
     fun getThemeMode(): AppThemeMode =
         prefs.getString(KEY_THEME_MODE, null)
             ?.let(AppThemeMode::fromStorageValue)
@@ -109,6 +122,7 @@ class DownloadSettingsRepository(context: Context) {
         private const val PREFS_NAME = "download_settings"
         private const val KEY_DOWNLOAD_THREADS = "download_threads"
         private const val KEY_CONCURRENT_DOWNLOAD_TASKS = "concurrent_download_tasks"
+        private const val KEY_MOD_UPDATE_CONCURRENT_CHECKS = "mod_update_concurrent_checks"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_STEAM_LANGUAGE_PREFERENCE = "steam_language_preference"
         private const val KEY_TRANSLATION_PROVIDER = "translation_provider"
@@ -126,10 +140,13 @@ class DownloadSettingsRepository(context: Context) {
         const val DEFAULT_CONCURRENT_DOWNLOAD_TASKS = 1
         const val MIN_CONCURRENT_DOWNLOAD_TASKS = 1
         const val MAX_CONCURRENT_DOWNLOAD_TASKS = 3
+        const val DEFAULT_MOD_UPDATE_CONCURRENT_CHECKS = 3
+        const val MIN_MOD_UPDATE_CONCURRENT_CHECKS = 1
+        const val MAX_MOD_UPDATE_CONCURRENT_CHECKS = 10
         const val DEFAULT_AUTO_CHECK_UPDATES_ENABLED = true
         val DEFAULT_THEME_MODE: AppThemeMode = AppThemeMode.FollowSystem
         val DEFAULT_STEAM_LANGUAGE_PREFERENCE: SteamLanguagePreference = SteamLanguagePreference.SimplifiedChinese
         val DEFAULT_TRANSLATION_PROVIDER: TranslationProvider = TranslationProvider.OnDevice
-        val DEFAULT_MOD_LIBRARY_DISPLAY_MODE: ModLibraryDisplayMode = ModLibraryDisplayMode.LargePreview
+        val DEFAULT_MOD_LIBRARY_DISPLAY_MODE: ModLibraryDisplayMode = ModLibraryDisplayMode.CompactList
     }
 }
