@@ -502,6 +502,17 @@ fun SettingsScreen(
                     modifier = Modifier.clickable { onOpenExternalUrl(repositoryUrl) },
                 )
                 Text(
+                    "此软件最开始为《杀戮尖塔》模组加载器手机移植版准备，如果你对《杀戮尖塔》感兴趣，欢迎关注我的另一个项目：",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = slayTheAmethystModdedUrl,
+                    style = MaterialTheme.typography.bodyMedium.copy(textDecoration = TextDecoration.Underline),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { onOpenExternalUrl(slayTheAmethystModdedUrl) },
+                )
+                Text(
                     "如果这个项目对你有帮助，欢迎去 GitHub 给项目点个 Star 支持一下，这对我有很大帮助！如果有问题，欢迎提交 issue!",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -708,3 +719,5 @@ private fun steamLanguagePreferenceDescription(
 private const val repositoryUrl = "https://github.com/Apricityx/WorkshopAndroidDownloader"
 private const val primaryDeveloperUrl = "https://github.com/Apricityx"
 private const val secondaryDeveloperUrl = "https://github.com/ZJustin117"
+private const val slayTheAmethystModdedUrl =
+    "https://github.com/ModinMobileSTS/SlayTheAmethystModded"
