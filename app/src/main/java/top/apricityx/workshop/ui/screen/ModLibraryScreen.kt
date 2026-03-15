@@ -102,6 +102,7 @@ fun ModLibraryScreen(
     state: ModLibraryUiState,
     onRetry: () -> Unit,
     onCheckUpdates: () -> Unit,
+    onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onGameFilterSelected: (String?) -> Unit,
     onSortOptionSelected: (ModLibrarySortOption) -> Unit,
@@ -143,6 +144,7 @@ fun ModLibraryScreen(
             state = state,
             visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
             onGameFilterSelected = onGameFilterSelected,
             onSortOptionSelected = onSortOptionSelected,
@@ -157,6 +159,7 @@ fun ModLibraryScreen(
             state = state,
             visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
             onGameFilterSelected = onGameFilterSelected,
             onSortOptionSelected = onSortOptionSelected,
@@ -174,6 +177,7 @@ private fun ListModLibraryContent(
     state: ModLibraryUiState,
     visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onGameFilterSelected: (String?) -> Unit,
     onSortOptionSelected: (ModLibrarySortOption) -> Unit,
@@ -192,6 +196,7 @@ private fun ListModLibraryContent(
             state = state,
             visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
             onGameFilterSelected = onGameFilterSelected,
             onSortOptionSelected = onSortOptionSelected,
@@ -231,6 +236,7 @@ private fun OverviewModLibraryGrid(
     state: ModLibraryUiState,
     visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onGameFilterSelected: (String?) -> Unit,
     onSortOptionSelected: (ModLibrarySortOption) -> Unit,
@@ -251,6 +257,7 @@ private fun OverviewModLibraryGrid(
             state = state,
             visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
             onGameFilterSelected = onGameFilterSelected,
             onSortOptionSelected = onSortOptionSelected,
@@ -279,6 +286,7 @@ private fun LazyListScope.modLibraryHeaderItems(
     state: ModLibraryUiState,
     visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onGameFilterSelected: (String?) -> Unit,
     onSortOptionSelected: (ModLibrarySortOption) -> Unit,
@@ -289,6 +297,7 @@ private fun LazyListScope.modLibraryHeaderItems(
             state = state,
             visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
             onGameFilterSelected = onGameFilterSelected,
             onSortOptionSelected = onSortOptionSelected,
@@ -299,7 +308,7 @@ private fun LazyListScope.modLibraryHeaderItems(
     if (state.updateCheckState.isChecking) {
         item {
             WorkshopMessageBanner(
-                message = "正在检查 ${state.totalVersionCount()} 个已下载版本的创意工坊更新。",
+                message = "正在检查 ${state.items.size} 个模组的创意工坊更新。",
                 tone = MessageTone.Info,
             )
         }
@@ -341,6 +350,7 @@ private fun LazyGridScope.modLibraryHeaderItems(
     state: ModLibraryUiState,
     visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onGameFilterSelected: (String?) -> Unit,
     onSortOptionSelected: (ModLibrarySortOption) -> Unit,
@@ -351,6 +361,7 @@ private fun LazyGridScope.modLibraryHeaderItems(
             state = state,
             visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
             onGameFilterSelected = onGameFilterSelected,
             onSortOptionSelected = onSortOptionSelected,
@@ -361,7 +372,7 @@ private fun LazyGridScope.modLibraryHeaderItems(
     if (state.updateCheckState.isChecking) {
         fullSpanItem {
             WorkshopMessageBanner(
-                message = "正在检查 ${state.totalVersionCount()} 个已下载版本的创意工坊更新。",
+                message = "正在检查 ${state.items.size} 个模组的创意工坊更新。",
                 tone = MessageTone.Info,
             )
         }
@@ -413,6 +424,7 @@ private fun ModLibrarySummaryCard(
     state: ModLibraryUiState,
     visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onGameFilterSelected: (String?) -> Unit,
     onSortOptionSelected: (ModLibrarySortOption) -> Unit,
@@ -453,55 +465,95 @@ private fun ModLibrarySummaryCard(
             )
         }
 
-        OutlinedTextField(
-            value = state.filterState.searchQuery,
-            onValueChange = onSearchQueryChange,
-            label = { Text("搜索模组 / 游戏 / ID") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Text(
-            text = "排序方式",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggleFilterPanel),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
         ) {
-            ModLibrarySortOption.entries.forEach { sortOption ->
-                FilterChip(
-                    selected = sortOption == state.sortOption,
-                    onClick = { onSortOptionSelected(sortOption) },
-                    label = { Text(sortOption.displayName()) },
-                )
-            }
-        }
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = "筛选与排序",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = if (state.filterPanelExpanded) "收起筛选与排序" else "展开筛选与排序",
+                        modifier = Modifier.graphicsLayer {
+                            rotationZ = if (state.filterPanelExpanded) 90f else 0f
+                        },
+                    )
+                }
 
-        Text(
-            text = "按游戏筛选",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FilterChip(
-                selected = state.filterState.selectedGameTitle == null,
-                onClick = { onGameFilterSelected(null) },
-                label = { Text("全部游戏") },
-            )
-            availableGames.forEach { gameTitle ->
-                FilterChip(
-                    selected = state.filterState.selectedGameTitle == gameTitle,
-                    onClick = { onGameFilterSelected(gameTitle) },
-                    label = { Text(gameTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                )
+                if (state.filterPanelExpanded) {
+                    OutlinedTextField(
+                        value = state.filterState.searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        label = { Text("搜索模组 / 游戏 / ID") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Text(
+                        text = "排序方式",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ModLibrarySortOption.entries.forEach { sortOption ->
+                            FilterChip(
+                                selected = sortOption == state.sortOption,
+                                onClick = { onSortOptionSelected(sortOption) },
+                                label = { Text(sortOption.displayName()) },
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "按游戏筛选",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = state.filterState.selectedGameTitle == null,
+                            onClick = { onGameFilterSelected(null) },
+                            label = { Text("全部游戏") },
+                        )
+                        availableGames.forEach { gameTitle ->
+                            FilterChip(
+                                selected = state.filterState.selectedGameTitle == gameTitle,
+                                onClick = { onGameFilterSelected(gameTitle) },
+                                label = { Text(gameTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
+                    }
+                }
             }
         }
 

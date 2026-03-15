@@ -68,6 +68,64 @@ class ModLibraryModelsTest {
         assertThat(firstVersion.modGroupKey()).isEqualTo(secondVersion.modGroupKey())
     }
 
+    @Test
+    fun latestVersionsForUpdateCheck_keepsOnlyNewestVersionPerMod() {
+        val grouped = listOf(
+            DownloadedModGroup(
+                appId = 646570u,
+                publishedFileId = 3677098410uL,
+                gameTitle = "Slay the Spire",
+                itemTitle = "Skip The Spire",
+                versions = listOf(
+                    DownloadedModEntry(
+                        appId = 646570u,
+                        publishedFileId = 3677098410uL,
+                        gameTitle = "Slay the Spire",
+                        itemTitle = "Skip The Spire",
+                        versionId = "updated-2",
+                        versionUpdatedAtMillis = 2_000L,
+                        storedAtMillis = 2_000L,
+                        files = emptyList(),
+                    ),
+                    DownloadedModEntry(
+                        appId = 646570u,
+                        publishedFileId = 3677098410uL,
+                        gameTitle = "Slay the Spire",
+                        itemTitle = "Skip The Spire",
+                        versionId = "updated-1",
+                        versionUpdatedAtMillis = 1_000L,
+                        storedAtMillis = 1_000L,
+                        files = emptyList(),
+                    ),
+                ),
+            ),
+            DownloadedModGroup(
+                appId = 480u,
+                publishedFileId = 999uL,
+                gameTitle = "Spacewar",
+                itemTitle = "Example Mod",
+                versions = listOf(
+                    DownloadedModEntry(
+                        appId = 480u,
+                        publishedFileId = 999uL,
+                        gameTitle = "Spacewar",
+                        itemTitle = "Example Mod",
+                        versionId = "updated-3",
+                        versionUpdatedAtMillis = 3_000L,
+                        storedAtMillis = 3_000L,
+                        files = emptyList(),
+                    ),
+                ),
+            ),
+        )
+
+        val latest = grouped.latestVersionsForUpdateCheck()
+
+        assertThat(latest.map(DownloadedModEntry::versionId))
+            .containsExactly("updated-2", "updated-3")
+            .inOrder()
+    }
+
     private fun sampleFile(
         relativePath: String,
         modifiedAt: Long,

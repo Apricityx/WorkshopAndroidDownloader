@@ -203,6 +203,7 @@ class MainActivity : ComponentActivity() {
             onRetryModLibrarySync = workshopViewModel::retryModLibrarySync,
             onCheckModLibraryUpdates = workshopViewModel::checkModLibraryUpdates,
             onToggleModLibraryDisplayMode = workshopViewModel::toggleModLibraryDisplayMode,
+            onToggleModLibraryFilterPanel = workshopViewModel::toggleModLibraryFilterPanel,
             onUpdateModLibrarySearchQuery = workshopViewModel::updateModLibrarySearchQuery,
             onUpdateModLibraryGameFilter = workshopViewModel::updateModLibraryGameFilter,
             onUpdateModLibrarySortOption = workshopViewModel::updateModLibrarySortOption,

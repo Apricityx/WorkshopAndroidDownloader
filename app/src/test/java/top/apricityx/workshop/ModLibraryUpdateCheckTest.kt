@@ -52,6 +52,6 @@ class ModLibraryUpdateCheckTest {
             ),
         )
 
-        assertThat(summary).isEqualTo("模组更新检查完成：1 个版本可更新，1 个版本已最新，1 个版本失败。")
+        assertThat(summary).isEqualTo("模组更新检查完成：1 个模组可更新，1 个模组已最新，1 个模组失败。")
     }
 }

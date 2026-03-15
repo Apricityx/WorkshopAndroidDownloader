@@ -225,7 +225,7 @@ class WorkshopViewModel(
     }
 
     fun checkModLibraryUpdates() {
-        val entries = _uiState.value.modLibraryState.items.flatMap(DownloadedModGroup::versions)
+        val entries = _uiState.value.modLibraryState.items.latestVersionsForUpdateCheck()
         if (entries.isEmpty()) {
             viewModelScope.launch {
                 _toastMessages.emit("模组库还是空的，没有可检查的模组。")
@@ -286,7 +286,7 @@ class WorkshopViewModel(
                             _uiState.update { state ->
                                 val nextUpdateCheckState = state.modLibraryState.updateCheckState.copy(
                                     results = state.modLibraryState.updateCheckState.results + (key to result),
-                                ).filterForEntries(state.modLibraryState.items.flatMap(DownloadedModGroup::versions))
+                                ).filterForEntries(state.modLibraryState.items.latestVersionsForUpdateCheck())
                                 state.copy(
                                     modLibraryState = state.modLibraryState.copy(
                                         updateCheckState = nextUpdateCheckState,
@@ -308,7 +308,7 @@ class WorkshopViewModel(
                     summaryMessage = summaryMessage,
                     lastCheckedAtMillis = checkedAtMillis,
                     results = results,
-                ).filterForEntries(state.modLibraryState.items.flatMap(DownloadedModGroup::versions))
+                ).filterForEntries(state.modLibraryState.items.latestVersionsForUpdateCheck())
                 persistedUpdateCheckState = nextUpdateCheckState
                 state.copy(
                     modLibraryState = state.modLibraryState.copy(
@@ -327,6 +327,16 @@ class WorkshopViewModel(
         _uiState.update { state ->
             state.copy(
                 modLibraryState = state.modLibraryState.copy(displayMode = nextMode),
+            )
+        }
+    }
+
+    fun toggleModLibraryFilterPanel() {
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    filterPanelExpanded = !state.modLibraryState.filterPanelExpanded,
+                ),
             )
         }
     }
@@ -2037,7 +2047,8 @@ class WorkshopViewModel(
         } else {
             state.currentScreen
         }
-        val updateCheckState = state.modLibraryState.updateCheckState.filterForEntries(entries)
+        val updateCheckState = state.modLibraryState.updateCheckState
+            .filterForEntries(groupedEntries.latestVersionsForUpdateCheck())
         return state.copy(
             currentScreen = nextScreen,
             modLibraryState = state.modLibraryState.copy(

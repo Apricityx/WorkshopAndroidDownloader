@@ -98,6 +98,9 @@ fun List<DownloadedModEntry>.groupedForDisplay(): List<DownloadedModGroup> =
         }
         .sortedWith(downloadedModGroupDisplayComparator)
 
+fun List<DownloadedModGroup>.latestVersionsForUpdateCheck(): List<DownloadedModEntry> =
+    map(DownloadedModGroup::latestVersion)
+
 private val downloadedModEntryDisplayComparator =
     compareByDescending<DownloadedModEntry> { it.storedAtMillis }
         .thenByDescending { it.versionUpdatedAtMillis ?: Long.MIN_VALUE }

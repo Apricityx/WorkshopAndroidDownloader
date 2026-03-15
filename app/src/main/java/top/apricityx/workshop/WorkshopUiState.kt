@@ -154,6 +154,7 @@ data class ModLibraryUiState(
     val selectedEntry: DownloadedModGroup? = null,
     val displayMode: ModLibraryDisplayMode = DownloadSettingsRepository.DEFAULT_MOD_LIBRARY_DISPLAY_MODE,
     val filterState: ModLibraryFilterState = ModLibraryFilterState(),
+    val filterPanelExpanded: Boolean = false,
     val sortOption: ModLibrarySortOption = ModLibrarySortOption.LatestSynced,
     val updateCheckState: ModLibraryUpdateCheckState = ModLibraryUpdateCheckState(),
     val isLoading: Boolean = false,

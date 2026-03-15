@@ -12,7 +12,7 @@ class ModLibraryUpdateStateStoreTest {
         val store = ModLibraryUpdateStateStore(File(tempDir, "state.json"))
         val state = ModLibraryUpdateCheckState(
             isChecking = false,
-            summaryMessage = "模组更新检查完成：1 个版本可更新，0 个版本已最新，0 个版本失败。",
+            summaryMessage = "模组更新检查完成：1 个模组可更新，0 个模组已最新，0 个模组失败。",
             lastCheckedAtMillis = 1234L,
             results = mapOf(
                 "646570-3677098410-updated-1" to ModUpdateCheckResult(
@@ -50,7 +50,7 @@ class ModLibraryUpdateStateStoreTest {
 
         assertThat(loaded.isChecking).isFalse()
         assertThat(loaded.results.keys).containsExactly("latest")
-        assertThat(loaded.summaryMessage).isEqualTo("模组更新检查完成：0 个版本可更新，1 个版本已最新，0 个版本失败。")
+        assertThat(loaded.summaryMessage).isEqualTo("模组更新检查完成：0 个模组可更新，1 个模组已最新，0 个模组失败。")
         tempDir.deleteRecursively()
     }
 }

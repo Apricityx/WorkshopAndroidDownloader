@@ -65,7 +65,7 @@ fun buildModUpdateCheckSummary(
     val availableCount = results.count { it.status == ModUpdateCheckStatus.UpdateAvailable }
     val upToDateCount = results.count { it.status == ModUpdateCheckStatus.UpToDate }
     val failedCount = results.count { it.status == ModUpdateCheckStatus.Failed }
-    return "模组更新检查完成：$availableCount 个版本可更新，$upToDateCount 个版本已最新，$failedCount 个版本失败。"
+    return "模组更新检查完成：$availableCount 个模组可更新，$upToDateCount 个模组已最新，$failedCount 个模组失败。"
 }
 
 fun ModLibraryUpdateCheckState.filterForEntries(

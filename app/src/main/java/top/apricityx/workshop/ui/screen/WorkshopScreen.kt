@@ -43,6 +43,7 @@ data class WorkshopScreenActions(
     val onRetryModLibrarySync: () -> Unit,
     val onCheckModLibraryUpdates: () -> Unit,
     val onToggleModLibraryDisplayMode: () -> Unit,
+    val onToggleModLibraryFilterPanel: () -> Unit,
     val onUpdateModLibrarySearchQuery: (String) -> Unit,
     val onUpdateModLibraryGameFilter: (String?) -> Unit,
     val onUpdateModLibrarySortOption: (top.apricityx.workshop.ModLibrarySortOption) -> Unit,

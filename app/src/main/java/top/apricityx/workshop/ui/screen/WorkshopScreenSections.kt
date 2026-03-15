@@ -340,6 +340,7 @@ private fun WorkshopScreenContent(
                     state = state.modLibraryState,
                     onRetry = actions.onRetryModLibrarySync,
                     onCheckUpdates = actions.onCheckModLibraryUpdates,
+                    onToggleFilterPanel = actions.onToggleModLibraryFilterPanel,
                     onSearchQueryChange = actions.onUpdateModLibrarySearchQuery,
                     onGameFilterSelected = actions.onUpdateModLibraryGameFilter,
                     onSortOptionSelected = actions.onUpdateModLibrarySortOption,
