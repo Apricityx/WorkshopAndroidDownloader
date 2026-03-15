@@ -101,6 +101,39 @@ class DepotManifestParserTest {
     }
 
     @Test
+    fun `decrypt encrypted manifest filenames with embedded line breaks`() {
+        val depotKey = ByteArray(32) { index -> (index + 11).toByte() }
+        val encrypted = encryptManifestName(
+            name = "mods/example/file.txt",
+            depotKey = depotKey,
+            iv = ByteArray(16) { (it + 48).toByte() },
+        )
+        val wrapped = encrypted.chunked(31).joinToString("\r\n")
+
+        val manifest = DepotManifest(
+            depotId = 480u,
+            manifestId = 9999uL,
+            createdAt = Instant.EPOCH,
+            encryptedCrc = 0u,
+            filenamesEncrypted = true,
+            files = listOf(
+                ManifestFile(
+                    path = wrapped,
+                    size = 0,
+                    flags = 0u,
+                    shaContent = ByteArray(0),
+                    linkTarget = null,
+                    chunks = emptyList(),
+                ),
+            ),
+        )
+
+        val decrypted = manifest.decryptFilenames(depotKey)
+
+        assertThat(decrypted.files.single().path).isEqualTo("mods/example/file.txt")
+    }
+
+    @Test
     fun `parse trims manifest strings before storing`() {
         val payload = ContentManifestPayload.newBuilder()
             .addMappings(

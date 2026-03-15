@@ -1,6 +1,7 @@
 package top.apricityx.workshop
 
 import com.google.common.truth.Truth.assertThat
+import java.io.File
 import java.nio.file.Files
 import org.junit.Test
 
@@ -61,6 +62,43 @@ class ModLibraryRepositoryTest {
         val merged = mergeIndexedAndLocalMods(indexed, emptyList()) { 999L }
 
         assertThat(merged).isEmpty()
+    }
+
+    @Test
+    fun deleteFileAndEmptyParents_removes_empty_mod_directory_when_file_already_deleted() {
+        val root = Files.createTempDirectory("mod-library-delete").toFile()
+        val workshopRoot = File(root, "workshop")
+        val modDir = File(workshopRoot, "Noita/Simple Custom GUI")
+        val file = File(modDir, "mod.txt")
+        checkNotNull(file.parentFile).mkdirs()
+        file.writeText("content")
+
+        assertThat(file.delete()).isTrue()
+
+        deleteFileAndEmptyParents(file)
+
+        assertThat(modDir.exists()).isFalse()
+        assertThat(workshopRoot.exists()).isFalse()
+        root.deleteRecursively()
+    }
+
+    @Test
+    fun deleteFileAndEmptyParents_keeps_parent_directory_when_siblings_remain() {
+        val root = Files.createTempDirectory("mod-library-delete-siblings").toFile()
+        val workshopRoot = File(root, "workshop")
+        val modDir = File(workshopRoot, "Noita/Simple Custom GUI")
+        val removedFile = File(modDir, "remove.txt")
+        val keptFile = File(modDir, "keep.txt")
+        checkNotNull(removedFile.parentFile).mkdirs()
+        removedFile.writeText("remove")
+        keptFile.writeText("keep")
+
+        deleteFileAndEmptyParents(removedFile)
+
+        assertThat(removedFile.exists()).isFalse()
+        assertThat(keptFile.exists()).isTrue()
+        assertThat(modDir.exists()).isTrue()
+        root.deleteRecursively()
     }
 
     private fun sampleFile(

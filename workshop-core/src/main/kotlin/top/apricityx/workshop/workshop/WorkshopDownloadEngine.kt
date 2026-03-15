@@ -25,8 +25,12 @@ class WorkshopDownloadEngine(
             writeText("")
         }
         val metadataFile = File(request.outputDir, "metadata.json")
+        val completedFiles = linkedMapOf<String, DownloadedFileInfo>()
 
         suspend fun emitEvent(event: DownloadEvent) {
+            if (event is DownloadEvent.FileCompleted) {
+                completedFiles[event.file.relativePath] = event.file
+            }
             send(event)
         }
 
@@ -57,7 +61,10 @@ class WorkshopDownloadEngine(
                 }
             }
 
-            val files = discoverFiles(request.outputDir)
+            val files = completedFiles
+                .values
+                .sortedBy(DownloadedFileInfo::relativePath)
+                .ifEmpty { discoverFiles(request.outputDir) }
             send(DownloadEvent.StateChanged(DownloadState.Success))
             emitLog("Download finished with ${files.size} discovered files")
             send(DownloadEvent.Completed(files))

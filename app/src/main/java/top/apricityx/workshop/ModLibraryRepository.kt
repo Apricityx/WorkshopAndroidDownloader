@@ -119,6 +119,21 @@ private fun List<DownloadedModEntry>.sortedForDisplay(): List<DownloadedModEntry
 private fun isExistingFile(path: String): Boolean =
     File(path).isFile
 
+internal fun deleteFileAndEmptyParents(file: File) {
+    if (file.exists()) {
+        file.delete()
+    }
+    var current = file.parentFile
+    while (current != null && current.exists() && current.isDirectory && current.list().isNullOrEmpty()) {
+        val currentPath = current.absolutePath
+        current.delete()
+        if (currentPath.endsWith("${File.separator}workshop")) {
+            break
+        }
+        current = current.parentFile
+    }
+}
+
 private class AndroidModLibraryLocalDataSource(
     private val application: Application,
 ) : ModLibraryRepository.ModLibraryLocalDataSource {
@@ -143,10 +158,8 @@ private class AndroidModLibraryLocalDataSource(
 
     override suspend fun deleteModFiles(entry: DownloadedModEntry) = withContext(Dispatchers.IO) {
         entry.files.forEach { file ->
-            val deletedViaContentResolver = deleteMediaStoreFileIfNeeded(file)
-            if (!deletedViaContentResolver) {
-                resolvePhysicalFile(file)?.let(::deleteFileAndEmptyParents)
-            }
+            deleteMediaStoreFileIfNeeded(file)
+            resolvePhysicalFile(file)?.let(::deleteFileAndEmptyParents)
         }
     }
 
@@ -343,21 +356,6 @@ private class AndroidModLibraryLocalDataSource(
         @Suppress("DEPRECATION")
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         return File(downloadsDir, relativePath)
-    }
-
-    private fun deleteFileAndEmptyParents(file: File) {
-        if (file.exists()) {
-            file.delete()
-        }
-        var current = file.parentFile
-        while (current != null && current.exists() && current.isDirectory && current.list().isNullOrEmpty()) {
-            val currentPath = current.absolutePath
-            current.delete()
-            if (currentPath.endsWith("${File.separator}workshop")) {
-                break
-            }
-            current = current.parentFile
-        }
     }
 
     private data class ScanRoot(

@@ -62,7 +62,7 @@ data class DepotManifest(
         ecb: Cipher,
         cbc: Cipher,
     ): String {
-        val sanitizedEncoded = encoded.sanitizeManifestString()
+        val sanitizedEncoded = encoded.normalizeEncryptedManifestName()
         val encrypted = runCatching { Base64.getDecoder().decode(sanitizedEncoded) }
             .getOrElse { throw WorkshopDownloadException("Failed to base64 decode encrypted manifest name", it) }
         if (encrypted.size <= 16) {
@@ -180,3 +180,12 @@ object DepotManifestParser {
 }
 
 private fun String.sanitizeManifestString(): String = trim { it <= ' ' || it == '\u0000' }
+
+private fun String.normalizeEncryptedManifestName(): String =
+    buildString(length) {
+        this@normalizeEncryptedManifestName.forEach { character ->
+            if (character > ' ') {
+                append(character)
+            }
+        }
+    }
