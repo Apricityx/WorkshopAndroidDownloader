@@ -277,7 +277,7 @@ fun ModLibraryDisplayMode.sectionSubtitle(): String =
         ModLibraryDisplayMode.CompactList ->
             "点击条目进入详情后，可以打开、分享或删除文件。"
         ModLibraryDisplayMode.Overview ->
-            "点击缩略图进入详情，适合快速浏览已经下载的模组封面。"
+            "点击缩略图进入详情，长按可打开操作菜单。"
     }
 
 fun ModLibraryDisplayMode.toggleContentDescription(): String =

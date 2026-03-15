@@ -1,8 +1,15 @@
 package top.apricityx.workshop.ui.screen
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,16 +31,23 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,6 +113,9 @@ fun ModLibraryScreen(
             state = state,
             onCheckUpdates = onCheckUpdates,
             onOpenModDetail = onOpenModDetail,
+            onOpenPrimaryFile = onOpenPrimaryFile,
+            onSharePrimaryFile = onSharePrimaryFile,
+            onRemoveMod = onRemoveMod,
             modifier = modifier,
         )
 
@@ -162,6 +179,9 @@ private fun OverviewModLibraryGrid(
     state: ModLibraryUiState,
     onCheckUpdates: () -> Unit,
     onOpenModDetail: (DownloadedModEntry) -> Unit,
+    onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
+    onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
+    onRemoveMod: (DownloadedModEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalGrid(
@@ -181,6 +201,9 @@ private fun OverviewModLibraryGrid(
                 entry = entry,
                 updateResult = state.updateCheckState.results[entry.modLibraryKey()],
                 onOpenDetail = { onOpenModDetail(entry) },
+                onOpenPrimaryFile = { onOpenPrimaryFile(it) },
+                onSharePrimaryFile = { onSharePrimaryFile(it) },
+                onRemoveMod = { onRemoveMod(entry) },
             )
         }
     }
@@ -422,22 +445,55 @@ private fun LargePreviewModLibraryCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun OverviewModLibraryTile(
     entry: DownloadedModEntry,
     updateResult: ModUpdateCheckResult?,
     onOpenDetail: () -> Unit,
+    onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
+    onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
+    onRemoveMod: () -> Unit,
 ) {
+    val primaryFile = entry.primaryFile()
     val borderColor = overviewBorderColor(updateResult)
+    var menuExpanded by remember(entry.modLibraryKey()) { mutableStateOf(false) }
+    val interactionSource = remember(entry.modLibraryKey()) { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
+        label = "overviewTileScale",
+    )
+    val animatedElevation by animateDpAsState(
+        targetValue = if (isPressed) 1.dp else 2.dp,
+        animationSpec = spring(stiffness = 380f),
+        label = "overviewTileElevation",
+    )
+    val animatedHighlightAlpha by animateFloatAsState(
+        targetValue = if (isPressed) 0.1f else 0f,
+        animationSpec = spring(stiffness = 500f),
+        label = "overviewTileHighlight",
+    )
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clickable(onClick = onOpenDetail),
+            .graphicsLayer {
+                scaleX = animatedScale
+                scaleY = animatedScale
+            }
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onOpenDetail,
+                onLongClick = { menuExpanded = true },
+            ),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
         border = BorderStroke(2.dp, borderColor),
-        tonalElevation = 2.dp,
+        tonalElevation = animatedElevation,
+        shadowElevation = animatedElevation,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (!entry.previewImagePath.isNullOrBlank()) {
@@ -484,12 +540,12 @@ private fun OverviewModLibraryTile(
                         ),
                     ),
             )
-
-            OverviewTileBadge(
-                text = "${entry.files.size} 文件",
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp),
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = animatedHighlightAlpha),
+                    ),
             )
 
             overviewStatusLabel(updateResult)?.let { label ->
@@ -500,6 +556,42 @@ private fun OverviewModLibraryTile(
                         .padding(8.dp),
                     containerColor = borderColor.copy(alpha = 0.92f),
                     contentColor = overviewBadgeContentColor(updateResult),
+                )
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("查看详情") },
+                    onClick = {
+                        menuExpanded = false
+                        onOpenDetail()
+                    },
+                )
+                primaryFile?.let { file ->
+                    DropdownMenuItem(
+                        text = { Text("打开主文件") },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenPrimaryFile(file)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("分享主文件") },
+                        onClick = {
+                            menuExpanded = false
+                            onSharePrimaryFile(file)
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("删除本地模组") },
+                    onClick = {
+                        menuExpanded = false
+                        onRemoveMod()
+                    },
                 )
             }
         }
