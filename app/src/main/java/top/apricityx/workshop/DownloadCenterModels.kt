@@ -52,7 +52,8 @@ data class DownloadCenterUiState(
     val displayTasks: List<DownloadCenterTaskUiState>
         get() = tasks.sortedWith(
             compareBy<DownloadCenterTaskUiState> { it.status.sortOrder() }
-                .thenByDescending { if (it.status == DownloadCenterTaskStatus.Running) it.updatedAtMillis else it.enqueuedAtMillis }
+                .thenByDescending(DownloadCenterTaskUiState::displayOrderTimestamp)
+                .thenByDescending(DownloadCenterTaskUiState::enqueuedAtMillis)
                 .thenByDescending(DownloadCenterTaskUiState::updatedAtMillis),
         )
 
@@ -226,4 +227,16 @@ private fun DownloadCenterTaskStatus.sortOrder(): Int =
         DownloadCenterTaskStatus.Paused -> 2
         DownloadCenterTaskStatus.Failed -> 3
         DownloadCenterTaskStatus.Success -> 4
+    }
+
+private fun DownloadCenterTaskUiState.displayOrderTimestamp(): Long =
+    when (status) {
+        DownloadCenterTaskStatus.Running,
+        DownloadCenterTaskStatus.Queued,
+        DownloadCenterTaskStatus.Paused,
+        -> enqueuedAtMillis
+
+        DownloadCenterTaskStatus.Success,
+        DownloadCenterTaskStatus.Failed,
+        -> updatedAtMillis
     }
