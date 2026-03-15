@@ -5,6 +5,7 @@ import top.apricityx.workshop.steam.proto.CMsgProtoBufHeader
 import com.google.protobuf.MessageLite
 import java.io.ByteArrayInputStream
 import java.io.EOFException
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.zip.GZIPInputStream
@@ -164,26 +165,23 @@ object SteamPacketCodec {
         } else {
             ByteArrayInputStream(multi.messageBody.toByteArray())
         }
+        return readMultiPackets(stream)
+    }
 
+    internal fun readMultiPackets(stream: InputStream): List<ByteArray> {
         return buildList {
             while (true) {
                 val header = ByteArray(4)
-                val read = stream.read(header)
-                if (read == -1) {
+                val bytesRead = stream.readFullyCompat(header)
+                if (bytesRead == 0) {
                     break
                 }
-                if (read != 4) {
+                if (bytesRead != 4) {
                     throw EOFException("Unexpected EOF while reading multi-packet chunk length")
                 }
                 val length = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).int
                 require(length > 0) { "Invalid sub-packet length: $length" }
-                val payload = ByteArray(length)
-                stream.readFullyCompat(payload).also { bytesRead ->
-                    if (bytesRead != length) {
-                        throw EOFException("Unexpected EOF while reading multi-packet payload")
-                    }
-                }
-                add(payload)
+                add(stream.readExactlyCompat(length))
             }
         }
     }

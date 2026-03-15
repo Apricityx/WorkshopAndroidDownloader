@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <!-- Steam China CDN nodes such as dl.steam.clngaa.com are still served over HTTP. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">steam.clngaa.com</domain>
+    </domain-config>
+</network-security-config>

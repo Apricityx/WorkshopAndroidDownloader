@@ -25,9 +25,29 @@ data class CdnServer(
     val allowedAppIds: List<UInt>,
     val priorityClass: UInt,
 ) {
-    val port: Int = if (httpsSupport == "mandatory") 443 else 80
-    val secureScheme: String = if (httpsSupport == "mandatory") "https" else "http"
+    private val normalizedHttpsSupport = httpsSupport.trim().lowercase()
+
+    val supportsHttps: Boolean = normalizedHttpsSupport == "mandatory" || normalizedHttpsSupport == "optional"
+    val requiresHttps: Boolean = normalizedHttpsSupport == "mandatory"
+    val port: Int = if (supportsHttps) 443 else 80
+    val secureScheme: String = if (supportsHttps) "https" else "http"
+
+    fun requestEndpoints(): List<CdnRequestEndpoint> =
+        when {
+            requiresHttps -> listOf(CdnRequestEndpoint(scheme = "https", port = 443))
+            supportsHttps -> listOf(
+                CdnRequestEndpoint(scheme = "https", port = 443),
+                CdnRequestEndpoint(scheme = "http", port = 80),
+            )
+
+            else -> listOf(CdnRequestEndpoint(scheme = "http", port = 80))
+        }
 }
+
+data class CdnRequestEndpoint(
+    val scheme: String,
+    val port: Int,
+)
 
 data class SessionContext(
     val sessionId: Int,

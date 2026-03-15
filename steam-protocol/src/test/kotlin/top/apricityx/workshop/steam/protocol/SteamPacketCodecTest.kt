@@ -6,8 +6,10 @@ import top.apricityx.workshop.steam.proto.CMsgProtoBufHeader
 import com.google.protobuf.ByteString
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.zip.GZIPOutputStream
 
 class SteamPacketCodecTest {
     @Test
@@ -52,6 +54,72 @@ class SteamPacketCodecTest {
 
         assertThat(expanded).hasSize(1)
         assertThat(CMsgClientHello.parseFrom(SteamPacketCodec.decode(expanded.single()).body).protocolVersion).isEqualTo(1)
+    }
+
+    @Test
+    fun `expandMulti returns nested packets from compressed payload`() {
+        val nested = SteamPacketCodec.encode(
+            emsg = SteamPacketCodec.emsgClientHello,
+            header = CMsgProtoBufHeader.getDefaultInstance(),
+            body = CMsgClientHello.newBuilder().setProtocolVersion(7).build(),
+        )
+
+        val messageBody = ByteBuffer.allocate(4 + nested.size)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(nested.size)
+            .put(nested)
+            .array()
+        val compressedBody = gzip(messageBody)
+
+        val multi = SteamPacketCodec.encode(
+            emsg = SteamPacketCodec.emsgMulti,
+            header = CMsgProtoBufHeader.getDefaultInstance(),
+            body = CMsgMulti.newBuilder()
+                .setSizeUnzipped(messageBody.size)
+                .setMessageBody(ByteString.copyFrom(compressedBody))
+                .build(),
+        )
+
+        val expanded = SteamPacketCodec.expandMulti(SteamPacketCodec.decode(multi))
+
+        assertThat(expanded).hasSize(1)
+        assertThat(CMsgClientHello.parseFrom(SteamPacketCodec.decode(expanded.single()).body).protocolVersion).isEqualTo(7)
+    }
+
+    @Test
+    fun `readMultiPackets tolerates short reads while filling chunk header`() {
+        val first = SteamPacketCodec.encode(
+            emsg = SteamPacketCodec.emsgClientHello,
+            header = CMsgProtoBufHeader.getDefaultInstance(),
+            body = CMsgClientHello.newBuilder().setProtocolVersion(11).build(),
+        )
+        val second = SteamPacketCodec.encode(
+            emsg = SteamPacketCodec.emsgClientHello,
+            header = CMsgProtoBufHeader.getDefaultInstance(),
+            body = CMsgClientHello.newBuilder().setProtocolVersion(12).build(),
+        )
+
+        val messageBody = ByteBuffer.allocate(8 + first.size + second.size)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(first.size)
+            .put(first)
+            .putInt(second.size)
+            .put(second)
+            .array()
+
+        val stream = object : ByteArrayInputStream(messageBody) {
+            override fun read(
+                b: ByteArray,
+                off: Int,
+                len: Int,
+            ): Int = super.read(b, off, minOf(len, 2))
+        }
+
+        val expanded = SteamPacketCodec.readMultiPackets(stream)
+
+        assertThat(expanded).hasSize(2)
+        assertThat(CMsgClientHello.parseFrom(SteamPacketCodec.decode(expanded[0]).body).protocolVersion).isEqualTo(11)
+        assertThat(CMsgClientHello.parseFrom(SteamPacketCodec.decode(expanded[1]).body).protocolVersion).isEqualTo(12)
     }
 
     @Test
@@ -116,5 +184,11 @@ class SteamPacketCodecTest {
         assertThat(decoded.resultCode).isEqualTo(42)
         assertThat(decoded.minReconnectHintSeconds).isEqualTo(5)
         assertThat(decoded.maxReconnectHintSeconds).isEqualTo(30)
+    }
+
+    private fun gzip(input: ByteArray): ByteArray {
+        val output = java.io.ByteArrayOutputStream()
+        GZIPOutputStream(output).use { it.write(input) }
+        return output.toByteArray()
     }
 }

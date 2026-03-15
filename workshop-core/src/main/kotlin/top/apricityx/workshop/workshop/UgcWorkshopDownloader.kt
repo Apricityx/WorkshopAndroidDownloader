@@ -1,6 +1,7 @@
 package top.apricityx.workshop.workshop
 
 import top.apricityx.workshop.steam.protocol.CdnServer
+import top.apricityx.workshop.steam.protocol.CdnRequestEndpoint
 import top.apricityx.workshop.steam.protocol.OkHttpSteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamContentClient
@@ -425,9 +426,39 @@ class UgcWorkshopDownloader(
         depotId: UInt,
         contentClient: SteamContentClient,
     ): ByteArray {
+        var lastError: Throwable? = null
+        for (endpoint in server.requestEndpoints()) {
+            try {
+                return requestBytesFromEndpoint(
+                    server = server,
+                    endpoint = endpoint,
+                    path = path,
+                    query = query,
+                    appId = appId,
+                    depotId = depotId,
+                    contentClient = contentClient,
+                )
+            } catch (error: Throwable) {
+                lastError = error
+            }
+        }
+        throw WorkshopDownloadException("Steam CDN request exhausted retries", lastError)
+    }
+
+    private suspend fun requestBytesFromEndpoint(
+        server: CdnServer,
+        endpoint: CdnRequestEndpoint,
+        path: String,
+        query: String?,
+        appId: UInt,
+        depotId: UInt,
+        contentClient: SteamContentClient,
+    ): ByteArray {
         var currentQuery = query
         repeat(2) { attempt ->
-            val request = Request.Builder().url(buildServerUrl(server, path, currentQuery)).build()
+            val request = Request.Builder()
+                .url(buildServerUrl(server, endpoint, path, currentQuery))
+                .build()
             client.newCall(request).execute().use { response ->
                 when {
                     response.isSuccessful -> return response.body?.bytes() ?: ByteArray(0)
@@ -441,11 +472,16 @@ class UgcWorkshopDownloader(
         throw WorkshopDownloadException("Steam CDN request exhausted retries")
     }
 
-    private fun buildServerUrl(server: CdnServer, path: String, query: String?): HttpUrl {
+    private fun buildServerUrl(
+        server: CdnServer,
+        endpoint: CdnRequestEndpoint,
+        path: String,
+        query: String?,
+    ): HttpUrl {
         return HttpUrl.Builder()
-            .scheme(server.secureScheme)
+            .scheme(endpoint.scheme)
             .host(server.vHost)
-            .port(server.port)
+            .port(endpoint.port)
             .addEncodedPathSegments(path)
             .apply {
                 if (!query.isNullOrBlank()) {
