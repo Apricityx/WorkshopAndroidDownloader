@@ -143,7 +143,7 @@ fun DownloadTaskDetailScreen(
         SectionCard(title = "日志") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "下载和导出关键步骤会额外写入独立调试日志。复现后可直接分享这份文件用于排查卓易通/鸿蒙兼容问题。",
+                    text = "系统层面上的诊断日志。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

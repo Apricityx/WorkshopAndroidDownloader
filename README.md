@@ -5,11 +5,11 @@
 <h1 align="center">WorkshopOnAndroid</h1>
 
 <p align="center">
-  一个面向 Android 的 Steam 创意工坊公开模组下载器项目
+  一个面向 Android 的 Steam 创意工坊模组下载器项目
 </p>
 
 <p align="center">
-  支持浏览支持创意工坊的游戏、查看模组详情、下载公开条目，并自动导出到系统下载目录
+  支持浏览支持创意工坊的游戏、查看模组详情；公开条目可匿名下载，登录后会把 Steam 账号态带入下载链路，并自动导出到系统下载目录
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <img alt="Android API 31+" src="https://img.shields.io/badge/Android-API%2031%2B-34A853?style=flat-square&logo=android&logoColor=white" />
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Android-7f52ff?style=flat-square&logo=kotlin&logoColor=white" />
   <img alt="Jetpack Compose" src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white" />
-  <img alt="Steam Workshop Public Items" src="https://img.shields.io/badge/Steam%20Workshop-Public%20Items-1b2838?style=flat-square&logo=steam&logoColor=white" />
+  <img alt="Steam Workshop Login Aware" src="https://img.shields.io/badge/Steam%20Workshop-Login%20Aware-1b2838?style=flat-square&logo=steam&logoColor=white" />
   <img alt="Authenticated Steam CM" src="https://img.shields.io/badge/Protocol-Authenticated%20Steam%20CM-0a7ea4?style=flat-square" />
 </p>
 
@@ -40,7 +40,7 @@
 </p>
 
 > [!IMPORTANT]
-> 支持在设置页通过 Steam 协议登录账号，并把同一套账号同时用于工坊浏览和下载。公开条目仍可匿名下载；需要登录态的条目会在任务入队时冻结绑定当前账号。当前仍不支持 `Collection` 下载和二维码登录。
+> 支持在设置页通过 Steam 协议登录账号，并把同一套账号同时用于工坊浏览和下载。公开条目仍可匿名下载；需要登录态的条目会在任务入队时冻结绑定当前账号，并在下载时携带对应的 Steam Cookie / CM 会话。当前仍不支持 `Collection` 下载和二维码登录。
 
 <a id="highlights"></a>
 
@@ -117,7 +117,7 @@
 - 下载线程数可在应用设置页调整，范围 `1..8`
 - 同时下载任务数可在应用设置页调整，范围 `1..3`
 - 主题模式支持跟随系统、浅色和深色
-- 可在应用设置页保存多个 Steam 账号，切换当前浏览账号，并把下载任务绑定到入队时的账号
+- 可在应用设置页保存多个 Steam 账号，切换当前浏览账号，并把下载任务绑定到入队时的账号；下载时会按绑定账号携带 Steam 登录态
 
 <a id="release-automation"></a>
 
@@ -188,7 +188,7 @@ scripts\prepare-release.bat
 
 ## 当前限制
 
-- 下载仍只支持公开可访问的创意工坊条目；Steam 登录仅改善浏览可见性，不改变下载鉴权方式。
+- 公开条目可匿名下载；登录后，下载任务会按入队时绑定的账号携带 Steam 登录态，请求需要认证的元数据、Steam CM 和 CDN 资源。实际能否下载仍取决于该账号对条目的可见性与 Steam 上游鉴权结果。
 - 暂不支持 `Collection`。
-- 工坊列表和详情依赖 Steam 页面结构与公开接口，若上游改版需要同步调整解析逻辑。
+- 工坊列表和详情依赖 Steam 页面结构与相关接口，若上游改版需要同步调整解析逻辑。
 - 当网络无法稳定访问 Steam 时，游戏库、工坊列表和下载流程都可能失败或超时。
