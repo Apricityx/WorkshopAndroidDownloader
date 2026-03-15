@@ -34,21 +34,28 @@ class ModLibraryRepository(
         gameTitle: String,
         itemTitle: String,
         previewImagePath: String? = null,
+        versionId: String = LEGACY_MOD_VERSION_ID,
+        versionUpdatedAtMillis: Long? = null,
         files: List<ExportedDownloadFile>,
     ): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
         store.withFileLock {
             val currentEntries = store.loadEntries()
-            val existingEntry = currentEntries.firstOrNull { it.matches(appId, publishedFileId) }
+            val normalizedVersionId = normalizeModVersionId(versionId)
+            val existingEntry = currentEntries.firstOrNull {
+                it.matches(appId, publishedFileId, normalizedVersionId)
+            }
             val updatedEntry = DownloadedModEntry(
                 appId = appId,
                 publishedFileId = publishedFileId,
                 gameTitle = gameTitle,
                 itemTitle = itemTitle,
                 previewImagePath = previewImagePath ?: existingEntry?.previewImagePath?.takeIf(::isExistingFile),
+                versionId = normalizedVersionId,
+                versionUpdatedAtMillis = versionUpdatedAtMillis,
                 storedAtMillis = nowMillis(),
                 files = files.sortedBy(ExportedDownloadFile::relativePath),
             )
-            val updated = (currentEntries.filterNot { it.matches(appId, publishedFileId) } + updatedEntry)
+            val updated = (currentEntries.filterNot { it.matches(appId, publishedFileId, normalizedVersionId) } + updatedEntry)
                 .sortedForDisplay()
             store.saveEntries(updated)
             updated
@@ -59,7 +66,9 @@ class ModLibraryRepository(
         store.withFileLock {
             localDataSource.deleteModFiles(entry)
             previewImageCache.deleteCachedPreview(entry.previewImagePath)
-            val remainingIndexedEntries = store.loadEntries().filterNot { it.matches(entry.appId, entry.publishedFileId) }
+            val remainingIndexedEntries = store.loadEntries().filterNot {
+                it.matches(entry.appId, entry.publishedFileId, entry.versionId)
+            }
             val synced = mergeIndexedAndLocalMods(
                 indexedEntries = remainingIndexedEntries,
                 localMods = localDataSource.listLocalMods(remainingIndexedEntries),
@@ -79,6 +88,10 @@ class ModLibraryRepository(
     data class LocalModSnapshot(
         val appId: UInt,
         val publishedFileId: ULong,
+        val gameTitle: String? = null,
+        val itemTitle: String? = null,
+        val versionId: String = LEGACY_MOD_VERSION_ID,
+        val versionUpdatedAtMillis: Long? = null,
         val files: List<ExportedDownloadFile>,
     )
 }
@@ -89,16 +102,24 @@ internal fun mergeIndexedAndLocalMods(
     localMods: List<ModLibraryRepository.LocalModSnapshot>,
     nowMillis: () -> Long,
 ): List<DownloadedModEntry> {
-    val indexedByKey = indexedEntries.associateBy { it.appId to it.publishedFileId }
+    val indexedByKey = indexedEntries.associateBy(::entryIdentityKey)
     return localMods
         .map { local ->
-            val existing = indexedByKey[local.appId to local.publishedFileId]
+            val existing = indexedByKey[
+                entryIdentityKey(
+                    appId = local.appId,
+                    publishedFileId = local.publishedFileId,
+                    versionId = local.versionId,
+                )
+            ]
             DownloadedModEntry(
                 appId = local.appId,
                 publishedFileId = local.publishedFileId,
-                gameTitle = existing?.gameTitle ?: "App ${local.appId}",
-                itemTitle = existing?.itemTitle ?: "模组 ${local.publishedFileId}",
+                gameTitle = existing?.gameTitle ?: local.gameTitle.orEmpty().ifBlank { "App ${local.appId}" },
+                itemTitle = existing?.itemTitle ?: local.itemTitle.orEmpty().ifBlank { "模组 ${local.publishedFileId}" },
                 previewImagePath = existing?.previewImagePath?.takeIf(::isExistingFile),
+                versionId = normalizeModVersionId(existing?.versionId ?: local.versionId),
+                versionUpdatedAtMillis = existing?.versionUpdatedAtMillis ?: local.versionUpdatedAtMillis,
                 storedAtMillis = existing?.storedAtMillis
                     ?: local.files.maxOfOrNull(ExportedDownloadFile::modifiedEpochMillis)
                     ?: nowMillis(),
@@ -109,12 +130,27 @@ internal fun mergeIndexedAndLocalMods(
 }
 
 private fun List<DownloadedModEntry>.sortedForDisplay(): List<DownloadedModEntry> =
-    distinctBy { it.appId to it.publishedFileId }
+    distinctBy(::entryIdentityKey)
         .sortedWith(
             compareByDescending<DownloadedModEntry> { it.storedAtMillis }
+                .thenByDescending { it.versionUpdatedAtMillis ?: Long.MIN_VALUE }
                 .thenBy { it.gameTitle.lowercase() }
                 .thenBy { it.itemTitle.lowercase() },
         )
+
+private fun entryIdentityKey(it: DownloadedModEntry): Triple<UInt, ULong, String> =
+    entryIdentityKey(
+        appId = it.appId,
+        publishedFileId = it.publishedFileId,
+        versionId = it.versionId,
+    )
+
+private fun entryIdentityKey(
+    appId: UInt,
+    publishedFileId: ULong,
+    versionId: String,
+): Triple<UInt, ULong, String> =
+    Triple(appId, publishedFileId, normalizeModVersionId(versionId))
 
 private fun isExistingFile(path: String): Boolean =
     File(path).isFile
@@ -140,16 +176,22 @@ private class AndroidModLibraryLocalDataSource(
     override suspend fun listLocalMods(
         indexedEntries: List<DownloadedModEntry>,
     ): List<ModLibraryRepository.LocalModSnapshot> = withContext(Dispatchers.IO) {
-        val discovered = linkedMapOf<Pair<UInt, ULong>, MutableList<ExportedDownloadFile>>()
+        val discovered = linkedMapOf<Triple<UInt, ULong, String>, MutableList<DiscoveredFile>>()
         collectIndexedFiles(indexedEntries).forEach { addDiscoveredFile(discovered, it) }
         scanLegacyMediaStore().forEach { addDiscoveredFile(discovered, it) }
         scanLegacyFileSystem().forEach { addDiscoveredFile(discovered, it) }
 
         discovered.entries.map { (key, files) ->
+            val first = files.first()
             ModLibraryRepository.LocalModSnapshot(
                 appId = key.first,
                 publishedFileId = key.second,
+                gameTitle = first.gameTitle,
+                itemTitle = first.itemTitle,
+                versionId = key.third,
+                versionUpdatedAtMillis = first.versionUpdatedAtMillis,
                 files = files
+                    .map(DiscoveredFile::file)
                     .distinctBy { it.contentUri to it.userVisiblePath }
                     .sortedBy(ExportedDownloadFile::relativePath),
             )
@@ -172,6 +214,10 @@ private class AndroidModLibraryLocalDataSource(
                 DiscoveredFile(
                     appId = entry.appId,
                     publishedFileId = entry.publishedFileId,
+                    gameTitle = entry.gameTitle,
+                    itemTitle = entry.itemTitle,
+                    versionId = entry.versionId,
+                    versionUpdatedAtMillis = entry.versionUpdatedAtMillis,
                     file = file,
                 )
             }
@@ -213,6 +259,10 @@ private class AndroidModLibraryLocalDataSource(
                         DiscoveredFile(
                             appId = parsed.appId,
                             publishedFileId = parsed.publishedFileId,
+                            gameTitle = parsed.gameTitle,
+                            itemTitle = parsed.itemTitle,
+                            versionId = parsed.versionId,
+                            versionUpdatedAtMillis = parsed.versionUpdatedAtMillis,
                             file = ExportedDownloadFile(
                                 relativePath = parsed.fileRelativePath,
                                 sizeBytes = cursor.getLong(sizeIndex),
@@ -254,9 +304,14 @@ private class AndroidModLibraryLocalDataSource(
                     .mapNotNull { file ->
                         val parsed = parseLegacyFileSystemPath(root.root, file) ?: return@mapNotNull null
                         val contentUri = fileContentUri(file) ?: return@mapNotNull null
+                        val relativeToRoot = file.relativeTo(root.root).invariantSeparatorsPath
                         DiscoveredFile(
                             appId = parsed.appId,
                             publishedFileId = parsed.publishedFileId,
+                            gameTitle = parsed.gameTitle,
+                            itemTitle = parsed.itemTitle,
+                            versionId = parsed.versionId,
+                            versionUpdatedAtMillis = parsed.versionUpdatedAtMillis,
                             file = ExportedDownloadFile(
                                 relativePath = parsed.fileRelativePath,
                                 sizeBytes = file.length(),
@@ -264,9 +319,7 @@ private class AndroidModLibraryLocalDataSource(
                                 contentUri = contentUri,
                                 userVisiblePath = root.kind.userVisiblePath(
                                     file = file,
-                                    appId = parsed.appId,
-                                    publishedFileId = parsed.publishedFileId,
-                                    fileRelativePath = parsed.fileRelativePath,
+                                    rootRelativePath = relativeToRoot,
                                 ),
                             ),
                         )
@@ -290,11 +343,15 @@ private class AndroidModLibraryLocalDataSource(
     }
 
     private fun addDiscoveredFile(
-        target: MutableMap<Pair<UInt, ULong>, MutableList<ExportedDownloadFile>>,
+        target: MutableMap<Triple<UInt, ULong, String>, MutableList<DiscoveredFile>>,
         file: DiscoveredFile,
     ) {
-        val key = file.appId to file.publishedFileId
-        target.getOrPut(key) { mutableListOf() }.add(file.file)
+        val key = entryIdentityKey(
+            appId = file.appId,
+            publishedFileId = file.publishedFileId,
+            versionId = file.versionId,
+        )
+        target.getOrPut(key) { mutableListOf() }.add(file)
     }
 
     private fun fileContentUri(file: File): String? =
@@ -371,29 +428,34 @@ private class AndroidModLibraryLocalDataSource(
 
         fun userVisiblePath(
             file: File,
-            appId: UInt,
-            publishedFileId: ULong,
-            fileRelativePath: String,
+            rootRelativePath: String,
         ): String =
             when (this) {
                 AppExternal,
                 AppInternal,
                 -> file.absolutePath
 
-                LegacyPublic -> WorkshopPublicExportManager.downloadRootRelativePath() +
-                    appId + "/" + publishedFileId + "/" + fileRelativePath
+                LegacyPublic -> WorkshopPublicExportManager.downloadRootRelativePath() + rootRelativePath
             }
     }
 
     private data class ParsedModPath(
         val appId: UInt,
         val publishedFileId: ULong,
+        val gameTitle: String? = null,
+        val itemTitle: String? = null,
+        val versionId: String = LEGACY_MOD_VERSION_ID,
+        val versionUpdatedAtMillis: Long? = null,
         val fileRelativePath: String,
     )
 
     private data class DiscoveredFile(
         val appId: UInt,
         val publishedFileId: ULong,
+        val gameTitle: String? = null,
+        val itemTitle: String? = null,
+        val versionId: String = LEGACY_MOD_VERSION_ID,
+        val versionUpdatedAtMillis: Long? = null,
         val file: ExportedDownloadFile,
     )
 
@@ -406,12 +468,24 @@ private class AndroidModLibraryLocalDataSource(
 
         val appId = segments[2].toUIntOrNull() ?: return null
         val publishedFileId = segments[3].toULongOrNull() ?: return null
-        val fileRelativePath = segments.drop(4).joinToString("/").ifBlank { return null }
-        return ParsedModPath(
-            appId = appId,
-            publishedFileId = publishedFileId,
-            fileRelativePath = fileRelativePath,
-        )
+        val parsedVersion = if (segments.size >= 8) {
+            ParsedModPath(
+                appId = appId,
+                publishedFileId = publishedFileId,
+                versionId = normalizeModVersionId(segments[4]),
+                versionUpdatedAtMillis = parseModVersionUpdatedAtMillis(normalizeModVersionId(segments[4])),
+                gameTitle = segments[5],
+                itemTitle = segments[6],
+                fileRelativePath = segments.drop(7).joinToString("/").ifBlank { return null },
+            )
+        } else {
+            ParsedModPath(
+                appId = appId,
+                publishedFileId = publishedFileId,
+                fileRelativePath = segments.drop(4).joinToString("/").ifBlank { return null },
+            )
+        }
+        return parsedVersion
     }
 
     private fun parseLegacyFileSystemPath(
@@ -426,12 +500,24 @@ private class AndroidModLibraryLocalDataSource(
 
         val appId = segments[0].toUIntOrNull() ?: return null
         val publishedFileId = segments[1].toULongOrNull() ?: return null
-        val fileRelativePath = segments.drop(2).joinToString("/").ifBlank { return null }
-        return ParsedModPath(
-            appId = appId,
-            publishedFileId = publishedFileId,
-            fileRelativePath = fileRelativePath,
-        )
+        return if (segments.size >= 6) {
+            val versionId = normalizeModVersionId(segments[2])
+            ParsedModPath(
+                appId = appId,
+                publishedFileId = publishedFileId,
+                versionId = versionId,
+                versionUpdatedAtMillis = parseModVersionUpdatedAtMillis(versionId),
+                gameTitle = segments[3],
+                itemTitle = segments[4],
+                fileRelativePath = segments.drop(5).joinToString("/").ifBlank { return null },
+            )
+        } else {
+            ParsedModPath(
+                appId = appId,
+                publishedFileId = publishedFileId,
+                fileRelativePath = segments.drop(2).joinToString("/").ifBlank { return null },
+            )
+        }
     }
 }
 

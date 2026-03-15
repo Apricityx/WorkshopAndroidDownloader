@@ -19,10 +19,12 @@ class DownloadCenterTaskFinalizer(
         log("开始整理下载结果。stagingDir=${stagingDir.absolutePath} files=${downloadedFiles.size}")
         val metadata = readWorkshopDownloadMetadata(stagingDir)
         val resolvedItemTitle = metadata?.title?.takeIf(String::isNotBlank) ?: task.itemTitle
+        val version = resolveWorkshopModVersion(metadata)
         log("解析元数据完成。resolvedItemTitle=$resolvedItemTitle")
         val exportedFiles = publicExportManager.exportDownloadedFiles(
             gameTitle = task.gameTitle,
             itemTitle = resolvedItemTitle,
+            versionId = version.versionId,
             stagingDir = stagingDir,
             files = downloadedFiles,
             log = log,
@@ -37,6 +39,7 @@ class DownloadCenterTaskFinalizer(
         syncModLibrary(
             task = task,
             itemTitle = resolvedItemTitle,
+            version = version,
             previewImagePath = previewImagePath,
             exportedFiles = exportedFiles,
             log = log,
@@ -75,6 +78,7 @@ class DownloadCenterTaskFinalizer(
     private suspend fun syncModLibrary(
         task: DownloadCenterTaskUiState,
         itemTitle: String,
+        version: WorkshopModVersion,
         previewImagePath: String?,
         exportedFiles: List<ExportedDownloadFile>,
         log: suspend (String) -> Unit,
@@ -87,6 +91,8 @@ class DownloadCenterTaskFinalizer(
                 gameTitle = task.gameTitle,
                 itemTitle = itemTitle,
                 previewImagePath = previewImagePath,
+                versionId = version.versionId,
+                versionUpdatedAtMillis = version.updatedAtMillis,
                 files = exportedFiles,
             )
         }

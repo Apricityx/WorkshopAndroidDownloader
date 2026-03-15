@@ -24,6 +24,7 @@ class WorkshopPublicExportManager(
     suspend fun exportDownloadedFiles(
         gameTitle: String,
         itemTitle: String,
+        versionId: String,
         stagingDir: File,
         files: List<top.apricityx.workshop.workshop.DownloadedFileInfo>,
         log: suspend (String) -> Unit,
@@ -56,20 +57,24 @@ class WorkshopPublicExportManager(
                 modSubdirectoryPath = buildModSubdirectoryPath(
                     gameTitle = gameTitle,
                     itemTitle = resolvedItemTitle,
+                    versionId = versionId,
                 ),
                 downloadSubdirectoryPath = buildDownloadSubdirectoryPath(
                     gameTitle = gameTitle,
                     itemTitle = resolvedItemTitle,
+                    versionId = versionId,
                     relativeFilePath = file.relativePath,
                 ),
                 mediaStoreRelativePath = buildDownloadRelativePath(
                     gameTitle = gameTitle,
                     itemTitle = resolvedItemTitle,
+                    versionId = versionId,
                     relativeFilePath = file.relativePath,
                 ),
                 publicUserVisiblePath = buildUserVisiblePath(
                     gameTitle = gameTitle,
                     itemTitle = resolvedItemTitle,
+                    versionId = versionId,
                     relativeFilePath = file.relativePath,
                     displayName = displayName,
                 ),
@@ -397,22 +402,32 @@ class WorkshopPublicExportManager(
         fun buildModSubdirectoryPath(
             gameTitle: String,
             itemTitle: String,
+            versionId: String,
         ): String = buildString {
             append("workshop/")
             append(sanitizeDirectorySegment(gameTitle, fallback = "game"))
             append('/')
             append(sanitizeDirectorySegment(itemTitle, fallback = "mod"))
             append('/')
+            append(sanitizeDirectorySegment(versionId, fallback = LEGACY_MOD_VERSION_ID))
+            append('/')
         }
 
         fun buildDownloadSubdirectoryPath(
             gameTitle: String,
             itemTitle: String,
+            versionId: String,
             relativeFilePath: String,
         ): String {
             val parent = relativeFilePath.substringBeforeLast('/', "")
             return buildString {
-                append(buildModSubdirectoryPath(gameTitle = gameTitle, itemTitle = itemTitle))
+                append(
+                    buildModSubdirectoryPath(
+                        gameTitle = gameTitle,
+                        itemTitle = itemTitle,
+                        versionId = versionId,
+                    ),
+                )
                 if (parent.isNotEmpty()) {
                     append(parent)
                     append('/')
@@ -425,22 +440,26 @@ class WorkshopPublicExportManager(
         fun buildDownloadRelativePath(
             gameTitle: String,
             itemTitle: String,
+            versionId: String,
             relativeFilePath: String,
         ): String = downloadsDirectoryName() + "/" +
             buildDownloadSubdirectoryPath(
                 gameTitle = gameTitle,
                 itemTitle = itemTitle,
+                versionId = versionId,
                 relativeFilePath = relativeFilePath,
             )
 
         fun buildUserVisiblePath(
             gameTitle: String,
             itemTitle: String,
+            versionId: String,
             relativeFilePath: String,
             displayName: String = relativeFilePath.substringAfterLast('/'),
         ): String = buildDownloadRelativePath(
             gameTitle = gameTitle,
             itemTitle = itemTitle,
+            versionId = versionId,
             relativeFilePath = relativeFilePath,
         ) + displayName
 

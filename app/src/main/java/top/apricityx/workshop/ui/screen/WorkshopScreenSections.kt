@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import top.apricityx.workshop.DownloadCenterTaskUiState
 import top.apricityx.workshop.DownloadedModEntry
+import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ModLibraryDisplayMode
 import top.apricityx.workshop.WorkshopScreenDestination
 import top.apricityx.workshop.WorkshopUiState
@@ -49,13 +50,14 @@ import top.apricityx.workshop.isLibraryRoot
 import top.apricityx.workshop.showsDownloadCenterShortcut
 import top.apricityx.workshop.showsSettingsShortcut
 import top.apricityx.workshop.toggleContentDescription
+import top.apricityx.workshop.versionLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WorkshopTopBar(
     state: WorkshopUiState,
     selectedTask: DownloadCenterTaskUiState?,
-    selectedMod: DownloadedModEntry?,
+    selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
 ) {
     CenterAlignedTopAppBar(
@@ -172,7 +174,7 @@ internal fun WorkshopLibraryBottomBar(
 internal fun WorkshopBody(
     state: WorkshopUiState,
     selectedTask: DownloadCenterTaskUiState?,
-    selectedMod: DownloadedModEntry?,
+    selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
     saveableStateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
@@ -285,7 +287,9 @@ private fun WorkshopDialogs(
         AlertDialog(
             onDismissRequest = actions.onDismissRemoveMod,
             title = { Text("删除本地模组") },
-            text = { Text("确定要删除「${pendingRemoveMod.itemTitle}」的本地文件吗？下载历史会保留。") },
+            text = {
+                Text("确定要删除「${pendingRemoveMod.itemTitle}」的 ${pendingRemoveMod.versionLabel()} 本地文件吗？下载历史会保留。")
+            },
             confirmButton = {
                 OutlinedButton(onClick = actions.onConfirmRemoveMod) {
                     Text("确定")
@@ -304,7 +308,7 @@ private fun WorkshopDialogs(
 private fun WorkshopScreenContent(
     state: WorkshopUiState,
     selectedTask: DownloadCenterTaskUiState?,
-    selectedMod: DownloadedModEntry?,
+    selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
     saveableStateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
@@ -336,10 +340,13 @@ private fun WorkshopScreenContent(
                     state = state.modLibraryState,
                     onRetry = actions.onRetryModLibrarySync,
                     onCheckUpdates = actions.onCheckModLibraryUpdates,
+                    onSearchQueryChange = actions.onUpdateModLibrarySearchQuery,
+                    onGameFilterSelected = actions.onUpdateModLibraryGameFilter,
+                    onSortOptionSelected = actions.onUpdateModLibrarySortOption,
+                    onClearFilters = actions.onClearModLibraryFilters,
                     onOpenModDetail = actions.onOpenModDetail,
                     onOpenPrimaryFile = actions.onOpenModFile,
                     onSharePrimaryFile = actions.onShareModFile,
-                    onRemoveMod = actions.onRequestRemoveMod,
                     modifier = Modifier.fillMaxSize(),
                 )
 
@@ -381,10 +388,12 @@ private fun WorkshopScreenContent(
 
                 WorkshopScreenDestination.ModDetail -> selectedMod?.let { entry ->
                     ModDetailScreen(
-                        entry = entry,
+                        group = entry,
+                        updateResults = state.modLibraryState.updateCheckState.results,
                         onOpenFile = actions.onOpenModFile,
                         onShareFile = actions.onShareModFile,
-                        onRemoveMod = { actions.onRequestRemoveMod(entry) },
+                        onUpdateMod = actions.onUpdateMod,
+                        onRemoveMod = actions.onRequestRemoveMod,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -452,7 +461,7 @@ private fun WorkshopScreenContent(
 
 private fun WorkshopUiState.titleForScreen(
     selectedTask: DownloadCenterTaskUiState?,
-    selectedMod: DownloadedModEntry?,
+    selectedMod: DownloadedModGroup?,
 ): String =
     when (currentScreen) {
         WorkshopScreenDestination.GameLibrary -> "游戏库"

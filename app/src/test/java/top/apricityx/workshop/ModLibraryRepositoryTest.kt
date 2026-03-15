@@ -16,6 +16,8 @@ class ModLibraryRepositoryTest {
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
                 previewImagePath = previewFile.absolutePath,
+                versionId = "updated-1772900923",
+                versionUpdatedAtMillis = 1_772_900_923_000L,
                 storedAtMillis = 100L,
                 files = emptyList(),
             ),
@@ -24,11 +26,19 @@ class ModLibraryRepositoryTest {
             ModLibraryRepository.LocalModSnapshot(
                 appId = 646570u,
                 publishedFileId = 3677098410uL,
+                gameTitle = "Slay the Spire",
+                itemTitle = "Skip The Spire",
+                versionId = "updated-1772900923",
+                versionUpdatedAtMillis = 1_772_900_923_000L,
                 files = listOf(sampleFile("mods/Skip The Spire.jar", 120L)),
             ),
             ModLibraryRepository.LocalModSnapshot(
                 appId = 480u,
                 publishedFileId = 999uL,
+                gameTitle = "Spacewar",
+                itemTitle = "Example Mod",
+                versionId = "updated-1772900999",
+                versionUpdatedAtMillis = 1_772_900_999_000L,
                 files = listOf(sampleFile("mods/example.zip", 240L)),
             ),
         )
@@ -37,8 +47,8 @@ class ModLibraryRepositoryTest {
 
         assertThat(merged).hasSize(2)
         assertThat(merged[0].appId).isEqualTo(480u)
-        assertThat(merged[0].gameTitle).isEqualTo("App 480")
-        assertThat(merged[0].itemTitle).isEqualTo("模组 999")
+        assertThat(merged[0].gameTitle).isEqualTo("Spacewar")
+        assertThat(merged[0].itemTitle).isEqualTo("Example Mod")
         assertThat(merged[1].gameTitle).isEqualTo("Slay the Spire")
         assertThat(merged[1].itemTitle).isEqualTo("Skip The Spire")
         assertThat(merged[1].previewImagePath).isEqualTo(previewFile.absolutePath)
@@ -54,6 +64,8 @@ class ModLibraryRepositoryTest {
                 publishedFileId = 3677098410uL,
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
+                versionId = "updated-1772900923",
+                versionUpdatedAtMillis = 1_772_900_923_000L,
                 storedAtMillis = 100L,
                 files = listOf(sampleFile("Skip The Spire.jar", 100L)),
             ),
@@ -62,6 +74,38 @@ class ModLibraryRepositoryTest {
         val merged = mergeIndexedAndLocalMods(indexed, emptyList()) { 999L }
 
         assertThat(merged).isEmpty()
+    }
+
+    @Test
+    fun mergeIndexedAndLocalMods_keepsDistinctVersionsForSameMod() {
+        val localMods = listOf(
+            ModLibraryRepository.LocalModSnapshot(
+                appId = 646570u,
+                publishedFileId = 3677098410uL,
+                gameTitle = "Slay the Spire",
+                itemTitle = "Skip The Spire",
+                versionId = "updated-1772900923",
+                versionUpdatedAtMillis = 1_772_900_923_000L,
+                files = listOf(sampleFile("mods/v1.jar", 100L)),
+            ),
+            ModLibraryRepository.LocalModSnapshot(
+                appId = 646570u,
+                publishedFileId = 3677098410uL,
+                gameTitle = "Slay the Spire",
+                itemTitle = "Skip The Spire",
+                versionId = "updated-1772901999",
+                versionUpdatedAtMillis = 1_772_901_999_000L,
+                files = listOf(sampleFile("mods/v2.jar", 200L)),
+            ),
+        )
+
+        val merged = mergeIndexedAndLocalMods(emptyList(), localMods) { 999L }
+
+        assertThat(merged).hasSize(2)
+        assertThat(merged.map(DownloadedModEntry::versionId))
+            .containsExactly("updated-1772901999", "updated-1772900923")
+        assertThat(merged.map(DownloadedModEntry::itemTitle))
+            .containsExactly("Skip The Spire", "Skip The Spire")
     }
 
     @Test
@@ -109,6 +153,6 @@ class ModLibraryRepositoryTest {
         sizeBytes = 42L,
         modifiedEpochMillis = modifiedAt,
         contentUri = "content://downloads/$modifiedAt",
-        userVisiblePath = "Download/workshop/Example Game/Example Mod/$relativePath",
+        userVisiblePath = "Download/workshop/Example Game/Example Mod/updated-1772900923/$relativePath",
     )
 }

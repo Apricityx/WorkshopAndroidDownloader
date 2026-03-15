@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,6 +22,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
@@ -67,6 +69,8 @@ class WorkshopViewModel(
     )
     private val libraryRepository = GameLibraryRepository(application)
     private val modLibraryRepository = ModLibraryRepository(application)
+    private val modLibraryUpdateStateStore =
+        ModLibraryUpdateStateStore(File(application.filesDir, "mod-library/update-state.json"))
     private val downloadCenterManager = DownloadCenterManager.getInstance(application)
     private val updateService = WorkshopUpdateService(httpClient)
     private val descriptionTranslator = OnDeviceDescriptionTranslator(application)
@@ -221,7 +225,7 @@ class WorkshopViewModel(
     }
 
     fun checkModLibraryUpdates() {
-        val entries = _uiState.value.modLibraryState.items
+        val entries = _uiState.value.modLibraryState.items.flatMap(DownloadedModGroup::versions)
         if (entries.isEmpty()) {
             viewModelScope.launch {
                 _toastMessages.emit("模组库还是空的，没有可检查的模组。")
@@ -282,7 +286,7 @@ class WorkshopViewModel(
                             _uiState.update { state ->
                                 val nextUpdateCheckState = state.modLibraryState.updateCheckState.copy(
                                     results = state.modLibraryState.updateCheckState.results + (key to result),
-                                ).filterForEntries(state.modLibraryState.items)
+                                ).filterForEntries(state.modLibraryState.items.flatMap(DownloadedModGroup::versions))
                                 state.copy(
                                     modLibraryState = state.modLibraryState.copy(
                                         updateCheckState = nextUpdateCheckState,
@@ -297,19 +301,22 @@ class WorkshopViewModel(
 
             val summaryMessage = buildModUpdateCheckSummary(results.values)
             val checkedAtMillis = System.currentTimeMillis()
+            var persistedUpdateCheckState: ModLibraryUpdateCheckState? = null
             _uiState.update { state ->
                 val nextUpdateCheckState = state.modLibraryState.updateCheckState.copy(
                     isChecking = false,
                     summaryMessage = summaryMessage,
                     lastCheckedAtMillis = checkedAtMillis,
                     results = results,
-                ).filterForEntries(state.modLibraryState.items)
+                ).filterForEntries(state.modLibraryState.items.flatMap(DownloadedModGroup::versions))
+                persistedUpdateCheckState = nextUpdateCheckState
                 state.copy(
                     modLibraryState = state.modLibraryState.copy(
                         updateCheckState = nextUpdateCheckState,
                     ),
                 )
             }
+            persistedUpdateCheckState?.let(::persistModLibraryUpdateStateIfStable)
             _toastMessages.emit(summaryMessage)
         }
     }
@@ -320,6 +327,48 @@ class WorkshopViewModel(
         _uiState.update { state ->
             state.copy(
                 modLibraryState = state.modLibraryState.copy(displayMode = nextMode),
+            )
+        }
+    }
+
+    fun updateModLibrarySearchQuery(value: String) {
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    filterState = state.modLibraryState.filterState.copy(searchQuery = value),
+                ),
+            )
+        }
+    }
+
+    fun updateModLibraryGameFilter(gameTitle: String?) {
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    filterState = state.modLibraryState.filterState.copy(
+                        selectedGameTitle = gameTitle?.takeIf(String::isNotBlank),
+                    ),
+                ),
+            )
+        }
+    }
+
+    fun updateModLibrarySortOption(sortOption: ModLibrarySortOption) {
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    sortOption = sortOption,
+                ),
+            )
+        }
+    }
+
+    fun clearModLibraryFilters() {
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    filterState = ModLibraryFilterState(),
+                ),
             )
         }
     }
@@ -891,13 +940,21 @@ class WorkshopViewModel(
         _uiState.update { it.copy(pendingRemoveGame = null) }
     }
 
-    fun openModDetail(entry: DownloadedModEntry) {
+    fun openModDetail(entry: DownloadedModGroup) {
         _uiState.update { state ->
             state.copy(
                 modLibraryState = state.modLibraryState.copy(selectedEntry = entry),
             )
         }
         navigateTo(WorkshopScreenDestination.ModDetail)
+    }
+
+    fun updateMod(entry: DownloadedModEntry) {
+        enqueueWorkshopItems(
+            appId = entry.appId,
+            gameTitle = entry.gameTitle,
+            items = listOf(entry.toWorkshopBrowseItem()),
+        )
     }
 
     fun requestRemoveMod(entry: DownloadedModEntry) {
@@ -911,14 +968,18 @@ class WorkshopViewModel(
             runCatching {
                 modLibraryRepository.deleteMod(entry)
             }.onSuccess { entries ->
-                downloadCenterManager.clearExportedFilesForMod(entry.appId, entry.publishedFileId)
+                downloadCenterManager.clearExportedFilesForMod(entry)
                 _toastMessages.emit("已删除 ${entry.itemTitle} 的本地文件。")
+                var persistedUpdateCheckState: ModLibraryUpdateCheckState? = null
                 _uiState.update { state ->
-                    applyModLibraryEntries(
+                    val nextState = applyModLibraryEntries(
                         state = state.copy(pendingRemoveMod = null),
                         entries = entries,
                     )
+                    persistedUpdateCheckState = nextState.modLibraryState.updateCheckState
+                    nextState
                 }
+                persistedUpdateCheckState?.let(::persistModLibraryUpdateStateIfStable)
             }.onFailure { error ->
                 _toastMessages.emit(error.message ?: "删除模组失败。")
                 refreshModLibrary(showLoading = false)
@@ -1419,14 +1480,18 @@ class WorkshopViewModel(
             runCatching {
                 modLibraryRepository.syncWithLocalStorage()
             }.onSuccess { entries ->
+                var persistedUpdateCheckState: ModLibraryUpdateCheckState? = null
                 _uiState.update { state ->
-                    applyModLibraryEntries(
+                    val nextState = applyModLibraryEntries(
                         state = state,
                         entries = entries,
                         isLoading = false,
                         errorMessage = null,
                     )
+                    persistedUpdateCheckState = nextState.modLibraryState.updateCheckState
+                    nextState
                 }
+                persistedUpdateCheckState?.let(::persistModLibraryUpdateStateIfStable)
             }.onFailure { error ->
                 _uiState.update { state ->
                     state.copy(
@@ -1963,8 +2028,9 @@ class WorkshopViewModel(
         isLoading: Boolean = false,
         errorMessage: String? = null,
     ): WorkshopUiState {
+        val groupedEntries = entries.groupedForDisplay()
         val selectedEntry = state.modLibraryState.selectedEntry?.let { current ->
-            entries.firstOrNull { it.matches(current.appId, current.publishedFileId) }
+            groupedEntries.firstOrNull { it.matches(current) }
         }
         val nextScreen = if (state.currentScreen == WorkshopScreenDestination.ModDetail && selectedEntry == null) {
             WorkshopScreenDestination.ModLibrary
@@ -1975,12 +2041,12 @@ class WorkshopViewModel(
         return state.copy(
             currentScreen = nextScreen,
             modLibraryState = state.modLibraryState.copy(
-                items = entries,
+                items = groupedEntries,
                 selectedEntry = selectedEntry,
                 updateCheckState = updateCheckState,
                 isLoading = isLoading,
                 errorMessage = errorMessage,
-                message = if (entries.isEmpty()) {
+                message = if (groupedEntries.isEmpty()) {
                     "模组库还是空的，下载一个模组后会自动同步到这里。"
                 } else {
                     null
@@ -2036,6 +2102,7 @@ class WorkshopViewModel(
             themeMode = themeMode,
             modLibraryState = ModLibraryUiState(
                 isLoading = true,
+                updateCheckState = modLibraryUpdateStateStore.loadState(),
                 displayMode = settingsRepository.getModLibraryDisplayMode(),
             ),
             showUsageNoticeDialog = !settingsRepository.hasAcknowledgedUsageNotice(),
@@ -2063,6 +2130,15 @@ class WorkshopViewModel(
                 hasSavedCredentials = hasSavedBaiduCredentials,
             ),
         )
+    }
+
+    private fun persistModLibraryUpdateStateIfStable(updateCheckState: ModLibraryUpdateCheckState) {
+        if (updateCheckState.isChecking) {
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            modLibraryUpdateStateStore.saveState(updateCheckState)
+        }
     }
 }
 

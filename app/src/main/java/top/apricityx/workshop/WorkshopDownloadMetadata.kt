@@ -10,6 +10,7 @@ data class WorkshopDownloadMetadata(
     val title: String,
     val filename: String,
     val previewImageUrl: String,
+    val timeUpdatedEpochSeconds: Long?,
 )
 
 fun readWorkshopDownloadMetadata(stagingDir: File): WorkshopDownloadMetadata? {
@@ -31,6 +32,7 @@ fun readWorkshopDownloadMetadata(stagingDir: File): WorkshopDownloadMetadata? {
             title = details["title"]?.jsonPrimitive?.content.orEmpty().trim(),
             filename = details["filename"]?.jsonPrimitive?.content.orEmpty().trim(),
             previewImageUrl = details["preview_url"]?.jsonPrimitive?.content.orEmpty().trim(),
+            timeUpdatedEpochSeconds = details["time_updated"]?.jsonPrimitive?.content?.toLongOrNull(),
         )
     }.getOrNull()
 }

@@ -1,5 +1,8 @@
 package top.apricityx.workshop
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class ModLibraryUpdateCheckState(
     val isChecking: Boolean = false,
     val summaryMessage: String? = null,
@@ -7,6 +10,7 @@ data class ModLibraryUpdateCheckState(
     val results: Map<String, ModUpdateCheckResult> = emptyMap(),
 )
 
+@Serializable
 data class ModUpdateCheckResult(
     val status: ModUpdateCheckStatus = ModUpdateCheckStatus.Unknown,
     val remoteUpdatedAtMillis: Long? = null,
@@ -14,6 +18,7 @@ data class ModUpdateCheckResult(
     val message: String? = null,
 )
 
+@Serializable
 enum class ModUpdateCheckStatus {
     Unknown,
     Checking,
@@ -23,7 +28,7 @@ enum class ModUpdateCheckStatus {
 }
 
 fun DownloadedModEntry.modLibraryKey(): String =
-    "${appId}-${publishedFileId}"
+    "${appId}-${publishedFileId}-${normalizeModVersionId(versionId)}"
 
 fun evaluateModUpdate(
     entry: DownloadedModEntry,
@@ -40,7 +45,7 @@ fun evaluateModUpdate(
     }
 
     return ModUpdateCheckResult(
-        status = if (remoteUpdatedAtMillis > entry.storedAtMillis) {
+        status = if (remoteUpdatedAtMillis > (entry.versionUpdatedAtMillis ?: entry.storedAtMillis)) {
             ModUpdateCheckStatus.UpdateAvailable
         } else {
             ModUpdateCheckStatus.UpToDate
@@ -60,7 +65,7 @@ fun buildModUpdateCheckSummary(
     val availableCount = results.count { it.status == ModUpdateCheckStatus.UpdateAvailable }
     val upToDateCount = results.count { it.status == ModUpdateCheckStatus.UpToDate }
     val failedCount = results.count { it.status == ModUpdateCheckStatus.Failed }
-    return "模组更新检查完成：$availableCount 个可更新，$upToDateCount 个已最新，$failedCount 个失败。"
+    return "模组更新检查完成：$availableCount 个版本可更新，$upToDateCount 个版本已最新，$failedCount 个版本失败。"
 }
 
 fun ModLibraryUpdateCheckState.filterForEntries(

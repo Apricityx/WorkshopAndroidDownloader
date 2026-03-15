@@ -9,10 +9,13 @@ class WorkshopPublicExportManagerTest {
         val relativePath = WorkshopPublicExportManager.buildDownloadRelativePath(
             gameTitle = "Slay the Spire",
             itemTitle = "Skip The Spire",
+            versionId = "updated-1772900923",
             relativeFilePath = "mods/example/file.txt",
         )
 
-        assertThat(relativePath).isEqualTo("Download/workshop/Slay the Spire/Skip The Spire/mods/example/")
+        assertThat(relativePath).isEqualTo(
+            "Download/workshop/Slay the Spire/Skip The Spire/updated-1772900923/mods/example/",
+        )
     }
 
     @Test
@@ -20,10 +23,13 @@ class WorkshopPublicExportManagerTest {
         val visiblePath = WorkshopPublicExportManager.buildUserVisiblePath(
             gameTitle = "Slay the Spire",
             itemTitle = "Skip The Spire",
+            versionId = "updated-1772900923",
             relativeFilePath = "mods/example/file.txt",
         )
 
-        assertThat(visiblePath).isEqualTo("Download/workshop/Slay the Spire/Skip The Spire/mods/example/file.txt")
+        assertThat(visiblePath).isEqualTo(
+            "Download/workshop/Slay the Spire/Skip The Spire/updated-1772900923/mods/example/file.txt",
+        )
     }
 
     @Test
@@ -31,9 +37,10 @@ class WorkshopPublicExportManagerTest {
         val path = WorkshopPublicExportManager.buildModSubdirectoryPath(
             gameTitle = "Game: Name",
             itemTitle = "Mod*Name?",
+            versionId = "updated-1772900923",
         )
 
-        assertThat(path).isEqualTo("workshop/Game_ Name/Mod_Name_/")
+        assertThat(path).isEqualTo("workshop/Game_ Name/Mod_Name_/updated-1772900923/")
     }
 
     @Test

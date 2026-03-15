@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadCenterTaskUiState
 import top.apricityx.workshop.DownloadedModEntry
+import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ExportedDownloadFile
 import top.apricityx.workshop.SteamLanguagePreference
 import top.apricityx.workshop.TranslationProvider
@@ -42,13 +43,18 @@ data class WorkshopScreenActions(
     val onRetryModLibrarySync: () -> Unit,
     val onCheckModLibraryUpdates: () -> Unit,
     val onToggleModLibraryDisplayMode: () -> Unit,
+    val onUpdateModLibrarySearchQuery: (String) -> Unit,
+    val onUpdateModLibraryGameFilter: (String?) -> Unit,
+    val onUpdateModLibrarySortOption: (top.apricityx.workshop.ModLibrarySortOption) -> Unit,
+    val onClearModLibraryFilters: () -> Unit,
     val onDismissUsageNotice: () -> Unit,
     val onRequestRemoveGame: (SteamGame) -> Unit,
     val onConfirmRemoveGame: () -> Unit,
     val onDismissRemoveGame: () -> Unit,
-    val onOpenModDetail: (DownloadedModEntry) -> Unit,
+    val onOpenModDetail: (DownloadedModGroup) -> Unit,
     val onOpenModFile: (ExportedDownloadFile) -> Unit,
     val onShareModFile: (ExportedDownloadFile) -> Unit,
+    val onUpdateMod: (DownloadedModEntry) -> Unit,
     val onRequestRemoveMod: (DownloadedModEntry) -> Unit,
     val onConfirmRemoveMod: () -> Unit,
     val onDismissRemoveMod: () -> Unit,

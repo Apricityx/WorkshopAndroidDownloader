@@ -220,14 +220,10 @@ class DownloadCenterManager private constructor(
         }
     }
 
-    fun clearExportedFilesForMod(
-        appId: UInt,
-        publishedFileId: ULong,
-    ) {
+    fun clearExportedFilesForMod(entry: DownloadedModEntry) {
         mutateState { state ->
             state.clearExportedFilesForMod(
-                appId = appId,
-                publishedFileId = publishedFileId,
+                entry = entry,
             )
         }
     }

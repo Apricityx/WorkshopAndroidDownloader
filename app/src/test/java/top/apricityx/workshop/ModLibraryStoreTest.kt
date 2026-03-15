@@ -22,6 +22,8 @@ class ModLibraryStoreTest {
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
                 previewImagePath = "D:/tmp/cover.webp",
+                versionId = "updated-1772900923",
+                versionUpdatedAtMillis = 1_772_900_923_000L,
                 storedAtMillis = 1234L,
                 files = listOf(
                     ExportedDownloadFile(
@@ -29,7 +31,7 @@ class ModLibraryStoreTest {
                         sizeBytes = 42L,
                         modifiedEpochMillis = 1234L,
                         contentUri = "content://downloads/1",
-                        userVisiblePath = "Download/workshop/Slay the Spire/Skip The Spire/Skip The Spire.jar",
+                        userVisiblePath = "Download/workshop/Slay the Spire/Skip The Spire/updated-1772900923/Skip The Spire.jar",
                     ),
                 ),
             ),

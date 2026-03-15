@@ -91,9 +91,9 @@
 ### 5. 下载结果位置
 
 - 应用私有缓存目录：`/data/user/0/top.apricityx.workshop/files/workshop/<AppID>/<PublishedFileId>/`
-- 用户可访问导出目录：`/sdcard/Download/workshop/<游戏名字>/<模组名字>/`
+- 用户可访问导出目录：`/sdcard/Download/workshop/<游戏名字>/<模组名字>/<版本>/`
 
-如果模组是单文件，并且 Steam 元数据里带有更可读的标题或文件名，导出阶段会优先使用它们生成文件名。
+如果模组是单文件，并且 Steam 元数据里带有更可读的标题或文件名，导出阶段会优先使用它们生成文件名。相同版本会覆盖同版本目录，不同版本会在各自版本目录下共存。
 
 <a id="build-from-source"></a>
 

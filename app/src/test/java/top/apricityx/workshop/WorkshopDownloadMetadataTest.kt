@@ -16,7 +16,8 @@ class WorkshopDownloadMetadataTest {
                   {
                     "title": "Exact Workshop Title",
                     "filename": "mod.jar",
-                    "preview_url": "https://cdn.example.com/preview.webp"
+                    "preview_url": "https://cdn.example.com/preview.webp",
+                    "time_updated": "1772900923"
                   }
                 ]
               }
@@ -29,6 +30,7 @@ class WorkshopDownloadMetadataTest {
         assertThat(metadata?.title).isEqualTo("Exact Workshop Title")
         assertThat(metadata?.filename).isEqualTo("mod.jar")
         assertThat(metadata?.previewImageUrl).isEqualTo("https://cdn.example.com/preview.webp")
+        assertThat(metadata?.timeUpdatedEpochSeconds).isEqualTo(1772900923L)
         stagingDir.deleteRecursively()
     }
 }

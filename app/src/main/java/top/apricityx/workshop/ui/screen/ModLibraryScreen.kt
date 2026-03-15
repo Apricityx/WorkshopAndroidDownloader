@@ -6,13 +6,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -28,16 +30,20 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,30 +56,43 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import top.apricityx.workshop.DownloadedModEntry
+import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ExportedDownloadFile
 import top.apricityx.workshop.ModLibraryDisplayMode
+import top.apricityx.workshop.ModLibrarySortOption
 import top.apricityx.workshop.ModLibraryUiState
 import top.apricityx.workshop.ModUpdateCheckResult
 import top.apricityx.workshop.ModUpdateCheckStatus
+import top.apricityx.workshop.availableModLibraryGames
+import top.apricityx.workshop.displayName
+import top.apricityx.workshop.filterModLibraryGroups
+import top.apricityx.workshop.hasActiveFilters
+import top.apricityx.workshop.latestUpdateStatus
+import top.apricityx.workshop.latestVersion
+import top.apricityx.workshop.modGroupKey
 import top.apricityx.workshop.modLibraryKey
 import top.apricityx.workshop.primaryFile
 import top.apricityx.workshop.screenSubtitle
 import top.apricityx.workshop.sectionSubtitle
-import top.apricityx.workshop.ui.component.ModPreviewImage
-import top.apricityx.workshop.ui.component.ModUpdateStatusText
+import top.apricityx.workshop.sortModLibraryGroups
+import top.apricityx.workshop.totalFileCount
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
+import top.apricityx.workshop.ui.component.ModPreviewImage
+import top.apricityx.workshop.ui.component.ModUpdateStatusText
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.SectionHeading
 import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
-import top.apricityx.workshop.ui.component.buildModEntryMetrics
+import top.apricityx.workshop.ui.component.formatModLibraryTimestamp
+import top.apricityx.workshop.versionCount
+import top.apricityx.workshop.versionLabel
 
 private val OverviewCheckingBorderColor = Color(0xFFF59E0B)
 private val OverviewUpdateAvailableBorderColor = Color(0xFF22C55E)
@@ -83,12 +102,23 @@ fun ModLibraryScreen(
     state: ModLibraryUiState,
     onRetry: () -> Unit,
     onCheckUpdates: () -> Unit,
-    onOpenModDetail: (DownloadedModEntry) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onGameFilterSelected: (String?) -> Unit,
+    onSortOptionSelected: (ModLibrarySortOption) -> Unit,
+    onClearFilters: () -> Unit,
+    onOpenModDetail: (DownloadedModGroup) -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
-    onRemoveMod: (DownloadedModEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val visibleItems = sortModLibraryGroups(
+        items = filterModLibraryGroups(
+            items = state.items,
+            filterState = state.filterState,
+        ),
+        sortOption = state.sortOption,
+    )
+
     when {
         state.isLoading && state.items.isEmpty() -> WorkshopLoadingBlock(
             label = "正在同步本地模组库。",
@@ -111,21 +141,29 @@ fun ModLibraryScreen(
 
         state.displayMode == ModLibraryDisplayMode.Overview -> OverviewModLibraryGrid(
             state = state,
+            visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onSearchQueryChange = onSearchQueryChange,
+            onGameFilterSelected = onGameFilterSelected,
+            onSortOptionSelected = onSortOptionSelected,
+            onClearFilters = onClearFilters,
             onOpenModDetail = onOpenModDetail,
             onOpenPrimaryFile = onOpenPrimaryFile,
             onSharePrimaryFile = onSharePrimaryFile,
-            onRemoveMod = onRemoveMod,
             modifier = modifier,
         )
 
         else -> ListModLibraryContent(
             state = state,
+            visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onSearchQueryChange = onSearchQueryChange,
+            onGameFilterSelected = onGameFilterSelected,
+            onSortOptionSelected = onSortOptionSelected,
+            onClearFilters = onClearFilters,
             onOpenModDetail = onOpenModDetail,
             onOpenPrimaryFile = onOpenPrimaryFile,
             onSharePrimaryFile = onSharePrimaryFile,
-            onRemoveMod = onRemoveMod,
             modifier = modifier,
         )
     }
@@ -134,11 +172,15 @@ fun ModLibraryScreen(
 @Composable
 private fun ListModLibraryContent(
     state: ModLibraryUiState,
+    visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
-    onOpenModDetail: (DownloadedModEntry) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onGameFilterSelected: (String?) -> Unit,
+    onSortOptionSelected: (ModLibrarySortOption) -> Unit,
+    onClearFilters: () -> Unit,
+    onOpenModDetail: (DownloadedModGroup) -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
-    onRemoveMod: (DownloadedModEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -148,27 +190,37 @@ private fun ListModLibraryContent(
     ) {
         modLibraryHeaderItems(
             state = state,
+            visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onSearchQueryChange = onSearchQueryChange,
+            onGameFilterSelected = onGameFilterSelected,
+            onSortOptionSelected = onSortOptionSelected,
+            onClearFilters = onClearFilters,
         )
 
-        items(state.items, key = { "${it.appId}-${it.publishedFileId}" }) { entry ->
-            when (state.displayMode) {
-                ModLibraryDisplayMode.LargePreview -> LargePreviewModLibraryCard(
-                    entry = entry,
-                    updateResult = state.updateCheckState.results[entry.modLibraryKey()],
-                    onOpenDetail = { onOpenModDetail(entry) },
-                    onOpenPrimaryFile = { onOpenPrimaryFile(it) },
-                    onSharePrimaryFile = { onSharePrimaryFile(it) },
-                    onRemoveMod = { onRemoveMod(entry) },
-                )
+        if (visibleItems.isEmpty()) {
+            item {
+                FilteredModLibraryEmptyState(onClearFilters = onClearFilters)
+            }
+        } else {
+            items(visibleItems, key = { it.modGroupKey() }) { group ->
+                when (state.displayMode) {
+                    ModLibraryDisplayMode.LargePreview -> LargePreviewModLibraryCard(
+                        group = group,
+                        updateResult = latestUpdateResult(group, state),
+                        onOpenDetail = { onOpenModDetail(group) },
+                        onOpenPrimaryFile = { onOpenPrimaryFile(it) },
+                        onSharePrimaryFile = { onSharePrimaryFile(it) },
+                    )
 
-                ModLibraryDisplayMode.CompactList -> CompactListModLibraryCard(
-                    entry = entry,
-                    updateResult = state.updateCheckState.results[entry.modLibraryKey()],
-                    onOpenDetail = { onOpenModDetail(entry) },
-                )
+                    ModLibraryDisplayMode.CompactList -> CompactListModLibraryCard(
+                        group = group,
+                        updateResult = latestUpdateResult(group, state),
+                        onOpenDetail = { onOpenModDetail(group) },
+                    )
 
-                ModLibraryDisplayMode.Overview -> Unit
+                    ModLibraryDisplayMode.Overview -> Unit
+                }
             }
         }
     }
@@ -177,11 +229,15 @@ private fun ListModLibraryContent(
 @Composable
 private fun OverviewModLibraryGrid(
     state: ModLibraryUiState,
+    visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
-    onOpenModDetail: (DownloadedModEntry) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onGameFilterSelected: (String?) -> Unit,
+    onSortOptionSelected: (ModLibrarySortOption) -> Unit,
+    onClearFilters: () -> Unit,
+    onOpenModDetail: (DownloadedModGroup) -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
-    onRemoveMod: (DownloadedModEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalGrid(
@@ -193,37 +249,57 @@ private fun OverviewModLibraryGrid(
     ) {
         modLibraryHeaderItems(
             state = state,
+            visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onSearchQueryChange = onSearchQueryChange,
+            onGameFilterSelected = onGameFilterSelected,
+            onSortOptionSelected = onSortOptionSelected,
+            onClearFilters = onClearFilters,
         )
 
-        gridItems(state.items, key = { "${it.appId}-${it.publishedFileId}" }) { entry ->
-            OverviewModLibraryTile(
-                entry = entry,
-                updateResult = state.updateCheckState.results[entry.modLibraryKey()],
-                onOpenDetail = { onOpenModDetail(entry) },
-                onOpenPrimaryFile = { onOpenPrimaryFile(it) },
-                onSharePrimaryFile = { onSharePrimaryFile(it) },
-                onRemoveMod = { onRemoveMod(entry) },
-            )
+        if (visibleItems.isEmpty()) {
+            fullSpanItem {
+                FilteredModLibraryEmptyState(onClearFilters = onClearFilters)
+            }
+        } else {
+            gridItems(visibleItems, key = { it.modGroupKey() }) { group ->
+                OverviewModLibraryTile(
+                    group = group,
+                    updateResult = latestUpdateResult(group, state),
+                    onOpenDetail = { onOpenModDetail(group) },
+                    onOpenPrimaryFile = { onOpenPrimaryFile(it) },
+                    onSharePrimaryFile = { onSharePrimaryFile(it) },
+                )
+            }
         }
     }
 }
 
 private fun LazyListScope.modLibraryHeaderItems(
     state: ModLibraryUiState,
+    visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onGameFilterSelected: (String?) -> Unit,
+    onSortOptionSelected: (ModLibrarySortOption) -> Unit,
+    onClearFilters: () -> Unit,
 ) {
     item {
         ModLibrarySummaryCard(
             state = state,
+            visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onSearchQueryChange = onSearchQueryChange,
+            onGameFilterSelected = onGameFilterSelected,
+            onSortOptionSelected = onSortOptionSelected,
+            onClearFilters = onClearFilters,
         )
     }
 
     if (state.updateCheckState.isChecking) {
         item {
             WorkshopMessageBanner(
-                message = "正在检查 ${state.items.size} 个模组的创意工坊更新。",
+                message = "正在检查 ${state.totalVersionCount()} 个已下载版本的创意工坊更新。",
                 tone = MessageTone.Info,
             )
         }
@@ -263,19 +339,29 @@ private fun LazyListScope.modLibraryHeaderItems(
 
 private fun LazyGridScope.modLibraryHeaderItems(
     state: ModLibraryUiState,
+    visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onGameFilterSelected: (String?) -> Unit,
+    onSortOptionSelected: (ModLibrarySortOption) -> Unit,
+    onClearFilters: () -> Unit,
 ) {
     fullSpanItem {
         ModLibrarySummaryCard(
             state = state,
+            visibleItems = visibleItems,
             onCheckUpdates = onCheckUpdates,
+            onSearchQueryChange = onSearchQueryChange,
+            onGameFilterSelected = onGameFilterSelected,
+            onSortOptionSelected = onSortOptionSelected,
+            onClearFilters = onClearFilters,
         )
     }
 
     if (state.updateCheckState.isChecking) {
         fullSpanItem {
             WorkshopMessageBanner(
-                message = "正在检查 ${state.items.size} 个模组的创意工坊更新。",
+                message = "正在检查 ${state.totalVersionCount()} 个已下载版本的创意工坊更新。",
                 tone = MessageTone.Info,
             )
         }
@@ -321,18 +407,36 @@ private fun LazyGridScope.fullSpanItem(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModLibrarySummaryCard(
     state: ModLibraryUiState,
+    visibleItems: List<DownloadedModGroup>,
     onCheckUpdates: () -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onGameFilterSelected: (String?) -> Unit,
+    onSortOptionSelected: (ModLibrarySortOption) -> Unit,
+    onClearFilters: () -> Unit,
 ) {
+    val availableGames = availableModLibraryGames(state.items)
+    val totalMods = state.items.size
+    val totalVersions = state.totalVersionCount()
+    val totalFiles = state.totalFileCount()
+    val totalUpdateAvailable = state.latestUpdateAvailableCount()
+    val visibleVersions = visibleItems.sumOf(DownloadedModGroup::versionCount)
+    val visibleFiles = visibleItems.sumOf(DownloadedModGroup::totalFileCount)
+    val visibleUpdateAvailable = visibleItems.count {
+        latestUpdateResult(it, state)?.status == ModUpdateCheckStatus.UpdateAvailable
+    }
+
     ScreenSummaryCard(
         title = "模组库",
         subtitle = state.displayMode.screenSubtitle(),
         metrics = listOf(
-            "模组 ${state.items.size}",
-            "文件 ${state.items.sumOf { it.files.size }}",
-            "可更新 ${state.updateCheckState.results.values.count { it.status == ModUpdateCheckStatus.UpdateAvailable }}",
+            "模组 ${filteredMetricText(visibleItems.size, totalMods)}",
+            "版本 ${filteredMetricText(visibleVersions, totalVersions)}",
+            "文件 ${filteredMetricText(visibleFiles, totalFiles)}",
+            "可更新 ${filteredMetricText(visibleUpdateAvailable, totalUpdateAvailable)}",
         ),
     ) {
         OutlinedButton(
@@ -348,6 +452,75 @@ private fun ModLibrarySummaryCard(
                 text = if (state.updateCheckState.isChecking) "正在检查更新" else "检查模组更新",
             )
         }
+
+        OutlinedTextField(
+            value = state.filterState.searchQuery,
+            onValueChange = onSearchQueryChange,
+            label = { Text("搜索模组 / 游戏 / ID") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Text(
+            text = "排序方式",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ModLibrarySortOption.entries.forEach { sortOption ->
+                FilterChip(
+                    selected = sortOption == state.sortOption,
+                    onClick = { onSortOptionSelected(sortOption) },
+                    label = { Text(sortOption.displayName()) },
+                )
+            }
+        }
+
+        Text(
+            text = "按游戏筛选",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = state.filterState.selectedGameTitle == null,
+                onClick = { onGameFilterSelected(null) },
+                label = { Text("全部游戏") },
+            )
+            availableGames.forEach { gameTitle ->
+                FilterChip(
+                    selected = state.filterState.selectedGameTitle == gameTitle,
+                    onClick = { onGameFilterSelected(gameTitle) },
+                    label = { Text(gameTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+        }
+
+        if (state.filterState.hasActiveFilters()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "当前筛选后显示 ${visibleItems.size} 个模组。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onClearFilters) {
+                    Text("清空筛选")
+                }
+            }
+        }
     }
 }
 
@@ -361,6 +534,18 @@ private fun ModLibrarySectionHeading(
     )
 }
 
+@Composable
+private fun FilteredModLibraryEmptyState(
+    onClearFilters: () -> Unit,
+) {
+    WorkshopCenteredState(
+        title = "没有符合条件的模组",
+        message = "调整关键词或游戏筛选后再试。",
+        actionLabel = "清空筛选",
+        onAction = onClearFilters,
+    )
+}
+
 private fun modLibrarySummaryTone(state: ModLibraryUiState): MessageTone =
     if (state.updateCheckState.results.values.any { it.status == ModUpdateCheckStatus.Failed }) {
         MessageTone.Error
@@ -370,48 +555,55 @@ private fun modLibrarySummaryTone(state: ModLibraryUiState): MessageTone =
 
 @Composable
 private fun LargePreviewModLibraryCard(
-    entry: DownloadedModEntry,
+    group: DownloadedModGroup,
     updateResult: ModUpdateCheckResult?,
     onOpenDetail: () -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
-    onRemoveMod: () -> Unit,
 ) {
-    val primaryFile = entry.primaryFile()
+    val latestVersion = group.latestVersion()
+    val primaryFile = group.primaryFile()
     WorkshopPanelCard(
         modifier = Modifier.clickable(onClick = onOpenDetail),
     ) {
         ModPreviewImage(
-            previewImagePath = entry.previewImagePath,
-            contentDescription = entry.itemTitle,
+            previewImagePath = group.previewImagePath,
+            contentDescription = group.itemTitle,
         )
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = entry.itemTitle,
+                text = group.itemTitle,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = entry.gameTitle,
+                text = group.gameTitle,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             MetricFlow(
-                metrics = buildModEntryMetrics(entry),
+                metrics = buildModGroupMetrics(group),
             )
             ModUpdateStatusText(result = updateResult)
             primaryFile?.let { file ->
                 Text(
-                    text = file.userVisiblePath,
+                    text = "最新主文件：${file.userVisiblePath}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (group.versionCount() > 1) {
+                Text(
+                    text = "当前已保存 ${group.versionCount()} 个版本，最新版本为 ${latestVersion.versionLabel()}。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -421,25 +613,25 @@ private fun LargePreviewModLibraryCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            OutlinedButton(
+                onClick = onOpenDetail,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("查看详情")
+            }
             primaryFile?.let { file ->
                 OutlinedButton(
                     onClick = { onOpenPrimaryFile(file) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("打开")
+                    Text("打开最新")
                 }
                 OutlinedButton(
                     onClick = { onSharePrimaryFile(file) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("分享")
+                    Text("分享最新")
                 }
-            }
-            OutlinedButton(
-                onClick = onRemoveMod,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("删除")
             }
         }
     }
@@ -448,17 +640,16 @@ private fun LargePreviewModLibraryCard(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun OverviewModLibraryTile(
-    entry: DownloadedModEntry,
+    group: DownloadedModGroup,
     updateResult: ModUpdateCheckResult?,
     onOpenDetail: () -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
-    onRemoveMod: () -> Unit,
 ) {
-    val primaryFile = entry.primaryFile()
+    val primaryFile = group.primaryFile()
     val borderColor = overviewBorderColor(updateResult)
-    var menuExpanded by remember(entry.modLibraryKey()) { mutableStateOf(false) }
-    val interactionSource = remember(entry.modLibraryKey()) { MutableInteractionSource() }
+    var menuExpanded by remember(group.modGroupKey()) { mutableStateOf(false) }
+    val interactionSource = remember(group.modGroupKey()) { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val animatedScale by animateFloatAsState(
         targetValue = if (isPressed) 0.94f else 1f,
@@ -496,10 +687,10 @@ private fun OverviewModLibraryTile(
         shadowElevation = animatedElevation,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (!entry.previewImagePath.isNullOrBlank()) {
+            if (!group.previewImagePath.isNullOrBlank()) {
                 AsyncImage(
-                    model = entry.previewImagePath,
-                    contentDescription = entry.itemTitle,
+                    model = group.previewImagePath,
+                    contentDescription = group.itemTitle,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -517,7 +708,7 @@ private fun OverviewModLibraryTile(
                         ),
                 ) {
                     Text(
-                        text = entry.itemTitle,
+                        text = group.itemTitle,
                         modifier = Modifier.align(Alignment.Center),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -559,6 +750,15 @@ private fun OverviewModLibraryTile(
                 )
             }
 
+            if (group.versionCount() > 1) {
+                OverviewTileBadge(
+                    text = "${group.versionCount()} 个版本",
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp),
+                )
+            }
+
             DropdownMenu(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
@@ -572,27 +772,20 @@ private fun OverviewModLibraryTile(
                 )
                 primaryFile?.let { file ->
                     DropdownMenuItem(
-                        text = { Text("打开主文件") },
+                        text = { Text("打开最新主文件") },
                         onClick = {
                             menuExpanded = false
                             onOpenPrimaryFile(file)
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("分享主文件") },
+                        text = { Text("分享最新主文件") },
                         onClick = {
                             menuExpanded = false
                             onSharePrimaryFile(file)
                         },
                     )
                 }
-                DropdownMenuItem(
-                    text = { Text("删除本地模组") },
-                    onClick = {
-                        menuExpanded = false
-                        onRemoveMod()
-                    },
-                )
             }
         }
     }
@@ -658,10 +851,11 @@ private fun overviewStatusLabel(result: ModUpdateCheckResult?): String? =
 
 @Composable
 private fun CompactListModLibraryCard(
-    entry: DownloadedModEntry,
+    group: DownloadedModGroup,
     updateResult: ModUpdateCheckResult?,
     onOpenDetail: () -> Unit,
 ) {
+    val latestVersion = group.latestVersion()
     WorkshopPanelCard(
         modifier = Modifier.clickable(onClick = onOpenDetail),
     ) {
@@ -675,14 +869,21 @@ private fun CompactListModLibraryCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = entry.itemTitle,
+                    text = group.itemTitle,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${entry.gameTitle} · ${entry.files.size} 个文件",
+                    text = "${group.gameTitle} · ${group.versionCount()} 个版本 · ${group.totalFileCount()} 个文件",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "最新版本：${latestVersion.versionLabel()}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -699,3 +900,39 @@ private fun CompactListModLibraryCard(
         }
     }
 }
+
+private fun buildModGroupMetrics(group: DownloadedModGroup): List<String> {
+    val latestVersion = group.latestVersion()
+    return listOf(
+        "版本 ${group.versionCount()}",
+        "文件 ${group.totalFileCount()}",
+        "同步 ${formatModLibraryTimestamp(latestVersion.storedAtMillis)}",
+    )
+}
+
+private fun latestUpdateResult(
+    group: DownloadedModGroup,
+    state: ModLibraryUiState,
+): ModUpdateCheckResult? =
+    state.updateCheckState.results[group.latestVersion().modLibraryKey()]
+
+private fun ModLibraryUiState.totalVersionCount(): Int =
+    items.sumOf { it.versionCount() }
+
+private fun ModLibraryUiState.totalFileCount(): Int =
+    items.sumOf { it.totalFileCount() }
+
+private fun ModLibraryUiState.latestUpdateAvailableCount(): Int =
+    items.count {
+        it.latestUpdateStatus(updateCheckState.results) == ModUpdateCheckStatus.UpdateAvailable
+    }
+
+private fun filteredMetricText(
+    visibleCount: Int,
+    totalCount: Int,
+): String =
+    if (visibleCount == totalCount) {
+        totalCount.toString()
+    } else {
+        "$visibleCount/$totalCount"
+    }

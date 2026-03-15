@@ -100,6 +100,17 @@ enum class ModLibraryDisplayMode(
     }
 }
 
+data class ModLibraryFilterState(
+    val searchQuery: String = "",
+    val selectedGameTitle: String? = null,
+)
+
+enum class ModLibrarySortOption {
+    LatestSynced,
+    ModTitle,
+    GameTitle,
+}
+
 data class AddGameUiState(
     val featuredGames: List<SteamGame> = emptyList(),
     val searchResults: List<SteamGame> = emptyList(),
@@ -139,9 +150,11 @@ data class WorkshopItemDetailUiState(
 )
 
 data class ModLibraryUiState(
-    val items: List<DownloadedModEntry> = emptyList(),
-    val selectedEntry: DownloadedModEntry? = null,
+    val items: List<DownloadedModGroup> = emptyList(),
+    val selectedEntry: DownloadedModGroup? = null,
     val displayMode: ModLibraryDisplayMode = DownloadSettingsRepository.DEFAULT_MOD_LIBRARY_DISPLAY_MODE,
+    val filterState: ModLibraryFilterState = ModLibraryFilterState(),
+    val sortOption: ModLibrarySortOption = ModLibrarySortOption.LatestSynced,
     val updateCheckState: ModLibraryUpdateCheckState = ModLibraryUpdateCheckState(),
     val isLoading: Boolean = false,
     val message: String? = null,
@@ -287,6 +300,17 @@ fun ModLibraryDisplayMode.toggleContentDescription(): String =
         ModLibraryDisplayMode.CompactList -> "切换为精简列表"
         ModLibraryDisplayMode.Overview -> "切换为总览模式"
     }
+
+fun ModLibrarySortOption.displayName(): String =
+    when (this) {
+        ModLibrarySortOption.LatestSynced -> "最近同步"
+        ModLibrarySortOption.ModTitle -> "模组名称"
+        ModLibrarySortOption.GameTitle -> "游戏名称"
+    }
+
+fun ModLibraryFilterState.hasActiveFilters(): Boolean =
+    searchQuery.isNotBlank() ||
+        !selectedGameTitle.isNullOrBlank()
 
 fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? = null): SteamAuthUiState =
     activeAccount.let { currentActiveAccount ->
