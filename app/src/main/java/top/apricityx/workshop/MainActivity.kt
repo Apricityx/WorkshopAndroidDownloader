@@ -203,6 +203,7 @@ class MainActivity : ComponentActivity() {
             onRetryModLibrarySync = workshopViewModel::retryModLibrarySync,
             onCheckModLibraryUpdates = workshopViewModel::checkModLibraryUpdates,
             onToggleModLibraryDisplayMode = workshopViewModel::toggleModLibraryDisplayMode,
+            onDismissUsageNotice = workshopViewModel::dismissUsageNoticeDialog,
             onRequestRemoveGame = workshopViewModel::requestRemoveGame,
             onConfirmRemoveGame = workshopViewModel::confirmRemoveGame,
             onDismissRemoveGame = workshopViewModel::dismissRemoveGameDialog,

@@ -149,6 +149,7 @@ class WorkshopViewModel(
     fun navigateToSettings() {
         val currentThreads = settingsRepository.getDownloadThreadCount()
         val currentConcurrentTasks = settingsRepository.getConcurrentDownloadTaskCount()
+        val currentModUpdateConcurrentChecks = settingsRepository.getModUpdateConcurrentCheckCount()
         val currentThemeMode = settingsRepository.getThemeMode()
         val currentSteamLanguagePreference = settingsRepository.getSteamLanguagePreference()
         val currentTranslationProvider = settingsRepository.getTranslationProvider()
@@ -163,6 +164,8 @@ class WorkshopViewModel(
                     savedDownloadThreadCount = currentThreads,
                     concurrentDownloadTaskCountInput = currentConcurrentTasks.toString(),
                     savedConcurrentDownloadTaskCount = currentConcurrentTasks,
+                    modUpdateConcurrentCheckCountInput = currentModUpdateConcurrentChecks.toString(),
+                    savedModUpdateConcurrentCheckCount = currentModUpdateConcurrentChecks,
                     selectedThemeMode = currentThemeMode,
                     selectedSteamLanguagePreference = currentSteamLanguagePreference,
                     selectedTranslationProvider = currentTranslationProvider,
@@ -538,6 +541,13 @@ class WorkshopViewModel(
             state.copy(
                 settingsState = state.settingsState.copy(updatePromptState = null),
             )
+        }
+    }
+
+    fun dismissUsageNoticeDialog() {
+        settingsRepository.setUsageNoticeAcknowledged()
+        _uiState.update { state ->
+            state.copy(showUsageNoticeDialog = false)
         }
     }
 
@@ -2028,6 +2038,7 @@ class WorkshopViewModel(
                 isLoading = true,
                 displayMode = settingsRepository.getModLibraryDisplayMode(),
             ),
+            showUsageNoticeDialog = !settingsRepository.hasAcknowledgedUsageNotice(),
             settingsState = SettingsUiState(
                 downloadThreadCountInput = threadCount.toString(),
                 savedDownloadThreadCount = threadCount,

@@ -42,6 +42,7 @@ data class WorkshopScreenActions(
     val onRetryModLibrarySync: () -> Unit,
     val onCheckModLibraryUpdates: () -> Unit,
     val onToggleModLibraryDisplayMode: () -> Unit,
+    val onDismissUsageNotice: () -> Unit,
     val onRequestRemoveGame: (SteamGame) -> Unit,
     val onConfirmRemoveGame: () -> Unit,
     val onDismissRemoveGame: () -> Unit,

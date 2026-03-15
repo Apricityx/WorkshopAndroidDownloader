@@ -159,6 +159,7 @@ data class WorkshopUiState(
     val pendingRemoveGame: SteamGame? = null,
     val modLibraryState: ModLibraryUiState = ModLibraryUiState(isLoading = true),
     val pendingRemoveMod: DownloadedModEntry? = null,
+    val showUsageNoticeDialog: Boolean = false,
     val addGameState: AddGameUiState = AddGameUiState(),
     val gameWorkshopState: GameWorkshopUiState? = null,
     val workshopItemDetailState: WorkshopItemDetailUiState? = null,

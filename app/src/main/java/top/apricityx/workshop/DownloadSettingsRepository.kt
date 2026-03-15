@@ -33,6 +33,13 @@ class DownloadSettingsRepository(context: Context) {
             .apply()
     }
 
+    fun hasAcknowledgedUsageNotice(): Boolean =
+        prefs.getBoolean(KEY_USAGE_NOTICE_ACKNOWLEDGED, false)
+
+    fun setUsageNoticeAcknowledged(value: Boolean = true) {
+        prefs.edit().putBoolean(KEY_USAGE_NOTICE_ACKNOWLEDGED, value).apply()
+    }
+
     fun getThemeMode(): AppThemeMode =
         prefs.getString(KEY_THEME_MODE, null)
             ?.let(AppThemeMode::fromStorageValue)
@@ -123,6 +130,7 @@ class DownloadSettingsRepository(context: Context) {
         private const val KEY_DOWNLOAD_THREADS = "download_threads"
         private const val KEY_CONCURRENT_DOWNLOAD_TASKS = "concurrent_download_tasks"
         private const val KEY_MOD_UPDATE_CONCURRENT_CHECKS = "mod_update_concurrent_checks"
+        private const val KEY_USAGE_NOTICE_ACKNOWLEDGED = "usage_notice_acknowledged"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_STEAM_LANGUAGE_PREFERENCE = "steam_language_preference"
         private const val KEY_TRANSLATION_PROVIDER = "translation_provider"

@@ -200,6 +200,22 @@ private fun WorkshopDialogs(
     state: WorkshopUiState,
     actions: WorkshopScreenActions,
 ) {
+    if (state.showUsageNoticeDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("使用须知") },
+            text = {
+                Text("欢迎使用创意工坊下载器！如果出现模组无法正常浏览或正常下载的问题，请自备加速器加速 steam 或者使用科学上网。")
+            },
+            confirmButton = {
+                Button(onClick = actions.onDismissUsageNotice) {
+                    Text("我知道了")
+                }
+            },
+        )
+        return
+    }
+
     val updatePrompt = state.settingsState.updatePromptState
     val pendingRemoveGame = state.pendingRemoveGame
     val pendingRemoveMod = state.pendingRemoveMod

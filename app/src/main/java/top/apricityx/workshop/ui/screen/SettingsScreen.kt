@@ -106,7 +106,7 @@ fun SettingsScreen(
 
             if (state.steamAuthState.accounts.isEmpty()) {
                 Text(
-                    "当前没有已保存的 Steam 账号。登录后浏览会自动带上 `steamLoginSecure`，下载任务也会在入队时绑定当前账号。",
+                    "当前没有已保存的 Steam 账号。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             } else {
@@ -700,11 +700,11 @@ private fun translationProviderDescription(
     baiduApiKeyConfigured: Boolean,
 ): String =
     when (provider) {
-        TranslationProvider.OnDevice -> "直接使用设备本地翻译模型，不依赖第三方翻译接口。"
+        TranslationProvider.OnDevice -> "直接使用设备本地翻译模型，不依赖第三方翻译接口。但是翻译质量低，可能会非常生草"
         TranslationProvider.BaiduGeneralText -> if (baiduApiKeyConfigured) {
             "当前已配置 AppID 和 API Key，描述翻译会优先走百度大模型文本翻译。"
         } else {
-            "需要先配置 AppID 和 API Key，配置完成后再切换过去更合适。"
+            "需要先配置 AppID 和 API Key，内置有教程，配置免费但需要折腾一下，但是效果非常好。"
         }
     }
 
