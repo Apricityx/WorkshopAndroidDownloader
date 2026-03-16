@@ -149,9 +149,17 @@ data class WorkshopItemDetailUiState(
     val showConnectionErrorState: Boolean = false,
 )
 
+data class ModLibraryDescriptionTranslationUiState(
+    val isTranslatingDescription: Boolean = false,
+    val translatedDescription: String? = null,
+    val translationErrorMessage: String? = null,
+)
+
 data class ModLibraryUiState(
     val items: List<DownloadedModGroup> = emptyList(),
     val selectedEntry: DownloadedModGroup? = null,
+    val detailDescriptionTranslation: ModLibraryDescriptionTranslationUiState =
+        ModLibraryDescriptionTranslationUiState(),
     val displayMode: ModLibraryDisplayMode = DownloadSettingsRepository.DEFAULT_MOD_LIBRARY_DISPLAY_MODE,
     val filterState: ModLibraryFilterState = ModLibraryFilterState(),
     val filterPanelExpanded: Boolean = false,

@@ -980,7 +980,10 @@ class WorkshopViewModel(
     fun openModDetail(entry: DownloadedModGroup) {
         _uiState.update { state ->
             state.copy(
-                modLibraryState = state.modLibraryState.copy(selectedEntry = entry),
+                modLibraryState = state.modLibraryState.copy(
+                    selectedEntry = entry,
+                    detailDescriptionTranslation = ModLibraryDescriptionTranslationUiState(),
+                ),
             )
         }
         navigateTo(WorkshopScreenDestination.ModDetail)
@@ -1161,6 +1164,78 @@ class WorkshopViewModel(
                         workshopItemDetailState = current.copy(
                             isTranslatingDescription = false,
                             translationErrorMessage = error.message ?: "翻译描述失败，请稍后重试。",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun translateModLibraryDescription() {
+        val modLibraryState = _uiState.value.modLibraryState
+        val selectedEntry = modLibraryState.selectedEntry ?: return
+        if (modLibraryState.detailDescriptionTranslation.isTranslatingDescription) {
+            return
+        }
+
+        val description = selectedEntry.description.trim()
+        if (description.isBlank()) {
+            viewModelScope.launch {
+                _toastMessages.emit("当前没有可翻译的简介。")
+            }
+            return
+        }
+
+        val targetModGroupKey = selectedEntry.modGroupKey()
+        _uiState.update { state ->
+            val current = state.modLibraryState.selectedEntry ?: return@update state
+            if (current.modGroupKey() != targetModGroupKey) {
+                return@update state
+            }
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    detailDescriptionTranslation = state.modLibraryState.detailDescriptionTranslation.copy(
+                        isTranslatingDescription = true,
+                        translationErrorMessage = null,
+                    ),
+                ),
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                translateDescriptionWithSelectedProvider(description)
+            }.onSuccess { result ->
+                _uiState.update { state ->
+                    val current = state.modLibraryState.selectedEntry ?: return@update state
+                    if (current.modGroupKey() != targetModGroupKey) {
+                        return@update state
+                    }
+                    state.copy(
+                        modLibraryState = state.modLibraryState.copy(
+                            detailDescriptionTranslation = state.modLibraryState.detailDescriptionTranslation.copy(
+                                isTranslatingDescription = false,
+                                translatedDescription = result.translatedText,
+                                translationErrorMessage = null,
+                            ),
+                        ),
+                    )
+                }
+                result.fallbackToastMessage?.let { fallbackToastMessage ->
+                    _toastMessages.emit(fallbackToastMessage)
+                }
+            }.onFailure { error ->
+                _uiState.update { state ->
+                    val current = state.modLibraryState.selectedEntry ?: return@update state
+                    if (current.modGroupKey() != targetModGroupKey) {
+                        return@update state
+                    }
+                    state.copy(
+                        modLibraryState = state.modLibraryState.copy(
+                            detailDescriptionTranslation = state.modLibraryState.detailDescriptionTranslation.copy(
+                                isTranslatingDescription = false,
+                                translationErrorMessage = error.message ?: "翻译简介失败，请稍后重试。",
+                            ),
                         ),
                     )
                 }
@@ -2080,11 +2155,18 @@ class WorkshopViewModel(
         }
         val updateCheckState = state.modLibraryState.updateCheckState
             .filterForEntries(groupedEntries.latestVersionsForUpdateCheck())
+        val detailDescriptionTranslation = state.modLibraryState.detailDescriptionTranslation.takeIf {
+            shouldPreserveModLibraryDescriptionTranslation(
+                previous = state.modLibraryState.selectedEntry,
+                next = selectedEntry,
+            )
+        } ?: ModLibraryDescriptionTranslationUiState()
         return state.copy(
             currentScreen = nextScreen,
             modLibraryState = state.modLibraryState.copy(
                 items = groupedEntries,
                 selectedEntry = selectedEntry,
+                detailDescriptionTranslation = detailDescriptionTranslation,
                 updateCheckState = updateCheckState,
                 isLoading = isLoading,
                 errorMessage = errorMessage,
@@ -2190,6 +2272,15 @@ private data class DescriptionTranslationResult(
     val translatedText: String,
     val fallbackToastMessage: String? = null,
 )
+
+internal fun shouldPreserveModLibraryDescriptionTranslation(
+    previous: DownloadedModGroup?,
+    next: DownloadedModGroup?,
+): Boolean =
+    previous != null &&
+        next != null &&
+        previous.modGroupKey() == next.modGroupKey() &&
+        previous.description == next.description
 
 private fun Throwable.isTimeoutRequestFailure(): Boolean =
     this is SocketTimeoutException || this is TimeoutCancellationException

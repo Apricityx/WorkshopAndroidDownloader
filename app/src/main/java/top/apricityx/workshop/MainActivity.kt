@@ -263,6 +263,7 @@ class MainActivity : ComponentActivity() {
             onOpenWorkshopItemDetail = workshopViewModel::openWorkshopItemDetail,
             onRetryWorkshopItemDetail = workshopViewModel::retryWorkshopItemDetail,
             onTranslateWorkshopItemDescription = workshopViewModel::translateWorkshopItemDescription,
+            onTranslateModLibraryDescription = workshopViewModel::translateModLibraryDescription,
             onDownloadSingleItem = ::downloadSingleItemWithCompatibilityGuard,
         )
 

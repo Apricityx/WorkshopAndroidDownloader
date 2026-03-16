@@ -103,6 +103,7 @@ data class WorkshopScreenActions(
     val onOpenWorkshopItemDetail: (WorkshopBrowseItem) -> Unit,
     val onRetryWorkshopItemDetail: () -> Unit,
     val onTranslateWorkshopItemDescription: () -> Unit,
+    val onTranslateModLibraryDescription: () -> Unit,
     val onDownloadSingleItem: (WorkshopBrowseItem) -> Unit,
 )
 

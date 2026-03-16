@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -21,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import top.apricityx.workshop.DownloadedModEntry
 import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ExportedDownloadFile
+import top.apricityx.workshop.ModLibraryDescriptionTranslationUiState
 import top.apricityx.workshop.ModUpdateCheckResult
 import top.apricityx.workshop.ModUpdateCheckStatus
 import top.apricityx.workshop.formatBinaryFileSize
@@ -28,10 +31,12 @@ import top.apricityx.workshop.latestVersion
 import top.apricityx.workshop.modLibraryKey
 import top.apricityx.workshop.primaryFile
 import top.apricityx.workshop.totalFileCount
+import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ModPreviewImage
 import top.apricityx.workshop.ui.component.ModUpdateStatusText
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
+import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
 import top.apricityx.workshop.ui.component.formatModLibraryTimestamp
 import top.apricityx.workshop.versionCount
@@ -40,7 +45,9 @@ import top.apricityx.workshop.versionLabel
 @Composable
 fun ModDetailScreen(
     group: DownloadedModGroup,
+    descriptionTranslationState: ModLibraryDescriptionTranslationUiState,
     updateResults: Map<String, ModUpdateCheckResult>,
+    onTranslateDescription: () -> Unit,
     onOpenFile: (ExportedDownloadFile) -> Unit,
     onShareFile: (ExportedDownloadFile) -> Unit,
     onUpdateMod: (DownloadedModEntry) -> Unit,
@@ -91,11 +98,57 @@ fun ModDetailScreen(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
+                if (descriptionTranslationState.translatedDescription != null) {
+                    Text(
+                        text = "原文",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Text(
                     text = group.description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                OutlinedButton(
+                    onClick = onTranslateDescription,
+                    enabled = !descriptionTranslationState.isTranslatingDescription,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (descriptionTranslationState.isTranslatingDescription) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text(" 正在翻译简介…")
+                    } else {
+                        Text(
+                            if (descriptionTranslationState.translatedDescription == null) {
+                                "翻译简介"
+                            } else {
+                                "重新翻译简介"
+                            },
+                        )
+                    }
+                }
+                descriptionTranslationState.translationErrorMessage?.let { translationErrorMessage ->
+                    WorkshopMessageBanner(
+                        message = translationErrorMessage,
+                        tone = MessageTone.Error,
+                    )
+                }
+                descriptionTranslationState.translatedDescription?.takeIf(String::isNotBlank)?.let { translatedDescription ->
+                    Text(
+                        text = "译文",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = translatedDescription,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
 

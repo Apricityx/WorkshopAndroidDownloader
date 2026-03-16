@@ -390,7 +390,9 @@ private fun WorkshopScreenContent(
                 WorkshopScreenDestination.ModDetail -> selectedMod?.let { entry ->
                     ModDetailScreen(
                         group = entry,
+                        descriptionTranslationState = state.modLibraryState.detailDescriptionTranslation,
                         updateResults = state.modLibraryState.updateCheckState.results,
+                        onTranslateDescription = actions.onTranslateModLibraryDescription,
                         onOpenFile = actions.onOpenModFile,
                         onShareFile = actions.onShareModFile,
                         onUpdateMod = actions.onUpdateMod,
