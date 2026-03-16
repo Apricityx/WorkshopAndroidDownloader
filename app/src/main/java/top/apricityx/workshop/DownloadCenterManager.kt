@@ -295,6 +295,10 @@ class DownloadCenterManager private constructor(
             task.id,
             "Download settings threads=${settingsRepository.getDownloadThreadCount()} concurrentTasks=${settingsRepository.getConcurrentDownloadTaskCount()}",
         )
+        debugLogManager.append(
+            task.id,
+            "Authenticated cleartext HTTP allowed=${settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()}",
+        )
         debugLogManager.append(task.id, "Bound account id=${task.boundAccountId ?: "anonymous"} name=${task.boundAccountName}")
         debugLogManager.append(task.id, "Steam CM websocket client=OkHttp 5 default path")
         debugLogManager.append(task.id, "Runtime app log dir=${AppRuntimeLogManager.logDirectoryPath(application)}")
@@ -318,6 +322,12 @@ class DownloadCenterManager private constructor(
             return
         }
         val taskClient = OkHttpClient.Builder()
+            .addInterceptor(
+                SteamAuthenticatedCleartextInterceptor(
+                    hasAuthenticatedSteamSession = { accountSession != null },
+                    allowAuthenticatedCleartextHttpProvider = settingsRepository::isSteamAuthenticatedCleartextHttpAllowed,
+                ),
+            )
             .addInterceptor(
                 SteamCookieInterceptor(
                     authRepository = steamAuthRepository,

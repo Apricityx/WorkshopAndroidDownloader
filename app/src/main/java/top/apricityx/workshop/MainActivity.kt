@@ -246,6 +246,7 @@ class MainActivity : ComponentActivity() {
             onUpdateDownloadThreadCountInput = workshopViewModel::updateDownloadThreadCountInput,
             onUpdateConcurrentDownloadTaskCountInput = workshopViewModel::updateConcurrentDownloadTaskCountInput,
             onUpdateModUpdateConcurrentCheckCountInput = workshopViewModel::updateModUpdateConcurrentCheckCountInput,
+            onUpdateAllowSteamAuthenticatedCleartextHttp = workshopViewModel::updateAllowSteamAuthenticatedCleartextHttp,
             onSaveDownloadSettings = workshopViewModel::saveDownloadSettings,
             onUpdateAddGameSearchQuery = workshopViewModel::updateAddGameSearchQuery,
             onSearchGames = workshopViewModel::searchGames,

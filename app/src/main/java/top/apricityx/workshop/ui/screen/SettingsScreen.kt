@@ -75,6 +75,7 @@ fun SettingsScreen(
     onThreadCountChange: (String) -> Unit,
     onConcurrentTaskCountChange: (String) -> Unit,
     onModUpdateConcurrentCheckCountChange: (String) -> Unit,
+    onAllowSteamAuthenticatedCleartextHttpChanged: (Boolean) -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -416,6 +417,28 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("允许带 Steam 登录态的 HTTP 请求", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "应用已全局放开明文 HTTP 以兼容部分工坊 CDN。关闭时会拦截绑定 Steam 账号的 HTTP 请求；开启存在登录态经明文链路泄露的风险。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = state.allowSteamAuthenticatedCleartextHttp,
+                    onCheckedChange = onAllowSteamAuthenticatedCleartextHttpChanged,
+                )
+            }
 
             OutlinedTextField(
                 value = state.downloadThreadCountInput,

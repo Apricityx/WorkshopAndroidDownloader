@@ -442,6 +442,7 @@ private fun WorkshopScreenContent(
                     onThreadCountChange = actions.onUpdateDownloadThreadCountInput,
                     onConcurrentTaskCountChange = actions.onUpdateConcurrentDownloadTaskCountInput,
                     onModUpdateConcurrentCheckCountChange = actions.onUpdateModUpdateConcurrentCheckCountInput,
+                    onAllowSteamAuthenticatedCleartextHttpChanged = actions.onUpdateAllowSteamAuthenticatedCleartextHttp,
                     onSave = actions.onSaveDownloadSettings,
                     modifier = Modifier.fillMaxSize(),
                 )

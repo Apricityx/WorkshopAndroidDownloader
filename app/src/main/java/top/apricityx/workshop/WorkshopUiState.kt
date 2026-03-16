@@ -199,6 +199,8 @@ data class SettingsUiState(
     val selectedSteamLanguagePreference: SteamLanguagePreference =
         DownloadSettingsRepository.DEFAULT_STEAM_LANGUAGE_PREFERENCE,
     val selectedTranslationProvider: TranslationProvider = DownloadSettingsRepository.DEFAULT_TRANSLATION_PROVIDER,
+    val allowSteamAuthenticatedCleartextHttp: Boolean =
+        DownloadSettingsRepository.DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP,
     val baiduTranslationApiKeyConfigured: Boolean = false,
     val steamAuthState: SteamAuthUiState = SteamAuthUiState(),
     val autoCheckUpdatesEnabled: Boolean = DownloadSettingsRepository.DEFAULT_AUTO_CHECK_UPDATES_ENABLED,

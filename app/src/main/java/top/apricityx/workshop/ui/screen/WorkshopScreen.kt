@@ -86,6 +86,7 @@ data class WorkshopScreenActions(
     val onUpdateDownloadThreadCountInput: (String) -> Unit,
     val onUpdateConcurrentDownloadTaskCountInput: (String) -> Unit,
     val onUpdateModUpdateConcurrentCheckCountInput: (String) -> Unit,
+    val onUpdateAllowSteamAuthenticatedCleartextHttp: (Boolean) -> Unit,
     val onSaveDownloadSettings: () -> Unit,
     val onUpdateAddGameSearchQuery: (String) -> Unit,
     val onSearchGames: () -> Unit,

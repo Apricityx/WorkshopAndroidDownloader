@@ -90,6 +90,16 @@ class DownloadSettingsRepository(context: Context) {
         prefs.edit().putString(KEY_PREFERRED_UPDATE_SOURCE_ID, source.id).apply()
     }
 
+    fun isSteamAuthenticatedCleartextHttpAllowed(): Boolean =
+        prefs.getBoolean(
+            KEY_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP,
+            DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP,
+        )
+
+    fun setSteamAuthenticatedCleartextHttpAllowed(value: Boolean) {
+        prefs.edit().putBoolean(KEY_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP, value).apply()
+    }
+
     fun getLastUpdateCheckAtMs(): Long =
         prefs.getLong(KEY_LAST_UPDATE_CHECK_AT_MS, 0L)
 
@@ -137,6 +147,8 @@ class DownloadSettingsRepository(context: Context) {
         private const val KEY_MOD_LIBRARY_DISPLAY_MODE = "mod_library_display_mode"
         private const val KEY_AUTO_CHECK_UPDATES_ENABLED = "auto_check_updates_enabled"
         private const val KEY_PREFERRED_UPDATE_SOURCE_ID = "preferred_update_source_id"
+        private const val KEY_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP =
+            "allow_steam_authenticated_cleartext_http"
         private const val KEY_LAST_UPDATE_CHECK_AT_MS = "last_update_check_at_ms"
         private const val KEY_LAST_KNOWN_REMOTE_TAG = "last_known_remote_tag"
         private const val KEY_LAST_SUCCESSFUL_METADATA_SOURCE_ID = "last_successful_metadata_source_id"
@@ -152,6 +164,7 @@ class DownloadSettingsRepository(context: Context) {
         const val MIN_MOD_UPDATE_CONCURRENT_CHECKS = 1
         const val MAX_MOD_UPDATE_CONCURRENT_CHECKS = 10
         const val DEFAULT_AUTO_CHECK_UPDATES_ENABLED = true
+        const val DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP = false
         val DEFAULT_THEME_MODE: AppThemeMode = AppThemeMode.FollowSystem
         val DEFAULT_STEAM_LANGUAGE_PREFERENCE: SteamLanguagePreference = SteamLanguagePreference.SimplifiedChinese
         val DEFAULT_TRANSLATION_PROVIDER: TranslationProvider = TranslationProvider.OnDevice

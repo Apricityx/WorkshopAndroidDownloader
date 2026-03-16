@@ -442,7 +442,11 @@ class UgcWorkshopDownloader(
                 lastError = error
             }
         }
-        throw WorkshopDownloadException("Steam CDN request exhausted retries", lastError)
+        val detail = lastError?.message?.takeIf(String::isNotBlank)
+        throw WorkshopDownloadException(
+            detail?.let { "Steam CDN request exhausted retries: $it" } ?: "Steam CDN request exhausted retries",
+            lastError,
+        )
     }
 
     private suspend fun requestBytesFromEndpoint(

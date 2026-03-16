@@ -52,6 +52,15 @@ class WorkshopViewModel(
     private val baiduTranslationCredentialsRepository = BaiduTranslationCredentialsRepository(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val httpClient = OkHttpClient.Builder()
+        .addInterceptor(
+            SteamAuthenticatedCleartextInterceptor(
+                hasAuthenticatedSteamSession = {
+                    steamAuthRepository.activeAccountId()
+                        ?.let(steamAuthRepository::accountSessionFor) != null
+                },
+                allowAuthenticatedCleartextHttpProvider = settingsRepository::isSteamAuthenticatedCleartextHttpAllowed,
+            ),
+        )
         .addInterceptor(SteamCookieInterceptor(steamAuthRepository))
         .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
         .build()
@@ -157,6 +166,7 @@ class WorkshopViewModel(
         val currentThemeMode = settingsRepository.getThemeMode()
         val currentSteamLanguagePreference = settingsRepository.getSteamLanguagePreference()
         val currentTranslationProvider = settingsRepository.getTranslationProvider()
+        val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
         val currentSteamAuthState = steamAuthRepository.loadSnapshot().toUiState(
             loginDialogState = _uiState.value.settingsState.steamAuthState.loginDialogState,
         )
@@ -173,6 +183,7 @@ class WorkshopViewModel(
                     selectedThemeMode = currentThemeMode,
                     selectedSteamLanguagePreference = currentSteamLanguagePreference,
                     selectedTranslationProvider = currentTranslationProvider,
+                    allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
                     baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
                     steamAuthState = currentSteamAuthState,
                     autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
@@ -411,6 +422,22 @@ class WorkshopViewModel(
                 settingsState = state.settingsState.copy(
                     modUpdateConcurrentCheckCountInput = value.filter(Char::isDigit),
                     message = null,
+                ),
+            )
+        }
+    }
+
+    fun updateAllowSteamAuthenticatedCleartextHttp(allowed: Boolean) {
+        settingsRepository.setSteamAuthenticatedCleartextHttpAllowed(allowed)
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    allowSteamAuthenticatedCleartextHttp = allowed,
+                    message = if (allowed) {
+                        "已允许带 Steam 登录态的 HTTP 请求，请仅在可信网络环境下使用。"
+                    } else {
+                        "已禁止带 Steam 登录态的 HTTP 请求。"
+                    },
                 ),
             )
         }
@@ -1721,7 +1748,9 @@ class WorkshopViewModel(
         error: Throwable,
         fallbackMessage: String,
     ): String =
-        if (error.isTimeoutRequestFailure()) {
+        if (error is SteamAuthenticatedCleartextBlockedException) {
+            error.message ?: fallbackMessage
+        } else if (error.isTimeoutRequestFailure()) {
             REQUEST_TIMEOUT_MESSAGE
         } else {
             fallbackMessage
@@ -1731,7 +1760,9 @@ class WorkshopViewModel(
         error: Throwable,
         fallbackMessage: String,
     ): String =
-        if (error.isWorkshopConnectionFailure()) {
+        if (error is SteamAuthenticatedCleartextBlockedException) {
+            error.message ?: fallbackMessage
+        } else if (error.isWorkshopConnectionFailure()) {
             WORKSHOP_CONNECTION_FAILURE_MESSAGE
         } else {
             fallbackMessage
@@ -2109,6 +2140,7 @@ class WorkshopViewModel(
         val modUpdateConcurrentChecks = settingsRepository.getModUpdateConcurrentCheckCount()
         val savedBaiduCredentials = baiduTranslationCredentialsRepository.getCredentials()
         val hasSavedBaiduCredentials = savedBaiduCredentials.isConfigured()
+        val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
         return WorkshopUiState(
             themeMode = themeMode,
             modLibraryState = ModLibraryUiState(
@@ -2127,6 +2159,7 @@ class WorkshopViewModel(
                 selectedThemeMode = themeMode,
                 selectedSteamLanguagePreference = steamLanguagePreference,
                 selectedTranslationProvider = translationProvider,
+                allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
                 baiduTranslationApiKeyConfigured = hasSavedBaiduCredentials,
                 steamAuthState = steamAuthRepository.loadSnapshot().toUiState(),
                 autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
