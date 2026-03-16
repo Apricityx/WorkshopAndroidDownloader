@@ -169,6 +169,46 @@ class SteamAuthRepository(context: Context) {
         }
     }
 
+    suspend fun signInWithRefreshToken(
+        refreshToken: String,
+        accountNameHint: String? = null,
+        replaceAccountId: String? = null,
+    ): SteamSignInStep = authMutex.withLock {
+        pendingAuthSession?.close()
+        pendingAuthSession = null
+        pendingReplaceAccountId = null
+
+        val steamId = parseSteamJwtInfo(refreshToken).steamId
+            ?: throw IOException("无法解析 Steam Refresh Token，请确认粘贴的是完整令牌。")
+        val state = loadState()
+        val existing = state.accounts.firstOrNull {
+            it.accountId == replaceAccountId || it.steamId == steamId
+        }
+        val accountName = accountNameHint
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: existing?.accountName
+            ?: "Steam $steamId"
+        val tokens = authenticationClient.generateAccessTokenForApp(
+            account = SteamAccountSession(
+                accountName = accountName,
+                steamId = steamId,
+                refreshToken = refreshToken,
+            ),
+            allowRenewal = true,
+        )
+        val account = persistAccount(
+            state = state,
+            accountName = accountName,
+            steamId = steamId,
+            refreshToken = tokens.refreshToken ?: refreshToken,
+            accessToken = tokens.accessToken,
+            replaceAccountId = replaceAccountId,
+        )
+        val snapshot = loadSnapshot()
+        return SteamSignInStep.Success(account = account, snapshot = snapshot)
+    }
+
     suspend fun submitPendingGuardCode(code: String): SteamSignInStep = authMutex.withLock {
         val session = pendingAuthSession ?: throw IOException("No pending Steam sign-in session")
         val challenge = session.challenges.firstOrNull()
@@ -298,26 +338,44 @@ class SteamAuthRepository(context: Context) {
     private fun persistAccount(
         result: SteamAuthPollResult,
         replaceAccountId: String?,
-    ): SteamAccountSummary {
-        val state = loadState()
-        val existing = state.accounts.firstOrNull {
-            it.accountId == replaceAccountId || it.steamId == result.steamId
-        }
-        val accessTokenInfo = parseSteamJwtInfo(result.accessToken)
-        val accountId = existing?.accountId ?: UUID.randomUUID().toString()
-        val nextAccount = StoredSteamAccount(
-            accountId = accountId,
+    ): SteamAccountSummary =
+        persistAccount(
+            state = loadState(),
             accountName = result.accountName,
             steamId = result.steamId,
             refreshToken = result.refreshToken,
-            guardData = result.newGuardData ?: existing?.guardData,
-            webAccessToken = result.accessToken,
+            accessToken = result.accessToken,
+            replaceAccountId = replaceAccountId,
+            guardDataOverride = result.newGuardData,
+        )
+
+    private fun persistAccount(
+        state: StoredSteamState,
+        accountName: String,
+        steamId: Long,
+        refreshToken: String,
+        accessToken: String,
+        replaceAccountId: String?,
+        guardDataOverride: String? = null,
+    ): SteamAccountSummary {
+        val existing = state.accounts.firstOrNull {
+            it.accountId == replaceAccountId || it.steamId == steamId
+        }
+        val accessTokenInfo = parseSteamJwtInfo(accessToken)
+        val accountId = existing?.accountId ?: UUID.randomUUID().toString()
+        val nextAccount = StoredSteamAccount(
+            accountId = accountId,
+            accountName = accountName,
+            steamId = steamId,
+            refreshToken = refreshToken,
+            guardData = guardDataOverride ?: existing?.guardData,
+            webAccessToken = accessToken,
             webAccessTokenExpEpochSeconds = accessTokenInfo.expiresAtEpochSeconds,
             requiresReauthentication = false,
         )
         saveState(
             state.copy(
-                accounts = state.accounts.filterNot { it.accountId == accountId || it.steamId == result.steamId } + nextAccount,
+                accounts = state.accounts.filterNot { it.accountId == accountId || it.steamId == steamId } + nextAccount,
                 activeAccountId = accountId,
             ),
         )

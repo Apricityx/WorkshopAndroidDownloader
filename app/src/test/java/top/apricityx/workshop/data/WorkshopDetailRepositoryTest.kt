@@ -89,6 +89,108 @@ class WorkshopDetailRepositoryTest {
         assertThat(communityRequest.url.encodedPath).isEqualTo("/sharedfiles/filedetails/")
         assertThat(communityRequest.url.queryParameter("l")).isEqualTo("schinese")
     }
+
+    @Test
+    fun loadWorkshopItemDetail_parsesRequiredItemsFromCommunityPage() = runBlocking {
+        val repository = WorkshopDetailRepository(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            communityBaseUrl = server.url("/"),
+            languagePreferenceProvider = { SteamLanguagePreference.English },
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "response": {
+                    "publishedfiledetails": [
+                      {
+                        "publishedfileid": "519359552",
+                        "title": "World Trade Center - Part 10 of 11",
+                        "description": "Description",
+                        "preview_url": "https://example.com/full.png",
+                        "file_size": "9840019",
+                        "time_updated": "1466727569",
+                        "subscriptions": "14412",
+                        "favorited": "522",
+                        "views": "15701",
+                        "tags": [{"tag": "Building"}]
+                      }
+                    ]
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                <html>
+                    <div class="workshopItemTitle">World Trade Center - Part 10 of 11</div>
+                    <div class="workshopItemDescription" id="highlightContent">Description</div>
+                    <div class="requiredItemsContainer" id="RequiredItems">
+                        <a href="https://steamcommunity.com/workshop/filedetails/?id=519353802" target="_blank" data-subscribed="0">
+                            <div class="requiredItem">World Trade Center - Part 1 of 11</div>
+                        </a>
+                        <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=519354649&amp;searchtext=" target="_blank" data-subscribed="0">
+                            <div class="requiredItem">World Trade Center - Part 2 of 11</div>
+                        </a>
+                    </div>
+                </html>
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "response": {
+                    "publishedfiledetails": [
+                      {
+                        "publishedfileid": "519353802",
+                        "consumer_app_id": 255710,
+                        "title": "World Trade Center - Part 1 of 11",
+                        "description": "[b]Office tower[/b]",
+                        "preview_url": "https://example.com/required-1.png"
+                      },
+                      {
+                        "publishedfileid": "519354649",
+                        "consumer_app_id": 255710,
+                        "title": "World Trade Center - Part 2 of 11",
+                        "description": "[b]Connector building[/b]",
+                        "preview_url": "https://example.com/required-2.png"
+                      }
+                    ]
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val result = repository.loadWorkshopItemDetail(
+            WorkshopBrowseItem(
+                appId = 255710u,
+                publishedFileId = 519359552uL,
+                title = "World Trade Center - Part 10 of 11",
+                authorName = "BoldlyBuilding",
+                previewImageUrl = "https://example.com/thumb.png",
+                descriptionSnippet = "Description",
+            ),
+        )
+
+        assertThat(result.requiredItems).hasSize(2)
+        assertThat(result.requiredItems[0].appId).isEqualTo(255710u)
+        assertThat(result.requiredItems[0].publishedFileId).isEqualTo(519353802uL)
+        assertThat(result.requiredItems[0].title).isEqualTo("World Trade Center - Part 1 of 11")
+        assertThat(result.requiredItems[0].previewImageUrl).isEqualTo("https://example.com/required-1.png")
+        assertThat(result.requiredItems[0].descriptionSnippet).isEqualTo("Office tower")
+        assertThat(result.requiredItems[1].publishedFileId).isEqualTo(519354649uL)
+        assertThat(result.requiredItems[1].title).isEqualTo("World Trade Center - Part 2 of 11")
+        assertThat(result.requiredItems[1].previewImageUrl).isEqualTo("https://example.com/required-2.png")
+        assertThat(result.requiredItems[1].descriptionSnippet).isEqualTo("Connector building")
+        assertThat(result.requiredItems[1].workshopUrl)
+            .isEqualTo("https://steamcommunity.com/sharedfiles/filedetails/?id=519354649&searchtext=")
+    }
 }
 
 private fun mockResponse(

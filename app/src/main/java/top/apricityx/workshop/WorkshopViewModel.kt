@@ -8,8 +8,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +38,7 @@ import top.apricityx.workshop.data.SteamGameRepository
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.data.WorkshopBrowseRepository
 import top.apricityx.workshop.data.WorkshopDetailRepository
+import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.update.UpdateCheckExecutionResult
 import top.apricityx.workshop.update.UpdateDownloadResolution
 import top.apricityx.workshop.update.UpdateReleaseInfo
@@ -91,6 +94,7 @@ class WorkshopViewModel(
     val toastMessages = _toastMessages.asSharedFlow()
 
     private var lastDownloadCenterModSignature: String? = null
+    private var steamConfirmationWaitJob: Job? = null
 
     init {
         refreshLibrary()
@@ -638,6 +642,7 @@ class WorkshopViewModel(
     }
 
     fun openSteamLoginDialog() {
+        cancelPendingSteamLoginFlow()
         _uiState.update { state ->
             state.copy(
                 settingsState = state.settingsState.copy(
@@ -651,7 +656,7 @@ class WorkshopViewModel(
     }
 
     fun dismissSteamLoginDialog() {
-        steamAuthRepository.cancelPendingSignIn()
+        cancelPendingSteamLoginFlow()
         syncSteamAuthState(
             message = null,
             loginDialogState = null,
@@ -692,6 +697,23 @@ class WorkshopViewModel(
         }
     }
 
+    fun updateSteamLoginRefreshToken(value: String) {
+        _uiState.update { state ->
+            val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = dialog.copy(
+                            refreshToken = value,
+                            errorMessage = null,
+                        ),
+                    ),
+                    message = null,
+                ),
+            )
+        }
+    }
+
     fun updateSteamGuardCode(value: String) {
         _uiState.update { state ->
             val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
@@ -709,12 +731,48 @@ class WorkshopViewModel(
         }
     }
 
+    fun switchSteamLoginInputMode(inputMode: SteamLoginInputMode) {
+        cancelPendingSteamLoginFlow()
+        _uiState.update { state ->
+            val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
+            if (dialog.inputMode == inputMode && dialog.challengeType == null) {
+                return@update state
+            }
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        loginDialogState = dialog.copy(
+                            inputMode = inputMode,
+                            password = if (inputMode == SteamLoginInputMode.RefreshToken) "" else dialog.password,
+                            guardCode = "",
+                            challengeType = null,
+                            challengeMessage = null,
+                            isPollingConfirmation = false,
+                            isSubmitting = false,
+                            errorMessage = null,
+                        ),
+                    ),
+                    message = null,
+                ),
+            )
+        }
+    }
+
     fun submitSteamLogin() {
         val dialog = _uiState.value.settingsState.steamAuthState.loginDialogState ?: return
         viewModelScope.launch {
             setSteamLoginSubmitting(true)
             val result = runCatching {
-                when (dialog.challengeType) {
+                when {
+                    dialog.inputMode == SteamLoginInputMode.RefreshToken &&
+                        dialog.challengeType == null ->
+                        steamAuthRepository.signInWithRefreshToken(
+                            refreshToken = dialog.refreshToken.trim(),
+                            accountNameHint = dialog.username.trim(),
+                            replaceAccountId = dialog.targetAccountId,
+                        )
+
+                    else -> when (dialog.challengeType) {
                     SteamGuardChallengeType.EmailCode,
                     SteamGuardChallengeType.DeviceCode,
                     -> steamAuthRepository.submitPendingGuardCode(dialog.guardCode.trim())
@@ -728,6 +786,7 @@ class WorkshopViewModel(
                         password = dialog.password,
                         replaceAccountId = dialog.targetAccountId,
                     )
+                    }
                 }
             }
             result.onSuccess(::applySteamSignInStep)
@@ -749,6 +808,7 @@ class WorkshopViewModel(
 
     fun reauthenticateSteamAccount(accountId: String) {
         val account = steamAuthRepository.loadSnapshot().accounts.firstOrNull { it.accountId == accountId } ?: return
+        cancelPendingSteamLoginFlow()
         _uiState.update { state ->
             state.copy(
                 settingsState = state.settingsState.copy(
@@ -1450,6 +1510,26 @@ class WorkshopViewModel(
         )
     }
 
+    suspend fun loadRequiredItemsForDownload(item: WorkshopBrowseItem): List<WorkshopRequiredItem> {
+        val currentDetail = _uiState.value.workshopItemDetailState
+            ?.takeIf { detailState ->
+                detailState.item.appId == item.appId &&
+                    detailState.item.publishedFileId == item.publishedFileId
+            }
+            ?.detail
+        if (currentDetail != null) {
+            return currentDetail.requiredItems
+        }
+
+        return runCatching {
+            withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                detailRepository.loadWorkshopItemDetail(item).requiredItems
+            }
+        }.getOrElse {
+            emptyList()
+        }
+    }
+
     fun applyAdbCommand(command: AdbDownloadCommand) {
         Log.i(
             WorkshopAppContract.logTag,
@@ -1993,6 +2073,7 @@ class WorkshopViewModel(
                     steamAuthState = state.settingsState.steamAuthState.copy(
                         loginDialogState = dialog.copy(
                             isSubmitting = submitting,
+                            isPollingConfirmation = dialog.isPollingConfirmation && submitting,
                             errorMessage = errorMessage,
                         ),
                     ),
@@ -2004,15 +2085,18 @@ class WorkshopViewModel(
     private fun applySteamSignInStep(step: SteamSignInStep) {
         when (step) {
             is SteamSignInStep.RequiresGuardCode -> {
+                cancelSteamConfirmationWaitJob()
                 _uiState.update { state ->
                     val dialog = state.settingsState.steamAuthState.loginDialogState ?: SteamLoginDialogUiState()
                     state.copy(
                         settingsState = state.settingsState.copy(
                             steamAuthState = state.settingsState.steamAuthState.copy(
                                 loginDialogState = dialog.copy(
+                                    inputMode = SteamLoginInputMode.Credentials,
                                     password = "",
                                     challengeType = step.challenge.type,
                                     challengeMessage = step.challenge.message,
+                                    isPollingConfirmation = false,
                                     isSubmitting = false,
                                     errorMessage = null,
                                 ),
@@ -2023,15 +2107,18 @@ class WorkshopViewModel(
             }
 
             is SteamSignInStep.AwaitingConfirmation -> {
+                cancelSteamConfirmationWaitJob()
                 _uiState.update { state ->
                     val dialog = state.settingsState.steamAuthState.loginDialogState ?: SteamLoginDialogUiState()
                     state.copy(
                         settingsState = state.settingsState.copy(
                             steamAuthState = state.settingsState.steamAuthState.copy(
                                 loginDialogState = dialog.copy(
+                                    inputMode = SteamLoginInputMode.Credentials,
                                     password = "",
                                     challengeType = step.challenge.type,
                                     challengeMessage = step.challenge.message,
+                                    isPollingConfirmation = true,
                                     isSubmitting = false,
                                     errorMessage = null,
                                 ),
@@ -2039,23 +2126,53 @@ class WorkshopViewModel(
                         ),
                     )
                 }
-                viewModelScope.launch {
-                    setSteamLoginSubmitting(true)
-                    runCatching { steamAuthRepository.waitForPendingConfirmation() }
-                        .onSuccess(::applySteamSignInStep)
-                        .onFailure { error ->
-                            setSteamLoginSubmitting(false, error.message ?: "Steam 登录失败。")
-                        }
-                }
+                startSteamConfirmationWait()
             }
 
             is SteamSignInStep.Success -> {
+                cancelSteamConfirmationWaitJob()
                 syncSteamAuthState(
                     message = "已登录 ${step.account.accountName}。",
                     loginDialogState = null,
                 )
             }
         }
+    }
+
+    private fun startSteamConfirmationWait() {
+        cancelSteamConfirmationWaitJob()
+        steamConfirmationWaitJob = viewModelScope.launch {
+            runCatching { steamAuthRepository.waitForPendingConfirmation() }
+                .onSuccess(::applySteamSignInStep)
+                .onFailure { error ->
+                    if (error is CancellationException) {
+                        return@onFailure
+                    }
+                    _uiState.update { state ->
+                        val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
+                        state.copy(
+                            settingsState = state.settingsState.copy(
+                                steamAuthState = state.settingsState.steamAuthState.copy(
+                                    loginDialogState = dialog.copy(
+                                        isPollingConfirmation = false,
+                                        errorMessage = error.message ?: "Steam 登录失败。",
+                                    ),
+                                ),
+                            ),
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun cancelSteamConfirmationWaitJob() {
+        steamConfirmationWaitJob?.cancel()
+        steamConfirmationWaitJob = null
+    }
+
+    private fun cancelPendingSteamLoginFlow() {
+        cancelSteamConfirmationWaitJob()
+        steamAuthRepository.cancelPendingSignIn()
     }
 
     private fun buildUpdateStatusSummary(): String {

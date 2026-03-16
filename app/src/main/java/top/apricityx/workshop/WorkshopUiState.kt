@@ -240,13 +240,21 @@ data class SteamAuthUiState(
     val loginDialogState: SteamLoginDialogUiState? = null,
 )
 
+enum class SteamLoginInputMode {
+    Credentials,
+    RefreshToken,
+}
+
 data class SteamLoginDialogUiState(
     val mode: SteamLoginDialogMode = SteamLoginDialogMode.Add,
+    val inputMode: SteamLoginInputMode = SteamLoginInputMode.Credentials,
     val username: String = "",
     val password: String = "",
+    val refreshToken: String = "",
     val guardCode: String = "",
     val challengeType: SteamGuardChallengeType? = null,
     val challengeMessage: String? = null,
+    val isPollingConfirmation: Boolean = false,
     val isSubmitting: Boolean = false,
     val errorMessage: String? = null,
     val targetAccountId: String? = null,
@@ -340,6 +348,17 @@ fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? =
             loginDialogState = loginDialogState,
         )
     }
+
+fun SteamGuardChallengeType?.isSteamConfirmationChallenge(): Boolean =
+    this == SteamGuardChallengeType.DeviceConfirmation || this == SteamGuardChallengeType.EmailConfirmation
+
+fun SteamLoginDialogUiState.canSwitchSteamLoginInputMode(): Boolean =
+    !isSubmitting &&
+        (
+            inputMode == SteamLoginInputMode.RefreshToken ||
+                challengeType == null ||
+                challengeType.isSteamConfirmationChallenge()
+        )
 
 const val BAIDU_TRANSLATION_SAMPLE_TEXT =
     "This mod adds a new relic and several balance changes for a smoother run."

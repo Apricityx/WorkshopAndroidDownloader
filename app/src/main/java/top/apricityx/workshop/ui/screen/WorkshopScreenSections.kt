@@ -383,6 +383,7 @@ private fun WorkshopScreenContent(
                         onRetry = actions.onRetryWorkshopItemDetail,
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onDownload = actions.onDownloadSingleItem,
+                        onOpenRequiredItem = actions.onOpenWorkshopItemDetail,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -427,7 +428,9 @@ private fun WorkshopScreenContent(
                     onDismissSteamLoginDialog = actions.onDismissSteamLoginDialog,
                     onUpdateSteamLoginUsername = actions.onUpdateSteamLoginUsername,
                     onUpdateSteamLoginPassword = actions.onUpdateSteamLoginPassword,
+                    onUpdateSteamLoginRefreshToken = actions.onUpdateSteamLoginRefreshToken,
                     onUpdateSteamGuardCode = actions.onUpdateSteamGuardCode,
+                    onSwitchSteamLoginInputMode = actions.onSwitchSteamLoginInputMode,
                     onSubmitSteamLogin = actions.onSubmitSteamLogin,
                     onSwitchToAnonymousSteamAccount = actions.onSwitchToAnonymousSteamAccount,
                     onSetActiveSteamAccount = actions.onSetActiveSteamAccount,

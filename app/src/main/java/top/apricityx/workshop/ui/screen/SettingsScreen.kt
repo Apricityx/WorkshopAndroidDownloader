@@ -26,6 +26,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,9 +43,12 @@ import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadSettingsRepository
 import top.apricityx.workshop.SettingsUiState
 import top.apricityx.workshop.SteamLoginDialogMode
+import top.apricityx.workshop.SteamLoginInputMode
 import top.apricityx.workshop.SteamLanguagePreference
 import top.apricityx.workshop.TranslationProvider
+import top.apricityx.workshop.canSwitchSteamLoginInputMode
 import top.apricityx.workshop.displayName
+import top.apricityx.workshop.isSteamConfirmationChallenge
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.ui.component.MessageTone
@@ -58,7 +62,9 @@ fun SettingsScreen(
     onDismissSteamLoginDialog: () -> Unit,
     onUpdateSteamLoginUsername: (String) -> Unit,
     onUpdateSteamLoginPassword: (String) -> Unit,
+    onUpdateSteamLoginRefreshToken: (String) -> Unit,
     onUpdateSteamGuardCode: (String) -> Unit,
+    onSwitchSteamLoginInputMode: (SteamLoginInputMode) -> Unit,
     onSubmitSteamLogin: () -> Unit,
     onSwitchToAnonymousSteamAccount: () -> Unit,
     onSetActiveSteamAccount: (String) -> Unit,
@@ -550,7 +556,9 @@ fun SettingsScreen(
             onDismiss = onDismissSteamLoginDialog,
             onUsernameChange = onUpdateSteamLoginUsername,
             onPasswordChange = onUpdateSteamLoginPassword,
+            onRefreshTokenChange = onUpdateSteamLoginRefreshToken,
             onGuardCodeChange = onUpdateSteamGuardCode,
+            onSwitchInputMode = onSwitchSteamLoginInputMode,
             onSubmit = onSubmitSteamLogin,
         )
     }
@@ -595,9 +603,14 @@ private fun SteamLoginDialog(
     onDismiss: () -> Unit,
     onUsernameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
+    onRefreshTokenChange: (String) -> Unit,
     onGuardCodeChange: (String) -> Unit,
+    onSwitchInputMode: (SteamLoginInputMode) -> Unit,
     onSubmit: () -> Unit,
 ) {
+    val isTokenMode = state.inputMode == SteamLoginInputMode.RefreshToken
+    val isConfirmationChallenge = state.challengeType.isSteamConfirmationChallenge()
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(dismissOnClickOutside = false),
@@ -616,10 +629,44 @@ private fun SteamLoginDialog(
                     style = MaterialTheme.typography.titleLarge,
                 )
 
-                when (state.challengeType) {
-                    SteamGuardChallengeType.EmailCode,
-                    SteamGuardChallengeType.DeviceCode,
-                    -> {
+                when {
+                    isTokenMode -> {
+                        Text(
+                            if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                                "可直接粘贴新的 Steam Refresh Token 完成重新认证。"
+                            } else {
+                                "如果你已经拿到 Steam Refresh Token，也可以直接导入，不必继续等待手机确认。"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedTextField(
+                            value = state.username,
+                            onValueChange = onUsernameChange,
+                            label = {
+                                Text(
+                                    if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                                        "账号显示名"
+                                    } else {
+                                        "账号显示名（可选）"
+                                    },
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
+                        )
+                        OutlinedTextField(
+                            value = state.refreshToken,
+                            onValueChange = onRefreshTokenChange,
+                            label = { Text("Refresh Token") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                        )
+                    }
+
+                    state.challengeType == SteamGuardChallengeType.EmailCode ||
+                        state.challengeType == SteamGuardChallengeType.DeviceCode -> {
                         Text(
                             state.challengeMessage ?: "请输入 Steam Guard 验证码。",
                             style = MaterialTheme.typography.bodyMedium,
@@ -634,14 +681,29 @@ private fun SteamLoginDialog(
                         )
                     }
 
-                    SteamGuardChallengeType.DeviceConfirmation,
-                    SteamGuardChallengeType.EmailConfirmation,
-                    -> {
+                    isConfirmationChallenge -> {
                         Text(
                             state.challengeMessage ?: "请在 Steam 手机 App 中完成确认，应用会自动继续等待结果。",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (state.isPollingConfirmation) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text(
+                                    "正在等待 Steam 确认…",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
 
                     else -> {
@@ -663,6 +725,32 @@ private fun SteamLoginDialog(
                     }
                 }
 
+                if (state.canSwitchSteamLoginInputMode()) {
+                    TextButton(
+                        onClick = {
+                            onSwitchInputMode(
+                                if (isTokenMode) {
+                                    SteamLoginInputMode.Credentials
+                                } else {
+                                    SteamLoginInputMode.RefreshToken
+                                },
+                            )
+                        },
+                    ) {
+                        Text(
+                            if (isTokenMode) {
+                                if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                                    "改用密码重新认证"
+                                } else {
+                                    "改用账号密码登录"
+                                }
+                            } else {
+                                "改为输入令牌登录"
+                            },
+                        )
+                    }
+                }
+
                 state.errorMessage?.takeIf(String::isNotBlank)?.let { message ->
                     WorkshopMessageBanner(
                         message = message,
@@ -678,7 +766,10 @@ private fun SteamLoginDialog(
                     OutlinedButton(onClick = onDismiss, enabled = !state.isSubmitting) {
                         Text("关闭")
                     }
-                    Button(onClick = onSubmit, enabled = !state.isSubmitting) {
+                    Button(
+                        onClick = onSubmit,
+                        enabled = !state.isSubmitting && !state.isPollingConfirmation,
+                    ) {
                         if (state.isSubmitting) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
@@ -686,14 +777,18 @@ private fun SteamLoginDialog(
                             )
                         }
                         Text(
-                            when (state.challengeType) {
-                                SteamGuardChallengeType.EmailCode,
-                                SteamGuardChallengeType.DeviceCode,
-                                -> "提交验证码"
+                            when {
+                                isTokenMode -> if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                                    "导入令牌"
+                                } else {
+                                    "令牌登录"
+                                }
 
-                                SteamGuardChallengeType.DeviceConfirmation,
-                                SteamGuardChallengeType.EmailConfirmation,
-                                -> "继续等待"
+                                state.challengeType == SteamGuardChallengeType.EmailCode ||
+                                    state.challengeType == SteamGuardChallengeType.DeviceCode ->
+                                    "提交验证码"
+
+                                isConfirmationChallenge -> "继续等待"
 
                                 else -> if (state.mode == SteamLoginDialogMode.Reauthenticate) {
                                     "重新认证"

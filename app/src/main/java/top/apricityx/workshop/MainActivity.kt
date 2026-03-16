@@ -13,19 +13,34 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import top.apricityx.workshop.data.WorkshopBrowseItem
+import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.screen.WorkshopScreen
 import top.apricityx.workshop.ui.screen.WorkshopScreenActions
 import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val workshopViewModel: WorkshopViewModel by viewModels { WorkshopViewModel.Factory }
     private val downloadDebugLogManager by lazy { DownloadDebugLogManager(application) }
     private var pendingDownloadItem: WorkshopBrowseItem? = null
+    private var downloadDependencyWarningDialogState: DownloadDependencyWarningDialogState? by mutableStateOf(null)
+    private var isCheckingDownloadDependencies by mutableStateOf(false)
     private val legacyStoragePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             val item = pendingDownloadItem ?: return@registerForActivityResult
@@ -64,6 +79,37 @@ class MainActivity : ComponentActivity() {
                     state = uiState,
                     actions = buildWorkshopScreenActions(),
                 )
+
+                downloadDependencyWarningDialogState?.let { dialogState ->
+                    AlertDialog(
+                        onDismissRequest = { downloadDependencyWarningDialogState = null },
+                        title = { Text("该模组有前置内容") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("「${dialogState.item.title}」依赖 ${dialogState.requiredItems.size} 个前置工坊物品，未准备完整时可能无法正常使用。")
+                                Text(
+                                    text = dialogState.requiredItems.joinToString(separator = "\n") { "• ${it.title}" },
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val item = dialogState.item
+                                    downloadDependencyWarningDialogState = null
+                                    startDownloadSingleItemWithCompatibilityGuard(item)
+                                },
+                            ) {
+                                Text("仍然下载")
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(onClick = { downloadDependencyWarningDialogState = null }) {
+                                Text("取消")
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -78,7 +124,27 @@ class MainActivity : ComponentActivity() {
         AdbDownloadCommandParser.parse(intent)?.let(workshopViewModel::applyAdbCommand)
     }
 
-    private fun downloadSingleItemWithCompatibilityGuard(item: WorkshopBrowseItem) {
+    private fun requestDownloadSingleItem(item: WorkshopBrowseItem) {
+        if (isCheckingDownloadDependencies) {
+            return
+        }
+
+        lifecycleScope.launch {
+            isCheckingDownloadDependencies = true
+            val requiredItems = workshopViewModel.loadRequiredItemsForDownload(item)
+            isCheckingDownloadDependencies = false
+            if (requiredItems.isNotEmpty()) {
+                downloadDependencyWarningDialogState = DownloadDependencyWarningDialogState(
+                    item = item,
+                    requiredItems = requiredItems,
+                )
+            } else {
+                startDownloadSingleItemWithCompatibilityGuard(item)
+            }
+        }
+    }
+
+    private fun startDownloadSingleItemWithCompatibilityGuard(item: WorkshopBrowseItem) {
         if (!shouldRequestLegacyStoragePermission()) {
             workshopViewModel.downloadSingleItem(item)
             return
@@ -224,7 +290,9 @@ class MainActivity : ComponentActivity() {
             onDismissSteamLoginDialog = workshopViewModel::dismissSteamLoginDialog,
             onUpdateSteamLoginUsername = workshopViewModel::updateSteamLoginUsername,
             onUpdateSteamLoginPassword = workshopViewModel::updateSteamLoginPassword,
+            onUpdateSteamLoginRefreshToken = workshopViewModel::updateSteamLoginRefreshToken,
             onUpdateSteamGuardCode = workshopViewModel::updateSteamGuardCode,
+            onSwitchSteamLoginInputMode = workshopViewModel::switchSteamLoginInputMode,
             onSubmitSteamLogin = workshopViewModel::submitSteamLogin,
             onSwitchToAnonymousSteamAccount = workshopViewModel::switchToAnonymousSteamAccount,
             onSetActiveSteamAccount = workshopViewModel::setActiveSteamAccount,
@@ -264,7 +332,7 @@ class MainActivity : ComponentActivity() {
             onRetryWorkshopItemDetail = workshopViewModel::retryWorkshopItemDetail,
             onTranslateWorkshopItemDescription = workshopViewModel::translateWorkshopItemDescription,
             onTranslateModLibraryDescription = workshopViewModel::translateModLibraryDescription,
-            onDownloadSingleItem = ::downloadSingleItemWithCompatibilityGuard,
+            onDownloadSingleItem = ::requestDownloadSingleItem,
         )
 
     private fun launchIntent(
@@ -280,3 +348,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+private data class DownloadDependencyWarningDialogState(
+    val item: WorkshopBrowseItem,
+    val requiredItems: List<WorkshopRequiredItem>,
+)

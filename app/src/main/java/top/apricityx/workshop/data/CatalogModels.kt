@@ -41,5 +41,26 @@ data class WorkshopItemDetail(
     val favorited: Long?,
     val views: Long?,
     val tags: List<String>,
+    val requiredItems: List<WorkshopRequiredItem> = emptyList(),
     val workshopUrl: String,
 )
+
+data class WorkshopRequiredItem(
+    val appId: UInt,
+    val publishedFileId: ULong,
+    val title: String,
+    val previewImageUrl: String,
+    val descriptionSnippet: String,
+    val authorName: String = "",
+    val workshopUrl: String,
+) {
+    fun toBrowseItem(): WorkshopBrowseItem =
+        WorkshopBrowseItem(
+            appId = appId,
+            publishedFileId = publishedFileId,
+            title = title,
+            authorName = authorName.ifBlank { "未知作者" },
+            previewImageUrl = previewImageUrl,
+            descriptionSnippet = descriptionSnippet,
+        )
+}

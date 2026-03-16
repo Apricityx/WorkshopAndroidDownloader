@@ -2,13 +2,17 @@ package top.apricityx.workshop.ui.screen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import java.time.Instant
@@ -31,6 +36,7 @@ import androidx.compose.material.icons.filled.Refresh
 import top.apricityx.workshop.WorkshopItemDetailUiState
 import top.apricityx.workshop.formatBinaryFileSize
 import top.apricityx.workshop.data.WorkshopBrowseItem
+import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
@@ -45,6 +51,7 @@ fun WorkshopItemDetailScreen(
     onRetry: () -> Unit,
     onTranslateDescription: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
+    onOpenRequiredItem: (WorkshopBrowseItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val detail = state.detail
@@ -55,6 +62,9 @@ fun WorkshopItemDetailScreen(
         detail?.subscriptions?.let { add("订阅 ${formatCount(it)}") }
         detail?.views?.let { add("浏览 ${formatCount(it)}") }
         detail?.fileSizeBytes?.let { add("大小 ${formatBinaryFileSize(it)}") }
+        detail?.requiredItems?.takeIf { requiredItems -> requiredItems.isNotEmpty() }?.let { requiredItems ->
+            add("前置 ${requiredItems.size}")
+        }
     }
 
     if (state.showConnectionErrorState) {
@@ -180,6 +190,27 @@ fun WorkshopItemDetailScreen(
                 )
             }
 
+            detail?.requiredItems?.takeIf { requiredItems -> requiredItems.isNotEmpty() }?.let { requiredItems ->
+                WorkshopPanelCard {
+                    Text(
+                        text = "前置内容",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "下载这个内容前，建议先准备以下 ${requiredItems.size} 个前置工坊物品。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    requiredItems.forEach { requiredItem ->
+                        RequiredItemLine(
+                            item = requiredItem,
+                            onClick = { onOpenRequiredItem(requiredItem.toBrowseItem()) },
+                        )
+                    }
+                }
+            }
+
             detail?.let {
                 WorkshopPanelCard {
                     Text(
@@ -210,6 +241,7 @@ fun WorkshopItemDetailScreen(
             }
         }
     }
+
 }
 
 @Composable
@@ -264,6 +296,73 @@ private fun DetailLine(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+@Composable
+private fun RequiredItemLine(
+    item: WorkshopRequiredItem,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (item.previewImageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = item.previewImageUrl,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "暂无\n封面",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = item.descriptionSnippet.ifBlank { "暂无描述" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
