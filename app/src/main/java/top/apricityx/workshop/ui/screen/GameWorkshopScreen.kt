@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -20,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -291,28 +291,14 @@ private fun WorkshopItemCard(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            Column(
+            AsyncImage(
+                model = item.previewImageUrl,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .width(104.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                AsyncImage(
-                    model = item.previewImageUrl,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(104.dp)
-                        .clip(MaterialTheme.shapes.medium),
-                )
-
-                OutlinedButton(
-                    onClick = onDownload,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = null)
-                    Text(" 下载")
-                }
-            }
+                    .size(104.dp)
+                    .clip(MaterialTheme.shapes.medium),
+            )
 
             Column(
                 modifier = Modifier.weight(1f),
@@ -341,6 +327,16 @@ private fun WorkshopItemCard(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+            }
+
+            IconButton(
+                onClick = onDownload,
+                modifier = Modifier.align(Alignment.Top),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "下载",
+                )
             }
         }
     }
