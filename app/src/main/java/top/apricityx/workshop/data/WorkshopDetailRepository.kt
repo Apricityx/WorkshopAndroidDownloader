@@ -52,7 +52,7 @@ class WorkshopDetailRepository(
                 loadLocalizedDetailPage(item)
             }.getOrNull()
             val apiTitle = detail.stringValue("title")
-            val apiDescription = decodeApiDescription(detail.stringValue("description")).ifBlank {
+            val apiDescription = SteamHtmlDecoder.decodeWorkshopApiDescription(detail.stringValue("description")).ifBlank {
                 item.descriptionSnippet.ifBlank { "暂无描述。" }
             }
 
@@ -95,40 +95,9 @@ class WorkshopDetailRepository(
                 description = extractDivInnerHtml(
                     payload = payload,
                     openingTag = """<div class="workshopItemDescription" id="highlightContent">""",
-                )?.let(::decodeHtmlDescription).orEmpty(),
+                )?.let(SteamHtmlDecoder::decodeWorkshopHtmlDescription).orEmpty(),
             )
         }
-    }
-
-    private fun decodeApiDescription(raw: String): String {
-        if (raw.isBlank()) {
-            return ""
-        }
-
-        return SteamHtmlDecoder.decode(
-            raw.replace("<br>", "\n")
-                .replace("<br/>", "\n")
-                .replace("<br />", "\n")
-                .replace(Regex("""</p\s*>""", RegexOption.IGNORE_CASE), "\n\n")
-                .replace(Regex("""<[^>]+>"""), " "),
-        ).replace(Regex("""\n{3,}"""), "\n\n")
-    }
-
-    private fun decodeHtmlDescription(raw: String): String {
-        if (raw.isBlank()) {
-            return ""
-        }
-
-        return SteamHtmlDecoder.decode(
-            raw.replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), "\n")
-                .replace(Regex("""<li[^>]*>""", RegexOption.IGNORE_CASE), "• ")
-                .replace(Regex("""</li\s*>""", RegexOption.IGNORE_CASE), "\n")
-                .replace(Regex("""</p\s*>""", RegexOption.IGNORE_CASE), "\n\n")
-                .replace(Regex("""</div\s*>""", RegexOption.IGNORE_CASE), "\n")
-                .replace(Regex("""<[^>]+>"""), " ")
-        ).replace(Regex("""[ \t]+\n"""), "\n")
-            .replace(Regex("""\n{3,}"""), "\n\n")
-            .trim()
     }
 
     private data class LocalizedWorkshopDetail(

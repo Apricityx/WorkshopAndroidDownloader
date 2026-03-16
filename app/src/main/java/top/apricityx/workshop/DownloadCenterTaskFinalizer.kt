@@ -39,6 +39,7 @@ class DownloadCenterTaskFinalizer(
         syncModLibrary(
             task = task,
             itemTitle = resolvedItemTitle,
+            description = metadata?.description.orEmpty(),
             version = version,
             previewImagePath = previewImagePath,
             exportedFiles = exportedFiles,
@@ -78,6 +79,7 @@ class DownloadCenterTaskFinalizer(
     private suspend fun syncModLibrary(
         task: DownloadCenterTaskUiState,
         itemTitle: String,
+        description: String,
         version: WorkshopModVersion,
         previewImagePath: String?,
         exportedFiles: List<ExportedDownloadFile>,
@@ -90,6 +92,7 @@ class DownloadCenterTaskFinalizer(
                 publishedFileId = task.publishedFileId,
                 gameTitle = task.gameTitle,
                 itemTitle = itemTitle,
+                description = description,
                 previewImagePath = previewImagePath,
                 versionId = version.versionId,
                 versionUpdatedAtMillis = version.updatedAtMillis,

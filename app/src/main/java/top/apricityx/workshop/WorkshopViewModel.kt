@@ -2171,7 +2171,7 @@ private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
         title = itemTitle,
         authorName = "",
         previewImageUrl = "",
-        descriptionSnippet = "",
+        descriptionSnippet = description,
     )
 
 

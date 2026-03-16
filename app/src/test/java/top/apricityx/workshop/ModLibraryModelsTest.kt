@@ -12,6 +12,7 @@ class ModLibraryModelsTest {
                 publishedFileId = 3677098410uL,
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
+                description = "Latest description",
                 previewImagePath = "D:/covers/latest.webp",
                 versionId = "updated-2",
                 versionUpdatedAtMillis = 2_000L,
@@ -23,6 +24,7 @@ class ModLibraryModelsTest {
                 publishedFileId = 999uL,
                 gameTitle = "Spacewar",
                 itemTitle = "Example Mod",
+                description = "Other description",
                 versionId = "updated-3",
                 versionUpdatedAtMillis = 1_500L,
                 storedAtMillis = 1_500L,
@@ -33,6 +35,7 @@ class ModLibraryModelsTest {
                 publishedFileId = 3677098410uL,
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
+                description = "Older description",
                 versionId = "updated-1",
                 versionUpdatedAtMillis = 1_000L,
                 storedAtMillis = 1_000L,
@@ -44,6 +47,7 @@ class ModLibraryModelsTest {
 
         assertThat(grouped).hasSize(2)
         assertThat(grouped[0].modGroupKey()).isEqualTo("646570-3677098410")
+        assertThat(grouped[0].description).isEqualTo("Latest description")
         assertThat(grouped[0].previewImagePath).isEqualTo("D:/covers/latest.webp")
         assertThat(grouped[0].versions.map(DownloadedModEntry::versionId))
             .containsExactly("updated-2", "updated-1")
@@ -59,6 +63,7 @@ class ModLibraryModelsTest {
             publishedFileId = 1234uL,
             gameTitle = "Test Game",
             itemTitle = "Test Mod",
+            description = "Description",
             versionId = "updated-1",
             storedAtMillis = 1_000L,
             files = emptyList(),
@@ -82,6 +87,7 @@ class ModLibraryModelsTest {
                         publishedFileId = 3677098410uL,
                         gameTitle = "Slay the Spire",
                         itemTitle = "Skip The Spire",
+                        description = "Newest",
                         versionId = "updated-2",
                         versionUpdatedAtMillis = 2_000L,
                         storedAtMillis = 2_000L,
@@ -92,6 +98,7 @@ class ModLibraryModelsTest {
                         publishedFileId = 3677098410uL,
                         gameTitle = "Slay the Spire",
                         itemTitle = "Skip The Spire",
+                        description = "Oldest",
                         versionId = "updated-1",
                         versionUpdatedAtMillis = 1_000L,
                         storedAtMillis = 1_000L,
@@ -110,6 +117,7 @@ class ModLibraryModelsTest {
                         publishedFileId = 999uL,
                         gameTitle = "Spacewar",
                         itemTitle = "Example Mod",
+                        description = "Only",
                         versionId = "updated-3",
                         versionUpdatedAtMillis = 3_000L,
                         storedAtMillis = 3_000L,

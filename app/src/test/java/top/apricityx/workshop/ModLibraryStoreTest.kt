@@ -21,6 +21,7 @@ class ModLibraryStoreTest {
                 publishedFileId = 3677098410uL,
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
+                description = "Stored description",
                 previewImagePath = "D:/tmp/cover.webp",
                 versionId = "updated-1772900923",
                 versionUpdatedAtMillis = 1_772_900_923_000L,

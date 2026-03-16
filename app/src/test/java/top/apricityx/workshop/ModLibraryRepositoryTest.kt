@@ -15,6 +15,7 @@ class ModLibraryRepositoryTest {
                 publishedFileId = 3677098410uL,
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
+                description = "Indexed description",
                 previewImagePath = previewFile.absolutePath,
                 versionId = "updated-1772900923",
                 versionUpdatedAtMillis = 1_772_900_923_000L,
@@ -51,6 +52,7 @@ class ModLibraryRepositoryTest {
         assertThat(merged[0].itemTitle).isEqualTo("Example Mod")
         assertThat(merged[1].gameTitle).isEqualTo("Slay the Spire")
         assertThat(merged[1].itemTitle).isEqualTo("Skip The Spire")
+        assertThat(merged[1].description).isEqualTo("Indexed description")
         assertThat(merged[1].previewImagePath).isEqualTo(previewFile.absolutePath)
         assertThat(merged[1].files.map(ExportedDownloadFile::relativePath)).containsExactly("mods/Skip The Spire.jar")
         previewFile.delete()
@@ -64,6 +66,7 @@ class ModLibraryRepositoryTest {
                 publishedFileId = 3677098410uL,
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
+                description = "Will be dropped",
                 versionId = "updated-1772900923",
                 versionUpdatedAtMillis = 1_772_900_923_000L,
                 storedAtMillis = 100L,

@@ -84,6 +84,21 @@ fun ModDetailScreen(
             }
         }
 
+        if (group.description.isNotBlank()) {
+            WorkshopPanelCard {
+                Text(
+                    text = "简介",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = group.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
         group.versions.forEach { entry ->
             ModVersionPanel(
                 entry = entry,
