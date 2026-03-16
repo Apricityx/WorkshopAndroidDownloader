@@ -72,6 +72,7 @@ class SteamGameRepositoryTest {
         val repository = SteamGameRepository(
             client = OkHttpClient(),
             baseUrl = server.url("/"),
+            workshopBaseUrl = server.url("/"),
             languagePreferenceProvider = { SteamLanguagePreference.English },
         )
         server.enqueue(
@@ -105,6 +106,107 @@ class SteamGameRepositoryTest {
 
         val searchRequest = server.takeRequest()
         assertThat(searchRequest.url.queryParameter("l")).isEqualTo("english")
+    }
+
+    @Test
+    fun lookupGame_marksWorkshopSupportFromCommunityBrowsePage() = runBlocking {
+        val repository = SteamGameRepository(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            workshopBaseUrl = server.url("/"),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "262060": {
+                    "success": true,
+                    "data": {
+                      "steam_appid": 262060,
+                      "name": "Darkest Dungeon",
+                      "short_description": "gothic roguelike",
+                      "header_image": "https://example.com/header.jpg",
+                      "capsule_imagev5": "https://example.com/capsule.jpg",
+                      "categories": [{"id": 2}]
+                    }
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                <html>
+                  <head><title>Darkest Dungeon</title></head>
+                  <body>Workshop browse page</body>
+                </html>
+                """.trimIndent(),
+            ),
+        )
+
+        val game = repository.lookupGame(262060u)
+
+        assertThat(game?.supportsWorkshop).isTrue()
+        val detailsRequest = server.takeRequest()
+        val browseRequest = server.takeRequest()
+        assertThat(detailsRequest.url.encodedPath).isEqualTo("/api/appdetails")
+        assertThat(browseRequest.url.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(browseRequest.url.queryParameter("appid")).isEqualTo("262060")
+    }
+
+    @Test
+    fun lookupGame_keepsWorkshopDisabledWhenCommunityBrowseRedirectsToGenericHome() = runBlocking {
+        val repository = SteamGameRepository(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            workshopBaseUrl = server.url("/"),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "1145360": {
+                    "success": true,
+                    "data": {
+                      "steam_appid": 1145360,
+                      "name": "Hades",
+                      "short_description": "roguelike action",
+                      "header_image": "https://example.com/header.jpg",
+                      "capsule_imagev5": "https://example.com/capsule.jpg",
+                      "categories": [{"id": 2}]
+                    }
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            MockResponse.Builder()
+                .code(302)
+                .addHeader("Location", "/workshop/")
+                .build(),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                <html>
+                  <head><title>Steam Community :: Steam Workshop</title></head>
+                  <body>Generic workshop home</body>
+                </html>
+                """.trimIndent(),
+            ),
+        )
+
+        val game = repository.lookupGame(1145360u)
+
+        assertThat(game?.supportsWorkshop).isFalse()
+        val detailsRequest = server.takeRequest()
+        val browseRequest = server.takeRequest()
+        val redirectedRequest = server.takeRequest()
+        assertThat(detailsRequest.url.encodedPath).isEqualTo("/api/appdetails")
+        assertThat(browseRequest.url.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(redirectedRequest.url.encodedPath).isEqualTo("/workshop/")
     }
 }
 

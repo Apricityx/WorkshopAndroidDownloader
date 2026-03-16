@@ -15,13 +15,17 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import top.apricityx.workshop.SteamLanguagePreference
+import java.util.concurrent.ConcurrentHashMap
 
 class SteamGameRepository(
     private val client: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val baseUrl: HttpUrl = "https://store.steampowered.com/".toHttpUrl(),
+    private val workshopBaseUrl: HttpUrl = "https://steamcommunity.com/".toHttpUrl(),
     private val languagePreferenceProvider: () -> SteamLanguagePreference = { SteamLanguagePreference.SimplifiedChinese },
 ) {
+    private val workshopSupportCache = ConcurrentHashMap<UInt, Boolean>()
+
     suspend fun loadFeaturedWorkshopGames(): List<SteamGame> = lookupGamesByIds(featuredWorkshopGameIds)
 
     suspend fun searchWorkshopGames(query: String): List<SteamGame> = withContext(Dispatchers.IO) {
@@ -63,7 +67,24 @@ class SteamGameRepository(
                 val payload = executeStringRequest(buildAppDetailsUrl(appId))
                 SteamGameParsers.parseAppDetails(payload, json)
             }
+            .map(::resolveWorkshopSupport)
             .sortedBy { appIds.indexOf(it.appId) }
+    }
+
+    private fun resolveWorkshopSupport(game: SteamGame): SteamGame {
+        if (game.supportsWorkshop) {
+            workshopSupportCache[game.appId] = true
+            return game
+        }
+
+        val hasWorkshopPage = workshopSupportCache.getOrPut(game.appId) {
+            runCatching { hasWorkshopBrowsePage(game.appId) }.getOrDefault(false)
+        }
+        return if (hasWorkshopPage) {
+            game.copy(supportsWorkshop = true)
+        } else {
+            game
+        }
     }
 
     private fun loadSearchSuggestionIds(query: String): List<UInt> {
@@ -101,6 +122,28 @@ class SteamGameRepository(
             .addQueryParameter("l", languagePreferenceProvider().requestValue)
             .addQueryParameter("cc", "US")
             .build()
+
+    private fun hasWorkshopBrowsePage(appId: UInt): Boolean {
+        val requestUrl = workshopBaseUrl.newBuilder()
+            .addPathSegments("workshop/browse/")
+            .addQueryParameter("appid", appId.toString())
+            .build()
+        val request = Request.Builder()
+            .url(requestUrl)
+            .header("User-Agent", USER_AGENT)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                return false
+            }
+
+            val finalUrl = response.request.url
+            return finalUrl.host == requestUrl.host &&
+                finalUrl.encodedPath == "/workshop/browse/" &&
+                finalUrl.queryParameter("appid") == appId.toString()
+        }
+    }
 
     companion object {
         val featuredWorkshopGameIds = listOf(

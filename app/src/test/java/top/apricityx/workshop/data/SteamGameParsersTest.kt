@@ -60,4 +60,46 @@ class SteamGameParsersTest {
         assertThat(games.first { it.appId == 646570u }.supportsWorkshop).isTrue()
         assertThat(games.first { it.appId == 570u }.supportsWorkshop).isFalse()
     }
+
+    @Test
+    fun parseAppDetails_doesNotInferWorkshopSupportFromStoreDescriptionText() {
+        val payload = """
+            {
+              "262060": {
+                "success": true,
+                "data": {
+                  "steam_appid": 262060,
+                  "name": "Darkest Dungeon",
+                  "short_description": "A challenging gothic roguelike RPG.",
+                  "about_the_game": "Steam Workshop mod integration",
+                  "header_image": "header-a",
+                  "capsule_image": "capsule-a",
+                  "categories": [
+                    { "id": 2, "description": "Single-player" }
+                  ]
+                }
+              },
+              "570": {
+                "success": true,
+                "data": {
+                  "steam_appid": 570,
+                  "name": "Dota 2",
+                  "short_description": "MOBA",
+                  "about_the_game": "Competitive multiplayer action.",
+                  "header_image": "header-b",
+                  "capsule_image": "capsule-b",
+                  "categories": [
+                    { "id": 1, "description": "Multi-player" }
+                  ]
+                }
+              }
+            }
+        """.trimIndent()
+
+        val games = SteamGameParsers.parseAppDetails(payload, json)
+
+        assertThat(games).hasSize(2)
+        assertThat(games.first { it.appId == 262060u }.supportsWorkshop).isFalse()
+        assertThat(games.first { it.appId == 570u }.supportsWorkshop).isFalse()
+    }
 }
