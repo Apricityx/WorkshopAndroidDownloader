@@ -328,6 +328,7 @@ class DownloadCenterManager private constructor(
                     allowAuthenticatedCleartextHttpProvider = settingsRepository::isSteamAuthenticatedCleartextHttpAllowed,
                 ),
             )
+            .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
             .addInterceptor(
                 SteamCookieInterceptor(
                     authRepository = steamAuthRepository,
@@ -342,6 +343,7 @@ class DownloadCenterManager private constructor(
             sessionConnector = buildSessionConnector(accountSession),
             maxConcurrentChunks = settingsRepository.getDownloadThreadCount(),
             allowPublicCdnFallbackOnSessionFailure = accountSession == null,
+            publishedFileLanguage = settingsRepository.getSteamLanguagePreference().requestValue,
         )
 
         try {

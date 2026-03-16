@@ -15,6 +15,7 @@ class PublishedFileResolver(
     private val client: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val baseUrl: HttpUrl = "https://api.steampowered.com/".toHttpUrl(),
+    private val language: String? = null,
 ) {
     suspend fun resolve(
         appId: UInt,
@@ -25,6 +26,9 @@ class PublishedFileResolver(
             .add("publishedfileids[0]", publishedFileId.toString())
             .add("includechildren", "true")
             .add("appid", appId.toString())
+            .apply {
+                language?.takeIf(String::isNotBlank)?.let { add("language", it) }
+            }
             .build()
 
         val request = Request.Builder()

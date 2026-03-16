@@ -86,10 +86,15 @@ class WorkshopDownloadEngine(
             },
             maxConcurrentChunks: Int = UgcWorkshopDownloader.DEFAULT_MAX_CONCURRENT_CHUNKS,
             allowPublicCdnFallbackOnSessionFailure: Boolean = true,
+            publishedFileLanguage: String? = null,
         ): WorkshopDownloadEngine {
             val directoryClient = SteamDirectoryClient(client)
             return WorkshopDownloadEngine(
-                resolver = PublishedFileResolver(client, Json { ignoreUnknownKeys = true }),
+                resolver = PublishedFileResolver(
+                    client = client,
+                    json = Json { ignoreUnknownKeys = true },
+                    language = publishedFileLanguage,
+                ),
                 directDownloader = DirectWorkshopDownloader(client),
                 ugcWorkshopDownloader = UgcWorkshopDownloader(
                     client = client,

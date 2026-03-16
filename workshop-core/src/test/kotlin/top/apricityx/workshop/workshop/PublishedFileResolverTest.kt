@@ -62,6 +62,40 @@ class PublishedFileResolverTest {
     }
 
     @Test
+    fun `resolve sends configured language to published file details api`() = runTest {
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "response": {
+                    "publishedfiledetails": [
+                      {
+                        "result": 1,
+                        "title": "Localized Item",
+                        "filename": "mods/example.zip",
+                        "file_type": 0,
+                        "file_url": "https://cdn.example.com/example.zip"
+                      }
+                    ]
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val resolver = PublishedFileResolver(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            language = "schinese",
+        )
+
+        resolver.resolve(480u, 100u)
+
+        val request = server.takeRequest()
+        assertThat(checkNotNull(request.body).utf8()).contains("language=schinese")
+    }
+
+    @Test
     fun `resolve falls back to UGC manifest when file_url is missing`() = runTest {
         server.enqueue(
             mockResponse(
