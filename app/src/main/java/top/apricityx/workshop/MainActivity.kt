@@ -15,7 +15,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +30,7 @@ import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.screen.WorkshopScreen
 import top.apricityx.workshop.ui.screen.WorkshopScreenActions
 import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
 import kotlinx.coroutines.launch
@@ -96,18 +96,13 @@ class MainActivity : ComponentActivity() {
                 )
 
                 downloadDependencyWarningDialogState?.let { dialogState ->
-                    AlertDialog(
+                    WorkshopDialog(
                         onDismissRequest = { downloadDependencyWarningDialogState = null },
                         title = { Text("该模组有前置内容") },
-                        text = {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("「${dialogState.item.title}」依赖 ${dialogState.requiredItems.size} 个前置工坊物品，未准备完整时可能无法正常使用。")
-                                Text(
-                                    text = dialogState.requiredItems.joinToString(separator = "\n") { "• ${it.title}" },
-                                )
+                        buttons = {
+                            WorkshopOutlinedButton(onClick = { downloadDependencyWarningDialogState = null }) {
+                                Text("取消")
                             }
-                        },
-                        confirmButton = {
                             WorkshopButton(
                                 onClick = {
                                     val item = dialogState.item
@@ -119,12 +114,14 @@ class MainActivity : ComponentActivity() {
                                 Text("仍然下载")
                             }
                         },
-                        dismissButton = {
-                            WorkshopOutlinedButton(onClick = { downloadDependencyWarningDialogState = null }) {
-                                Text("取消")
-                            }
-                        },
-                    )
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("「${dialogState.item.title}」依赖 ${dialogState.requiredItems.size} 个前置工坊物品，未准备完整时可能无法正常使用。")
+                            Text(
+                                text = dialogState.requiredItems.joinToString(separator = "\n") { "• ${it.title}" },
+                            )
+                        }
+                    }
                 }
             }
         }

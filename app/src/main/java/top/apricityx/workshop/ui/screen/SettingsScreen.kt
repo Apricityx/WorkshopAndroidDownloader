@@ -19,7 +19,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,8 +32,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import top.apricityx.workshop.AppFrontendMode
 import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadSettingsRepository
@@ -50,6 +47,7 @@ import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
@@ -677,195 +675,183 @@ private fun SteamLoginDialog(
     val isTokenMode = state.inputMode == SteamLoginInputMode.RefreshToken
     val isConfirmationChallenge = state.challengeType.isSteamConfirmationChallenge()
 
-    Dialog(
+    WorkshopDialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(dismissOnClickOutside = false),
-    ) {
-        Surface(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+        title = {
+            Text(
+                if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                    "重新认证 Steam"
+                } else {
+                    "登录 Steam"
+                },
+            )
+        },
+        dismissOnClickOutside = false,
+        buttons = {
+            WorkshopOutlinedButton(onClick = onDismiss, enabled = !state.isSubmitting) {
+                Text("关闭")
+            }
+            WorkshopButton(
+                onClick = onSubmit,
+                enabled = !state.isSubmitting && !state.isPollingConfirmation,
             ) {
-                Text(
-                    if (state.mode == SteamLoginDialogMode.Reauthenticate) {
-                        "重新认证 Steam"
-                    } else {
-                        "登录 Steam"
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                )
-
-                when {
-                    isTokenMode -> {
-                        Text(
-                            if (state.mode == SteamLoginDialogMode.Reauthenticate) {
-                                "可直接粘贴新的 Steam Refresh Token 完成重新认证。"
-                            } else {
-                                "如果你已经拿到 Steam Refresh Token，也可以直接导入，不必继续等待手机确认。"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        WorkshopOutlinedTextField(
-                            value = state.username,
-                            onValueChange = onUsernameChange,
-                            label = {
-                                Text(
-                                    if (state.mode == SteamLoginDialogMode.Reauthenticate) {
-                                        "账号显示名"
-                                    } else {
-                                        "账号显示名（可选）"
-                                    },
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
-                        )
-                        WorkshopOutlinedTextField(
-                            value = state.refreshToken,
-                            onValueChange = onRefreshTokenChange,
-                            label = { Text("Refresh Token") },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 3,
-                        )
-                    }
-
-                    state.challengeType == SteamGuardChallengeType.EmailCode ||
-                        state.challengeType == SteamGuardChallengeType.DeviceCode -> {
-                        Text(
-                            state.challengeMessage ?: "请输入 Steam Guard 验证码。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        WorkshopOutlinedTextField(
-                            value = state.guardCode,
-                            onValueChange = onGuardCodeChange,
-                            label = { Text("验证码") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                        )
-                    }
-
-                    isConfirmationChallenge -> {
-                        Text(
-                            state.challengeMessage ?: "请在 Steam 手机 App 中完成确认，应用会自动继续等待结果。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (state.isPollingConfirmation) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                                Text(
-                                    "正在等待 Steam 确认…",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-
-                    else -> {
-                        WorkshopOutlinedTextField(
-                            value = state.username,
-                            onValueChange = onUsernameChange,
-                            label = { Text("账号名") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
-                        )
-                        WorkshopOutlinedTextField(
-                            value = state.password,
-                            onValueChange = onPasswordChange,
-                            label = { Text("密码") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                        )
-                    }
-                }
-
-                if (state.canSwitchSteamLoginInputMode()) {
-                    WorkshopTextButton(
-                        onClick = {
-                            onSwitchInputMode(
-                                if (isTokenMode) {
-                                    SteamLoginInputMode.Credentials
-                                } else {
-                                    SteamLoginInputMode.RefreshToken
-                                },
-                            )
-                        },
-                    ) {
-                        Text(
-                            if (isTokenMode) {
-                                if (state.mode == SteamLoginDialogMode.Reauthenticate) {
-                                    "改用密码重新认证"
-                                } else {
-                                    "改用账号密码登录"
-                                }
-                            } else {
-                                "改为输入令牌登录"
-                            },
-                        )
-                    }
-                }
-
-                state.errorMessage?.takeIf(String::isNotBlank)?.let { message ->
-                    WorkshopMessageBanner(
-                        message = message,
-                        tone = MessageTone.Error,
+                if (state.isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
                     )
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    WorkshopOutlinedButton(onClick = onDismiss, enabled = !state.isSubmitting) {
-                        Text("关闭")
-                    }
-                    WorkshopButton(
-                        onClick = onSubmit,
-                        enabled = !state.isSubmitting && !state.isPollingConfirmation,
-                    ) {
-                        if (state.isSubmitting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                            )
+                Text(
+                    when {
+                        isTokenMode -> if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                            "导入令牌"
+                        } else {
+                            "令牌登录"
                         }
+
+                        state.challengeType == SteamGuardChallengeType.EmailCode ||
+                            state.challengeType == SteamGuardChallengeType.DeviceCode ->
+                            "提交验证码"
+
+                        isConfirmationChallenge -> "继续等待"
+
+                        else -> if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                            "重新认证"
+                        } else {
+                            "登录"
+                        }
+                    },
+                )
+            }
+        },
+    ) {
+        when {
+            isTokenMode -> {
+                Text(
+                    if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                        "可直接粘贴新的 Steam Refresh Token 完成重新认证。"
+                    } else {
+                        "如果你已经拿到 Steam Refresh Token，也可以直接导入，不必继续等待手机确认。"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                WorkshopOutlinedTextField(
+                    value = state.username,
+                    onValueChange = onUsernameChange,
+                    label = {
                         Text(
-                            when {
-                                isTokenMode -> if (state.mode == SteamLoginDialogMode.Reauthenticate) {
-                                    "导入令牌"
-                                } else {
-                                    "令牌登录"
-                                }
-
-                                state.challengeType == SteamGuardChallengeType.EmailCode ||
-                                    state.challengeType == SteamGuardChallengeType.DeviceCode ->
-                                    "提交验证码"
-
-                                isConfirmationChallenge -> "继续等待"
-
-                                else -> if (state.mode == SteamLoginDialogMode.Reauthenticate) {
-                                    "重新认证"
-                                } else {
-                                    "登录"
-                                }
+                            if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                                "账号显示名"
+                            } else {
+                                "账号显示名（可选）"
                             },
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
+                )
+                WorkshopOutlinedTextField(
+                    value = state.refreshToken,
+                    onValueChange = onRefreshTokenChange,
+                    label = { Text("Refresh Token") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                )
+            }
+
+            state.challengeType == SteamGuardChallengeType.EmailCode ||
+                state.challengeType == SteamGuardChallengeType.DeviceCode -> {
+                Text(
+                    state.challengeMessage ?: "请输入 Steam Guard 验证码。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                WorkshopOutlinedTextField(
+                    value = state.guardCode,
+                    onValueChange = onGuardCodeChange,
+                    label = { Text("验证码") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+
+            isConfirmationChallenge -> {
+                Text(
+                    state.challengeMessage ?: "请在 Steam 手机 App 中完成确认，应用会自动继续等待结果。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.isPollingConfirmation) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            "正在等待 Steam 确认…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
+
+            else -> {
+                WorkshopOutlinedTextField(
+                    value = state.username,
+                    onValueChange = onUsernameChange,
+                    label = { Text("账号名") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
+                )
+                WorkshopOutlinedTextField(
+                    value = state.password,
+                    onValueChange = onPasswordChange,
+                    label = { Text("密码") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+        }
+
+        if (state.canSwitchSteamLoginInputMode()) {
+            WorkshopTextButton(
+                onClick = {
+                    onSwitchInputMode(
+                        if (isTokenMode) {
+                            SteamLoginInputMode.Credentials
+                        } else {
+                            SteamLoginInputMode.RefreshToken
+                        },
+                    )
+                },
+            ) {
+                Text(
+                    if (isTokenMode) {
+                        if (state.mode == SteamLoginDialogMode.Reauthenticate) {
+                            "改用密码重新认证"
+                        } else {
+                            "改用账号密码登录"
+                        }
+                    } else {
+                        "改为输入令牌登录"
+                    },
+                )
+            }
+        }
+
+        state.errorMessage?.takeIf(String::isNotBlank)?.let { message ->
+            WorkshopMessageBanner(
+                message = message,
+                tone = MessageTone.Error,
+            )
         }
     }
 }

@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.ViewModule
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -66,6 +65,7 @@ import top.apricityx.workshop.showsSettingsShortcut
 import top.apricityx.workshop.toggleContentDescription
 import top.apricityx.workshop.versionLabel
 import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.liquid.LiquidBottomTab
@@ -159,18 +159,17 @@ private fun WorkshopDialogs(
     actions: WorkshopScreenActions,
 ) {
     if (state.showUsageNoticeDialog) {
-        AlertDialog(
+        WorkshopDialog(
             onDismissRequest = {},
             title = { Text("使用须知") },
-            text = {
-                Text("欢迎使用创意工坊下载器！如果出现模组无法正常浏览或正常下载的问题，请自备加速器加速 steam 或者使用科学上网。")
-            },
-            confirmButton = {
+            buttons = {
                 WorkshopButton(onClick = actions.onDismissUsageNotice) {
                     Text("我知道了")
                 }
             },
-        )
+        ) {
+            Text("欢迎使用创意工坊下载器！如果出现模组无法正常浏览或正常下载的问题，请自备加速器加速 steam 或者使用科学上网。")
+        }
         return
     }
 
@@ -180,31 +179,13 @@ private fun WorkshopDialogs(
     val pendingRenameMod = state.pendingRenameMod
 
     if (updatePrompt != null) {
-        AlertDialog(
+        WorkshopDialog(
             onDismissRequest = actions.onDismissUpdatePrompt,
             title = { Text("发现新版本") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("当前版本：${updatePrompt.currentVersion}")
-                    Text("最新版本：${updatePrompt.latestVersion}")
-                    Text("发布日期：${updatePrompt.publishedAtText}")
-                    Text("下载来源：${updatePrompt.downloadSourceDisplayName}")
-                    Text(
-                        text = "更新说明",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = updatePrompt.notesText,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+            buttons = {
+                WorkshopOutlinedButton(onClick = actions.onDismissUpdatePrompt) {
+                    Text("稍后")
                 }
-            },
-            confirmButton = {
                 WorkshopButton(
                     onClick = {
                         actions.onOpenExternalUrl(updatePrompt.downloadUrl)
@@ -214,32 +195,38 @@ private fun WorkshopDialogs(
                     Text("前往下载")
                 }
             },
-            dismissButton = {
-                WorkshopOutlinedButton(onClick = actions.onDismissUpdatePrompt) {
-                    Text("稍后")
-                }
-            },
-        )
+        ) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("当前版本：${updatePrompt.currentVersion}")
+                Text("最新版本：${updatePrompt.latestVersion}")
+                Text("发布日期：${updatePrompt.publishedAtText}")
+                Text("下载来源：${updatePrompt.downloadSourceDisplayName}")
+                Text(
+                    text = "更新说明",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = updatePrompt.notesText,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
     }
 
     if (pendingRenameMod != null) {
         val trimmedRenameTitle = state.renameModTitleInput.trim()
-        AlertDialog(
+        WorkshopDialog(
             onDismissRequest = actions.onDismissRenameMod,
             title = { Text("重命名模组") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("只修改应用内显示名称，不会重命名已经导出的文件。")
-                    WorkshopOutlinedTextField(
-                        value = state.renameModTitleInput,
-                        onValueChange = actions.onUpdateRenameModTitleInput,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("模组名称") },
-                        singleLine = true,
-                    )
+            buttons = {
+                WorkshopOutlinedButton(onClick = actions.onDismissRenameMod) {
+                    Text("取消")
                 }
-            },
-            confirmButton = {
                 WorkshopButton(
                     onClick = actions.onConfirmRenameMod,
                     enabled = trimmedRenameTitle.isNotBlank(),
@@ -247,50 +234,52 @@ private fun WorkshopDialogs(
                     Text("保存")
                 }
             },
-            dismissButton = {
-                WorkshopOutlinedButton(onClick = actions.onDismissRenameMod) {
-                    Text("取消")
-                }
-            },
-        )
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("只修改应用内显示名称，不会重命名已经导出的文件。")
+                WorkshopOutlinedTextField(
+                    value = state.renameModTitleInput,
+                    onValueChange = actions.onUpdateRenameModTitleInput,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("模组名称") },
+                    singleLine = true,
+                )
+            }
+        }
     }
 
     if (pendingRemoveGame != null && state.currentScreen == WorkshopScreenDestination.GameLibrary) {
-        AlertDialog(
+        WorkshopDialog(
             onDismissRequest = actions.onDismissRemoveGame,
             title = { Text("移出游戏库") },
-            text = { Text("确定要移除「${pendingRemoveGame.name}」吗？") },
-            confirmButton = {
+            buttons = {
+                WorkshopOutlinedButton(onClick = actions.onDismissRemoveGame) {
+                    Text("取消")
+                }
                 WorkshopOutlinedButton(onClick = actions.onConfirmRemoveGame) {
                     Text("确定")
                 }
             },
-            dismissButton = {
-                WorkshopOutlinedButton(onClick = actions.onDismissRemoveGame) {
-                    Text("取消")
-                }
-            },
-        )
+        ) {
+            Text("确定要移除「${pendingRemoveGame.name}」吗？")
+        }
     }
 
     if (pendingRemoveMod != null) {
-        AlertDialog(
+        WorkshopDialog(
             onDismissRequest = actions.onDismissRemoveMod,
             title = { Text("删除本地模组") },
-            text = {
-                Text("确定要删除「${pendingRemoveMod.itemTitle}」的 ${pendingRemoveMod.versionLabel()} 本地文件吗？下载历史会保留。")
-            },
-            confirmButton = {
+            buttons = {
+                WorkshopOutlinedButton(onClick = actions.onDismissRemoveMod) {
+                    Text("取消")
+                }
                 WorkshopOutlinedButton(onClick = actions.onConfirmRemoveMod) {
                     Text("确定")
                 }
             },
-            dismissButton = {
-                WorkshopOutlinedButton(onClick = actions.onDismissRemoveMod) {
-                    Text("取消")
-                }
-            },
-        )
+        ) {
+            Text("确定要删除「${pendingRemoveMod.itemTitle}」的 ${pendingRemoveMod.versionLabel()} 本地文件吗？下载历史会保留。")
+        }
     }
 }
 
