@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,9 +25,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,7 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -370,10 +373,10 @@ private fun WorkshopBrowseSortControls(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             WorkshopBrowseSortOption.entries.forEach { option ->
-                FilterChip(
+                WorkshopBrowseSelectionChip(
+                    label = option.displayName(),
                     selected = option == state.selectedSortOption,
                     onClick = { onSortOptionSelected(option) },
-                    label = { Text(option.displayName()) },
                 )
             }
         }
@@ -390,14 +393,55 @@ private fun WorkshopBrowseSortControls(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 WorkshopBrowseTimeWindow.entries.forEach { option ->
-                    FilterChip(
+                    WorkshopBrowseSelectionChip(
+                        label = option.displayName(),
                         selected = option == state.selectedTimeWindow,
                         onClick = { onTimeWindowSelected(option) },
-                        label = { Text(option.displayName()) },
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WorkshopBrowseSelectionChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    val containerColor = when {
+        selected && isDark -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        isDark -> MaterialTheme.colorScheme.surface.copy(alpha = 0.22f)
+        else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+    }
+    val borderColor = when {
+        selected && isDark -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+        isDark -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+    }
+    val contentColor = when {
+        selected && isDark -> Color(0xFFEAF4FF)
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = contentColor,
+        )
     }
 }
 

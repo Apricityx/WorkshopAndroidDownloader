@@ -13,21 +13,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,9 +54,12 @@ import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
 import top.apricityx.workshop.ui.component.WorkshopRadioButton
+import top.apricityx.workshop.ui.component.WorkshopSlider
 import top.apricityx.workshop.ui.component.WorkshopSwitch
 import top.apricityx.workshop.ui.component.WorkshopTextButton
 import top.apricityx.workshop.ui.theme.workshopChromePadding
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -88,9 +92,14 @@ fun SettingsScreen(
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var isSliderInteracting by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(
+                state = rememberScrollState(),
+                enabled = !isSliderInteracting,
+            )
             .padding(horizontal = 16.dp)
             .workshopChromePadding(topExtra = 16.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -510,50 +519,53 @@ fun SettingsScreen(
                 )
             }
 
-            WorkshopOutlinedTextField(
-                value = state.downloadThreadCountInput,
-                onValueChange = onThreadCountChange,
-                label = { Text("单任务线程数") },
-                supportingText = {
-                    Text("范围 ${DownloadSettingsRepository.MIN_DOWNLOAD_THREADS} - ${DownloadSettingsRepository.MAX_DOWNLOAD_THREADS}")
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+            SettingsDiscreteSlider(
+                title = "单任务线程数",
+                value = sliderSettingValue(
+                    input = state.downloadThreadCountInput,
+                    savedValue = state.savedDownloadThreadCount,
+                    minValue = DownloadSettingsRepository.MIN_DOWNLOAD_THREADS,
+                    maxValue = DownloadSettingsRepository.MAX_DOWNLOAD_THREADS,
+                ),
+                minValue = DownloadSettingsRepository.MIN_DOWNLOAD_THREADS,
+                maxValue = DownloadSettingsRepository.MAX_DOWNLOAD_THREADS,
+                supportingText = "范围 ${DownloadSettingsRepository.MIN_DOWNLOAD_THREADS} - ${DownloadSettingsRepository.MAX_DOWNLOAD_THREADS}",
+                onValueChange = { onThreadCountChange(it.toString()) },
+                onValueChangeFinished = onSave,
+                onInteractionActiveChange = { isSliderInteracting = it },
             )
 
-            WorkshopOutlinedTextField(
-                value = state.concurrentDownloadTaskCountInput,
-                onValueChange = onConcurrentTaskCountChange,
-                label = { Text("同时下载任务数") },
-                supportingText = {
-                    Text("范围 ${DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS} - ${DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS}")
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+            SettingsDiscreteSlider(
+                title = "同时下载任务数",
+                value = sliderSettingValue(
+                    input = state.concurrentDownloadTaskCountInput,
+                    savedValue = state.savedConcurrentDownloadTaskCount,
+                    minValue = DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS,
+                    maxValue = DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS,
+                ),
+                minValue = DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS,
+                maxValue = DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS,
+                supportingText = "范围 ${DownloadSettingsRepository.MIN_CONCURRENT_DOWNLOAD_TASKS} - ${DownloadSettingsRepository.MAX_CONCURRENT_DOWNLOAD_TASKS}",
+                onValueChange = { onConcurrentTaskCountChange(it.toString()) },
+                onValueChangeFinished = onSave,
+                onInteractionActiveChange = { isSliderInteracting = it },
             )
 
-            WorkshopOutlinedTextField(
-                value = state.modUpdateConcurrentCheckCountInput,
-                onValueChange = onModUpdateConcurrentCheckCountChange,
-                label = { Text("模组更新并发检查数") },
-                supportingText = {
-                    Text("范围 ${DownloadSettingsRepository.MIN_MOD_UPDATE_CONCURRENT_CHECKS} - ${DownloadSettingsRepository.MAX_MOD_UPDATE_CONCURRENT_CHECKS}")
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+            SettingsDiscreteSlider(
+                title = "模组更新并发检查数",
+                value = sliderSettingValue(
+                    input = state.modUpdateConcurrentCheckCountInput,
+                    savedValue = state.savedModUpdateConcurrentCheckCount,
+                    minValue = DownloadSettingsRepository.MIN_MOD_UPDATE_CONCURRENT_CHECKS,
+                    maxValue = DownloadSettingsRepository.MAX_MOD_UPDATE_CONCURRENT_CHECKS,
+                ),
+                minValue = DownloadSettingsRepository.MIN_MOD_UPDATE_CONCURRENT_CHECKS,
+                maxValue = DownloadSettingsRepository.MAX_MOD_UPDATE_CONCURRENT_CHECKS,
+                supportingText = "范围 ${DownloadSettingsRepository.MIN_MOD_UPDATE_CONCURRENT_CHECKS} - ${DownloadSettingsRepository.MAX_MOD_UPDATE_CONCURRENT_CHECKS}",
+                onValueChange = { onModUpdateConcurrentCheckCountChange(it.toString()) },
+                onValueChangeFinished = onSave,
+                onInteractionActiveChange = { isSliderInteracting = it },
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                WorkshopButton(onClick = onSave) {
-                    Text("保存")
-                }
-            }
         }
 
         state.message?.let {
@@ -627,6 +639,110 @@ fun SettingsScreen(
         )
     }
 }
+
+@Composable
+private fun SettingsDiscreteSlider(
+    title: String,
+    value: Int,
+    minValue: Int,
+    maxValue: Int,
+    supportingText: String,
+    onValueChange: (Int) -> Unit,
+    onValueChangeFinished: (() -> Unit)? = null,
+    onInteractionActiveChange: ((Boolean) -> Unit)? = null,
+) {
+    val clampedValue = value.coerceIn(minValue, maxValue)
+    var sliderValue by remember(minValue, maxValue) {
+        mutableFloatStateOf(clampedValue.toFloat())
+    }
+    var committedValue by remember(minValue, maxValue) {
+        mutableStateOf(clampedValue)
+    }
+    val latestOnValueChange by rememberUpdatedState(onValueChange)
+    val latestOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
+    val displayValue = sliderValue.roundToInt().coerceIn(minValue, maxValue)
+
+    LaunchedEffect(clampedValue) {
+        if (clampedValue != committedValue) {
+            committedValue = clampedValue
+            sliderValue = clampedValue.toFloat()
+        }
+    }
+    LaunchedEffect(displayValue) {
+        if (displayValue == committedValue) {
+            return@LaunchedEffect
+        }
+        delay(180)
+        if (displayValue != committedValue) {
+            committedValue = displayValue
+            latestOnValueChange(displayValue)
+            latestOnValueChangeFinished?.invoke()
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = displayValue.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        WorkshopSlider(
+            value = sliderValue,
+            onValueChange = {
+                val nextValue = it.coerceIn(minValue.toFloat(), maxValue.toFloat())
+                sliderValue = nextValue
+            },
+            modifier = Modifier.fillMaxWidth(),
+            valueRange = minValue.toFloat()..maxValue.toFloat(),
+            steps = (maxValue - minValue - 1).coerceAtLeast(0),
+            onInteractionActiveChange = {
+                onInteractionActiveChange?.invoke(it)
+            },
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = minValue.toString(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = maxValue.toString(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun sliderSettingValue(
+    input: String,
+    savedValue: Int,
+    minValue: Int,
+    maxValue: Int,
+): Int =
+    input.toIntOrNull()?.coerceIn(minValue, maxValue)
+        ?: savedValue.coerceIn(minValue, maxValue)
 
 @Composable
 private fun SteamAccountActionsButton(

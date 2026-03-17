@@ -477,7 +477,7 @@ class WorkshopViewModel(
                 themeMode = themeMode,
                 settingsState = state.settingsState.copy(
                     selectedThemeMode = themeMode,
-                    message = "已切换为${themeMode.displayName()}。",
+                    message = null,
                 ),
             )
         }
@@ -917,7 +917,7 @@ class WorkshopViewModel(
                     savedConcurrentDownloadTaskCount = clampedConcurrentTasks,
                     modUpdateConcurrentCheckCountInput = clampedModUpdateConcurrentChecks.toString(),
                     savedModUpdateConcurrentCheckCount = clampedModUpdateConcurrentChecks,
-                    message = "已保存设置：线程 $clampedThreadCount，同时任务 $clampedConcurrentTasks，并发检查 $clampedModUpdateConcurrentChecks",
+                    message = null,
                 ),
             )
         }

@@ -16,10 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -125,6 +127,7 @@ fun WorkshopGlassSurface(
     lensAmount: Dp = 12.dp,
     surfaceColor: Color = MaterialTheme.colorScheme.surface.copy(alpha = 0.18f),
     borderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val liquidEnabled = isLiquidGlassFrontendEnabled()
@@ -136,8 +139,11 @@ fun WorkshopGlassSurface(
             modifier = modifier,
             shape = shape,
             color = surfaceColor,
+            contentColor = contentColor,
         ) {
-            Box(content = content)
+            CompositionLocalProvider(LocalContentColor provides contentColor) {
+                Box(content = content)
+            }
         }
         return
     }
@@ -175,8 +181,11 @@ fun WorkshopGlassSurface(
             )
             .border(width = 1.dp, color = borderColor, shape = shape)
             .clip(shape),
-        content = content,
-    )
+    ) {
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            content()
+        }
+    }
 }
 
 @Composable

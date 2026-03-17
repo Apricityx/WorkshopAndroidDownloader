@@ -23,6 +23,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton as MaterialOutlinedButton
 import androidx.compose.material3.OutlinedTextField as MaterialOutlinedTextField
 import androidx.compose.material3.RadioButton as MaterialRadioButton
+import androidx.compose.material3.Slider as MaterialSlider
 import androidx.compose.material3.Switch as MaterialSwitch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -49,9 +50,11 @@ import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.ui.graphics.Color.Companion.Unspecified
 import top.apricityx.workshop.ui.component.liquid.LiquidButton
+import top.apricityx.workshop.ui.component.liquid.LiquidSlider
 import top.apricityx.workshop.ui.component.liquid.LiquidToggle
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
+import kotlin.math.round
 
 private enum class WorkshopButtonVariant {
     Primary,
@@ -335,6 +338,82 @@ fun WorkshopRadioButton(
             )
         }
     }
+}
+
+@Composable
+fun WorkshopSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+    onValueChangeFinished: (() -> Unit)? = null,
+    onInteractionActiveChange: ((Boolean) -> Unit)? = null,
+) {
+    val clampedValue = value.coerceIn(valueRange.start, valueRange.endInclusive)
+    val emitValue: (Float) -> Unit = { nextValue ->
+        val snappedValue = nextValue.snapToSliderStep(valueRange = valueRange, steps = steps)
+        onValueChange(snappedValue)
+    }
+
+    if (!isLiquidGlassFrontendEnabled()) {
+        MaterialSlider(
+            value = clampedValue,
+            onValueChange = emitValue,
+            modifier = modifier,
+            enabled = enabled,
+            valueRange = valueRange,
+            steps = steps,
+            onValueChangeFinished = onValueChangeFinished,
+        )
+        return
+    }
+
+    val backdrop = LocalWorkshopBackdrop.current
+    if (backdrop == null) {
+        MaterialSlider(
+            value = clampedValue,
+            onValueChange = emitValue,
+            modifier = modifier,
+            enabled = enabled,
+            valueRange = valueRange,
+            steps = steps,
+            onValueChangeFinished = onValueChangeFinished,
+        )
+        return
+    }
+
+    LiquidSlider(
+        value = { clampedValue },
+        onValueChange = { nextValue ->
+            if (enabled) {
+                onValueChange(nextValue.coerceIn(valueRange.start, valueRange.endInclusive))
+            }
+        },
+        valueRange = valueRange,
+        visibilityThreshold = 0.01f,
+        backdrop = backdrop,
+        modifier = modifier.alpha(if (enabled) 1f else 0.52f),
+        onInteractionActiveChange = onInteractionActiveChange,
+    )
+}
+
+private fun Float.snapToSliderStep(
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+): Float {
+    val clampedValue = coerceIn(valueRange.start, valueRange.endInclusive)
+    if (steps <= 0) {
+        return clampedValue
+    }
+    val intervals = steps + 1
+    val stepSize = (valueRange.endInclusive - valueRange.start) / intervals
+    if (stepSize <= 0f) {
+        return valueRange.start
+    }
+    val offset = round((clampedValue - valueRange.start) / stepSize) * stepSize
+    return (valueRange.start + offset).coerceIn(valueRange.start, valueRange.endInclusive)
 }
 
 @Composable

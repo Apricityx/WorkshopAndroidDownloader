@@ -45,6 +45,9 @@ internal class DampedDragAnimation(
     val value: Float
         get() = valueAnimation.value
 
+    val progress: Float
+        get() = (value - valueRange.start) / (valueRange.endInclusive - valueRange.start)
+
     val targetValue: Float
         get() = valueAnimation.targetValue
 

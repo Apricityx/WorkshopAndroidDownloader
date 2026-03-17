@@ -100,6 +100,7 @@ fun SectionHeading(
             text = title,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground,
         )
         subtitle?.let {
             Text(
