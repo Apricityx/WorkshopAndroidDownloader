@@ -1,77 +1,73 @@
 package top.apricityx.workshop
 
+private val SearchQueryDelimiterRegex = Regex("\\s+")
+
 fun filterModLibraryGroups(
     items: List<DownloadedModGroup>,
     filterState: ModLibraryFilterState,
-): List<DownloadedModGroup> =
-    items.filter { group ->
-        group.matchesSearchQuery(filterState.searchQuery) &&
-            group.matchesGameFilter(filterState.selectedGameTitle)
+): List<DownloadedModGroup> {
+    val normalizedTerms = normalizeSearchTerms(filterState.searchQuery)
+    val selectedGameTitle = filterState.selectedGameTitle?.takeUnless(String::isBlank)
+    if (normalizedTerms.isEmpty() && selectedGameTitle == null) {
+        return items
     }
+
+    return items.filter { group ->
+        group.matchesGameFilter(selectedGameTitle) &&
+            group.matchesSearchTerms(normalizedTerms)
+    }
+}
 
 fun sortModLibraryGroups(
     items: List<DownloadedModGroup>,
     sortOption: ModLibrarySortOption,
-): List<DownloadedModGroup> =
-    when (sortOption) {
-        ModLibrarySortOption.LatestSynced -> items.sortedWith(
-            compareByDescending<DownloadedModGroup> { it.latestVersion().storedAtMillis }
-                .thenByDescending { it.latestVersion().versionUpdatedAtMillis ?: Long.MIN_VALUE }
-                .thenBy { it.gameTitle.lowercase() }
-                .thenBy { it.itemTitle.lowercase() },
-        )
+): List<DownloadedModGroup> {
+    if (items.size < 2 || sortOption == ModLibrarySortOption.LatestSynced) {
+        return items
+    }
 
+    return when (sortOption) {
+        ModLibrarySortOption.LatestSynced -> items
         ModLibrarySortOption.ModTitle -> items.sortedWith(
-            compareBy<DownloadedModGroup> { it.itemTitle.lowercase() }
-                .thenBy { it.gameTitle.lowercase() }
+            compareBy<DownloadedModGroup> { it.normalizedItemTitle }
+                .thenBy { it.normalizedGameTitle }
                 .thenByDescending { it.latestVersion().storedAtMillis },
         )
 
         ModLibrarySortOption.GameTitle -> items.sortedWith(
-            compareBy<DownloadedModGroup> { it.gameTitle.lowercase() }
-                .thenBy { it.itemTitle.lowercase() }
+            compareBy<DownloadedModGroup> { it.normalizedGameTitle }
+                .thenBy { it.normalizedItemTitle }
                 .thenByDescending { it.latestVersion().storedAtMillis },
         )
     }
+}
 
 fun availableModLibraryGames(items: List<DownloadedModGroup>): List<String> =
-    items.map(DownloadedModGroup::gameTitle)
+    items.asSequence()
+        .map(DownloadedModGroup::gameTitle)
         .filter(String::isNotBlank)
         .distinct()
         .sortedBy(String::lowercase)
+        .toList()
 
 fun DownloadedModGroup.latestUpdateStatus(
     updateResults: Map<String, ModUpdateCheckResult>,
 ): ModUpdateCheckStatus =
-    updateResults[latestVersion().modLibraryKey()]?.status ?: ModUpdateCheckStatus.Unknown
+    updateResults[cachedLatestVersionKey]?.status ?: ModUpdateCheckStatus.Unknown
 
-private fun DownloadedModGroup.matchesSearchQuery(searchQuery: String): Boolean {
-    val normalizedTerms = searchQuery.trim()
+private fun normalizeSearchTerms(searchQuery: String): List<String> =
+    searchQuery.trim()
         .lowercase()
-        .split(Regex("\\s+"))
+        .split(SearchQueryDelimiterRegex)
         .filter(String::isNotBlank)
+
+private fun DownloadedModGroup.matchesSearchTerms(normalizedTerms: List<String>): Boolean {
     if (normalizedTerms.isEmpty()) {
         return true
     }
 
-    val haystack = buildString {
-        append(itemTitle)
-        append('\n')
-        append(gameTitle)
-        append('\n')
-        append(appId)
-        append('\n')
-        append(publishedFileId)
-        versions.forEach { version ->
-            append('\n')
-            append(version.versionId)
-            append('\n')
-            append(version.versionLabel())
-        }
-    }.lowercase()
-
-    return normalizedTerms.all(haystack::contains)
+    return normalizedTerms.all(cachedSearchIndex::contains)
 }
 
 private fun DownloadedModGroup.matchesGameFilter(selectedGameTitle: String?): Boolean =
-    selectedGameTitle.isNullOrBlank() || gameTitle == selectedGameTitle
+    selectedGameTitle == null || gameTitle == selectedGameTitle

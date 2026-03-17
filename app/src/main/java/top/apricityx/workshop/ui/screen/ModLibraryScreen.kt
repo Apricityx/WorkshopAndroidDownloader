@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -36,14 +37,10 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -86,16 +84,46 @@ import top.apricityx.workshop.ui.component.ModPreviewImage
 import top.apricityx.workshop.ui.component.ModUpdateStatusText
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.SectionHeading
+import top.apricityx.workshop.ui.component.WorkshopGlassSurface
 import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.component.WorkshopTextButton
 import top.apricityx.workshop.ui.component.formatModLibraryTimestamp
+import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
+import top.apricityx.workshop.ui.theme.workshopChromePadding
+import top.apricityx.workshop.ui.theme.workshopListContentPadding
 import top.apricityx.workshop.versionCount
 import top.apricityx.workshop.versionLabel
 
 private val OverviewCheckingBorderColor = Color(0xFFF59E0B)
 private val OverviewUpdateAvailableBorderColor = Color(0xFF22C55E)
+
+private enum class ModLibraryUpdateCardTone {
+    Normal,
+    Checking,
+    Failed,
+}
+
+private data class ModLibraryUpdateFeedback(
+    val message: String,
+    val tone: ModLibraryUpdateCardTone,
+)
+
+private data class ModLibrarySummaryData(
+    val availableGames: List<String>,
+    val totalMods: Int,
+    val visibleMods: Int,
+    val totalVersions: Int,
+    val totalFiles: Int,
+    val totalUpdateAvailable: Int,
+    val visibleVersions: Int,
+    val visibleFiles: Int,
+    val visibleUpdateAvailable: Int,
+)
 
 @Composable
 fun ModLibraryScreen(
@@ -112,18 +140,31 @@ fun ModLibraryScreen(
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val visibleItems = sortModLibraryGroups(
-        items = filterModLibraryGroups(
+    val updateResults = state.updateCheckState.results
+    val visibleItems = remember(state.items, state.filterState, state.sortOption) {
+        sortModLibraryGroups(
+            items = filterModLibraryGroups(
+                items = state.items,
+                filterState = state.filterState,
+            ),
+            sortOption = state.sortOption,
+        )
+    }
+    val summaryData = remember(state.items, visibleItems, updateResults) {
+        buildModLibrarySummaryData(
             items = state.items,
-            filterState = state.filterState,
-        ),
-        sortOption = state.sortOption,
-    )
+            visibleItems = visibleItems,
+            updateResults = updateResults,
+        )
+    }
+    val updateFeedback = remember(state.updateCheckState, state.items.size) {
+        currentModLibraryUpdateFeedback(state)
+    }
 
     when {
         state.isLoading && state.items.isEmpty() -> WorkshopLoadingBlock(
             label = "正在同步本地模组库。",
-            modifier = modifier,
+            modifier = modifier.workshopChromePadding(topExtra = 24.dp, bottomExtra = 24.dp),
         )
 
         state.errorMessage != null && state.items.isEmpty() -> WorkshopCenteredState(
@@ -131,18 +172,20 @@ fun ModLibraryScreen(
             message = state.errorMessage,
             actionLabel = "重试",
             onAction = onRetry,
-            modifier = modifier,
+            modifier = modifier.workshopChromePadding(topExtra = 24.dp, bottomExtra = 24.dp),
         )
 
         state.items.isEmpty() -> WorkshopCenteredState(
             title = "模组库还是空的",
             message = state.message ?: "下载一个模组后，会自动同步到这里。",
-            modifier = modifier,
+            modifier = modifier.workshopChromePadding(topExtra = 24.dp, bottomExtra = 24.dp),
         )
 
         state.displayMode == ModLibraryDisplayMode.Overview -> OverviewModLibraryGrid(
             state = state,
             visibleItems = visibleItems,
+            summaryData = summaryData,
+            updateFeedback = updateFeedback,
             onCheckUpdates = onCheckUpdates,
             onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
@@ -158,6 +201,8 @@ fun ModLibraryScreen(
         else -> ListModLibraryContent(
             state = state,
             visibleItems = visibleItems,
+            summaryData = summaryData,
+            updateFeedback = updateFeedback,
             onCheckUpdates = onCheckUpdates,
             onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
@@ -176,6 +221,8 @@ fun ModLibraryScreen(
 private fun ListModLibraryContent(
     state: ModLibraryUiState,
     visibleItems: List<DownloadedModGroup>,
+    summaryData: ModLibrarySummaryData,
+    updateFeedback: ModLibraryUpdateFeedback?,
     onCheckUpdates: () -> Unit,
     onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -189,12 +236,13 @@ private fun ListModLibraryContent(
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 16.dp),
+        contentPadding = workshopListContentPadding(topExtra = 20.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         modLibraryHeaderItems(
             state = state,
-            visibleItems = visibleItems,
+            summaryData = summaryData,
+            updateFeedback = updateFeedback,
             onCheckUpdates = onCheckUpdates,
             onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
@@ -235,6 +283,8 @@ private fun ListModLibraryContent(
 private fun OverviewModLibraryGrid(
     state: ModLibraryUiState,
     visibleItems: List<DownloadedModGroup>,
+    summaryData: ModLibrarySummaryData,
+    updateFeedback: ModLibraryUpdateFeedback?,
     onCheckUpdates: () -> Unit,
     onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -249,13 +299,14 @@ private fun OverviewModLibraryGrid(
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 96.dp),
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 16.dp),
+        contentPadding = workshopListContentPadding(topExtra = 20.dp, bottomExtra = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         modLibraryHeaderItems(
             state = state,
-            visibleItems = visibleItems,
+            summaryData = summaryData,
+            updateFeedback = updateFeedback,
             onCheckUpdates = onCheckUpdates,
             onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
@@ -284,7 +335,8 @@ private fun OverviewModLibraryGrid(
 
 private fun LazyListScope.modLibraryHeaderItems(
     state: ModLibraryUiState,
-    visibleItems: List<DownloadedModGroup>,
+    summaryData: ModLibrarySummaryData,
+    updateFeedback: ModLibraryUpdateFeedback?,
     onCheckUpdates: () -> Unit,
     onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -295,7 +347,7 @@ private fun LazyListScope.modLibraryHeaderItems(
     item {
         ModLibrarySummaryCard(
             state = state,
-            visibleItems = visibleItems,
+            summaryData = summaryData,
             onCheckUpdates = onCheckUpdates,
             onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
@@ -305,20 +357,11 @@ private fun LazyListScope.modLibraryHeaderItems(
         )
     }
 
-    if (state.updateCheckState.isChecking) {
+    updateFeedback?.let { feedback ->
         item {
-            WorkshopMessageBanner(
-                message = "正在检查 ${state.items.size} 个模组的创意工坊更新。",
-                tone = MessageTone.Info,
-            )
-        }
-    }
-
-    state.updateCheckState.summaryMessage?.let { summaryMessage ->
-        item {
-            WorkshopMessageBanner(
-                message = summaryMessage,
-                tone = modLibrarySummaryTone(state),
+            ModLibraryUpdateStatusCard(
+                message = feedback.message,
+                tone = feedback.tone,
             )
         }
     }
@@ -348,7 +391,8 @@ private fun LazyListScope.modLibraryHeaderItems(
 
 private fun LazyGridScope.modLibraryHeaderItems(
     state: ModLibraryUiState,
-    visibleItems: List<DownloadedModGroup>,
+    summaryData: ModLibrarySummaryData,
+    updateFeedback: ModLibraryUpdateFeedback?,
     onCheckUpdates: () -> Unit,
     onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -359,7 +403,7 @@ private fun LazyGridScope.modLibraryHeaderItems(
     fullSpanItem {
         ModLibrarySummaryCard(
             state = state,
-            visibleItems = visibleItems,
+            summaryData = summaryData,
             onCheckUpdates = onCheckUpdates,
             onToggleFilterPanel = onToggleFilterPanel,
             onSearchQueryChange = onSearchQueryChange,
@@ -369,20 +413,11 @@ private fun LazyGridScope.modLibraryHeaderItems(
         )
     }
 
-    if (state.updateCheckState.isChecking) {
+    updateFeedback?.let { feedback ->
         fullSpanItem {
-            WorkshopMessageBanner(
-                message = "正在检查 ${state.items.size} 个模组的创意工坊更新。",
-                tone = MessageTone.Info,
-            )
-        }
-    }
-
-    state.updateCheckState.summaryMessage?.let { summaryMessage ->
-        fullSpanItem {
-            WorkshopMessageBanner(
-                message = summaryMessage,
-                tone = modLibrarySummaryTone(state),
+            ModLibraryUpdateStatusCard(
+                message = feedback.message,
+                tone = feedback.tone,
             )
         }
     }
@@ -422,7 +457,7 @@ private fun LazyGridScope.fullSpanItem(
 @Composable
 private fun ModLibrarySummaryCard(
     state: ModLibraryUiState,
-    visibleItems: List<DownloadedModGroup>,
+    summaryData: ModLibrarySummaryData,
     onCheckUpdates: () -> Unit,
     onToggleFilterPanel: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -430,28 +465,17 @@ private fun ModLibrarySummaryCard(
     onSortOptionSelected: (ModLibrarySortOption) -> Unit,
     onClearFilters: () -> Unit,
 ) {
-    val availableGames = availableModLibraryGames(state.items)
-    val totalMods = state.items.size
-    val totalVersions = state.totalVersionCount()
-    val totalFiles = state.totalFileCount()
-    val totalUpdateAvailable = state.latestUpdateAvailableCount()
-    val visibleVersions = visibleItems.sumOf(DownloadedModGroup::versionCount)
-    val visibleFiles = visibleItems.sumOf(DownloadedModGroup::totalFileCount)
-    val visibleUpdateAvailable = visibleItems.count {
-        latestUpdateResult(it, state)?.status == ModUpdateCheckStatus.UpdateAvailable
-    }
-
     ScreenSummaryCard(
         title = "模组库",
         subtitle = state.displayMode.screenSubtitle(),
         metrics = listOf(
-            "模组 ${filteredMetricText(visibleItems.size, totalMods)}",
-            "版本 ${filteredMetricText(visibleVersions, totalVersions)}",
-            "文件 ${filteredMetricText(visibleFiles, totalFiles)}",
-            "可更新 ${filteredMetricText(visibleUpdateAvailable, totalUpdateAvailable)}",
+            "模组 ${filteredMetricText(summaryData.visibleMods, summaryData.totalMods)}",
+            "版本 ${filteredMetricText(summaryData.visibleVersions, summaryData.totalVersions)}",
+            "文件 ${filteredMetricText(summaryData.visibleFiles, summaryData.totalFiles)}",
+            "可更新 ${filteredMetricText(summaryData.visibleUpdateAvailable, summaryData.totalUpdateAvailable)}",
         ),
     ) {
-        OutlinedButton(
+        WorkshopOutlinedButton(
             onClick = onCheckUpdates,
             enabled = !state.updateCheckState.isChecking,
             modifier = Modifier.fillMaxWidth(),
@@ -465,44 +489,45 @@ private fun ModLibrarySummaryCard(
             )
         }
 
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggleFilterPanel),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+        WorkshopPanelCard(
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleFilterPanel),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = "筛选与排序",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = if (state.filterPanelExpanded) "收起筛选与排序" else "展开筛选与排序",
-                        modifier = Modifier.graphicsLayer {
-                            rotationZ = if (state.filterPanelExpanded) 90f else 0f
-                        },
+                    Text(
+                        text = "筛选与排序",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "搜索、排序和游戏筛选统一收在这里。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = if (state.filterPanelExpanded) "收起筛选与排序" else "展开筛选与排序",
+                    modifier = Modifier.graphicsLayer {
+                        rotationZ = if (state.filterPanelExpanded) 90f else 0f
+                    },
+                )
+            }
 
-                if (state.filterPanelExpanded) {
-                    OutlinedTextField(
+            if (state.filterPanelExpanded) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    WorkshopOutlinedTextField(
                         value = state.filterState.searchQuery,
                         onValueChange = onSearchQueryChange,
                         label = { Text("搜索模组 / 游戏 / ID") },
@@ -522,10 +547,10 @@ private fun ModLibrarySummaryCard(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ModLibrarySortOption.entries.forEach { sortOption ->
-                            FilterChip(
+                            ModLibrarySelectionChip(
+                                label = sortOption.displayName(),
                                 selected = sortOption == state.sortOption,
                                 onClick = { onSortOptionSelected(sortOption) },
-                                label = { Text(sortOption.displayName()) },
                             )
                         }
                     }
@@ -540,16 +565,16 @@ private fun ModLibrarySummaryCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        FilterChip(
+                        ModLibrarySelectionChip(
+                            label = "全部游戏",
                             selected = state.filterState.selectedGameTitle == null,
                             onClick = { onGameFilterSelected(null) },
-                            label = { Text("全部游戏") },
                         )
-                        availableGames.forEach { gameTitle ->
-                            FilterChip(
+                        summaryData.availableGames.forEach { gameTitle ->
+                            ModLibrarySelectionChip(
+                                label = gameTitle,
                                 selected = state.filterState.selectedGameTitle == gameTitle,
                                 onClick = { onGameFilterSelected(gameTitle) },
-                                label = { Text(gameTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             )
                         }
                     }
@@ -564,11 +589,11 @@ private fun ModLibrarySummaryCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "当前筛选后显示 ${visibleItems.size} 个模组。",
+                    text = "当前筛选后显示 ${summaryData.visibleMods} 个模组。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(onClick = onClearFilters) {
+                WorkshopTextButton(onClick = onClearFilters) {
                     Text("清空筛选")
                 }
             }
@@ -598,12 +623,251 @@ private fun FilteredModLibraryEmptyState(
     )
 }
 
-private fun modLibrarySummaryTone(state: ModLibraryUiState): MessageTone =
-    if (state.updateCheckState.results.values.any { it.status == ModUpdateCheckStatus.Failed }) {
-        MessageTone.Error
-    } else {
-        MessageTone.Success
+@Composable
+private fun ModLibrarySelectionChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    val surfaceColor = when {
+        selected && isDark -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+        isDark -> MaterialTheme.colorScheme.surface.copy(alpha = 0.2f)
+        else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.16f)
     }
+    val borderColor = when {
+        selected && isDark -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+        isDark -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+    }
+    val contentColor = when {
+        selected && isDark -> Color(0xFFEAF3FF)
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopGlassSurface(
+            modifier = modifier,
+            shape = MaterialTheme.shapes.large,
+            blurRadius = 14.dp,
+            lensHeight = 6.dp,
+            lensAmount = 8.dp,
+            surfaceColor = surfaceColor,
+            borderColor = borderColor,
+        ) {
+            Box(
+                modifier = Modifier
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        return
+    }
+
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        color = surfaceColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun currentModLibraryUpdateFeedback(
+    state: ModLibraryUiState,
+): ModLibraryUpdateFeedback? =
+    when {
+        state.updateCheckState.isChecking -> ModLibraryUpdateFeedback(
+            message = "正在检查 ${state.items.size} 个模组的创意工坊更新。",
+            tone = ModLibraryUpdateCardTone.Checking,
+        )
+
+        state.updateCheckState.summaryMessage != null -> ModLibraryUpdateFeedback(
+            message = state.updateCheckState.summaryMessage,
+            tone = modLibraryUpdateCardTone(state),
+        )
+
+        else -> null
+    }
+
+private fun buildModLibrarySummaryData(
+    items: List<DownloadedModGroup>,
+    visibleItems: List<DownloadedModGroup>,
+    updateResults: Map<String, ModUpdateCheckResult>,
+): ModLibrarySummaryData =
+    ModLibrarySummaryData(
+        availableGames = availableModLibraryGames(items),
+        totalMods = items.size,
+        visibleMods = visibleItems.size,
+        totalVersions = items.sumOf(DownloadedModGroup::versionCount),
+        totalFiles = items.sumOf(DownloadedModGroup::totalFileCount),
+        totalUpdateAvailable = items.count {
+            it.latestUpdateStatus(updateResults) == ModUpdateCheckStatus.UpdateAvailable
+        },
+        visibleVersions = visibleItems.sumOf(DownloadedModGroup::versionCount),
+        visibleFiles = visibleItems.sumOf(DownloadedModGroup::totalFileCount),
+        visibleUpdateAvailable = visibleItems.count {
+            it.latestUpdateStatus(updateResults) == ModUpdateCheckStatus.UpdateAvailable
+        },
+    )
+
+private fun modLibraryUpdateCardTone(state: ModLibraryUiState): ModLibraryUpdateCardTone =
+    if (state.updateCheckState.results.values.any { it.status == ModUpdateCheckStatus.Failed }) {
+        ModLibraryUpdateCardTone.Failed
+    } else {
+        ModLibraryUpdateCardTone.Normal
+    }
+
+@Composable
+private fun ModLibraryUpdateStatusCard(
+    message: String,
+    tone: ModLibraryUpdateCardTone,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    val containerColor = when (tone) {
+        ModLibraryUpdateCardTone.Normal -> if (isDark) {
+            Color(0xFF14314C).copy(alpha = 0.76f)
+        } else {
+            Color(0xFFDDEEFF)
+        }
+
+        ModLibraryUpdateCardTone.Checking -> if (isDark) {
+            Color(0xFF4A3B14).copy(alpha = 0.8f)
+        } else {
+            Color(0xFFFFF0C7)
+        }
+
+        ModLibraryUpdateCardTone.Failed -> if (isDark) {
+            Color(0xFF4A1F24).copy(alpha = 0.8f)
+        } else {
+            Color(0xFFFFE0E0)
+        }
+    }
+    val borderColor = when (tone) {
+        ModLibraryUpdateCardTone.Normal -> if (isDark) {
+            Color(0xFF73B9FF).copy(alpha = 0.34f)
+        } else {
+            Color(0xFF9BC7F5)
+        }
+
+        ModLibraryUpdateCardTone.Checking -> if (isDark) {
+            Color(0xFFF7C65B).copy(alpha = 0.38f)
+        } else {
+            Color(0xFFE3BF65)
+        }
+
+        ModLibraryUpdateCardTone.Failed -> if (isDark) {
+            Color(0xFFFF9B9B).copy(alpha = 0.34f)
+        } else {
+            Color(0xFFF0A5A5)
+        }
+    }
+    val title = when (tone) {
+        ModLibraryUpdateCardTone.Normal -> "检查结果"
+        ModLibraryUpdateCardTone.Checking -> "正在检查"
+        ModLibraryUpdateCardTone.Failed -> "检查失败"
+    }
+    val contentColor = when (tone) {
+        ModLibraryUpdateCardTone.Normal -> if (isDark) {
+            Color(0xFFEAF4FF)
+        } else {
+            Color(0xFF17395B)
+        }
+
+        ModLibraryUpdateCardTone.Checking -> if (isDark) {
+            Color(0xFFFFF1CC)
+        } else {
+            Color(0xFF6C5313)
+        }
+
+        ModLibraryUpdateCardTone.Failed -> if (isDark) {
+            Color(0xFFFFE0E0)
+        } else {
+            Color(0xFF7F2A2A)
+        }
+    }
+
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopGlassSurface(
+            modifier = modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            blurRadius = 16.dp,
+            lensHeight = 8.dp,
+            lensAmount = 10.dp,
+            surfaceColor = containerColor.copy(alpha = 0.22f),
+            borderColor = borderColor.copy(alpha = 0.24f),
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = contentColor,
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor,
+                )
+            }
+        }
+        return
+    }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = containerColor.copy(alpha = if (isDark) 0.42f else 0.5f),
+        border = BorderStroke(1.dp, borderColor.copy(alpha = if (isDark) 0.3f else 0.42f)),
+        tonalElevation = 1.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor,
+            )
+        }
+    }
+}
 
 @Composable
 private fun LargePreviewModLibraryCard(
@@ -665,20 +929,20 @@ private fun LargePreviewModLibraryCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedButton(
+            WorkshopOutlinedButton(
                 onClick = onOpenDetail,
                 modifier = Modifier.weight(1f),
             ) {
                 Text("查看详情")
             }
             primaryFile?.let { file ->
-                OutlinedButton(
+                WorkshopOutlinedButton(
                     onClick = { onOpenPrimaryFile(file) },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("打开最新")
                 }
-                OutlinedButton(
+                WorkshopOutlinedButton(
                     onClick = { onSharePrimaryFile(file) },
                     modifier = Modifier.weight(1f),
                 ) {
@@ -811,31 +1075,80 @@ private fun OverviewModLibraryTile(
                 )
             }
 
-            DropdownMenu(
+            OverviewModLibraryContextMenu(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
-            ) {
-                DropdownMenuItem(
-                    text = { Text("查看详情") },
-                    onClick = {
+                onOpenDetail = {
+                    menuExpanded = false
+                    onOpenDetail()
+                },
+                onOpenPrimaryFile = primaryFile?.let { file ->
+                    {
                         menuExpanded = false
-                        onOpenDetail()
+                        onOpenPrimaryFile(file)
+                    }
+                },
+                onSharePrimaryFile = primaryFile?.let { file ->
+                    {
+                        menuExpanded = false
+                        onSharePrimaryFile(file)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverviewModLibraryContextMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    onOpenDetail: () -> Unit,
+    onOpenPrimaryFile: (() -> Unit)?,
+    onSharePrimaryFile: (() -> Unit)?,
+) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        WorkshopGlassSurface(
+            modifier = Modifier.widthIn(min = 220.dp, max = 280.dp),
+            shape = MaterialTheme.shapes.large,
+            blurRadius = 18.dp,
+            lensHeight = 10.dp,
+            lensAmount = 12.dp,
+            surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = if (isDark) 0.22f else 0.72f),
+            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDark) 0.14f else 0.1f),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                DropdownMenuItem(
+                    text = {
+                        Text("查看详情")
                     },
+                    onClick = onOpenDetail,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                primaryFile?.let { file ->
+                onOpenPrimaryFile?.let { action ->
                     DropdownMenuItem(
-                        text = { Text("打开最新主文件") },
-                        onClick = {
-                            menuExpanded = false
-                            onOpenPrimaryFile(file)
+                        text = {
+                            Text("打开最新主文件")
                         },
+                        onClick = action,
+                        modifier = Modifier.fillMaxWidth(),
                     )
+                }
+                onSharePrimaryFile?.let { action ->
                     DropdownMenuItem(
-                        text = { Text("分享最新主文件") },
-                        onClick = {
-                            menuExpanded = false
-                            onSharePrimaryFile(file)
+                        text = {
+                            Text("分享最新主文件")
                         },
+                        onClick = action,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -966,18 +1279,7 @@ private fun latestUpdateResult(
     group: DownloadedModGroup,
     state: ModLibraryUiState,
 ): ModUpdateCheckResult? =
-    state.updateCheckState.results[group.latestVersion().modLibraryKey()]
-
-private fun ModLibraryUiState.totalVersionCount(): Int =
-    items.sumOf { it.versionCount() }
-
-private fun ModLibraryUiState.totalFileCount(): Int =
-    items.sumOf { it.totalFileCount() }
-
-private fun ModLibraryUiState.latestUpdateAvailableCount(): Int =
-    items.count {
-        it.latestUpdateStatus(updateCheckState.results) == ModUpdateCheckStatus.UpdateAvailable
-    }
+    state.updateCheckState.results[group.cachedLatestVersionKey]
 
 private fun filteredMetricText(
     visibleCount: Int,

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -21,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 
 enum class MessageTone {
     Info,
@@ -33,6 +33,19 @@ fun WorkshopPanelCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopGlassSurface(
+            modifier = modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = content,
+            )
+        }
+        return
+    }
+
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -115,6 +128,26 @@ fun WorkshopMessageBanner(
         MessageTone.Error -> MaterialTheme.colorScheme.error
     }
 
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopGlassSurface(
+            modifier = modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            blurRadius = 14.dp,
+            lensHeight = 8.dp,
+            lensAmount = 8.dp,
+            surfaceColor = containerColor.copy(alpha = 0.78f),
+            borderColor = contentColor.copy(alpha = 0.18f),
+        ) {
+            Text(
+                text = message,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor,
+            )
+        }
+        return
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = containerColor,
@@ -155,7 +188,7 @@ fun WorkshopCenteredState(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (actionLabel != null && onAction != null) {
-                Button(onClick = onAction) {
+                WorkshopButton(onClick = onAction) {
                     Text(actionLabel)
                 }
             }
@@ -206,6 +239,25 @@ fun MetricPill(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopGlassSurface(
+            modifier = modifier,
+            shape = MaterialTheme.shapes.small,
+            blurRadius = 10.dp,
+            lensHeight = 5.dp,
+            lensAmount = 6.dp,
+            surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        return
+    }
+
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.small,

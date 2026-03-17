@@ -49,6 +49,15 @@ class DownloadSettingsRepository(context: Context) {
         prefs.edit().putString(KEY_THEME_MODE, value.storageValue).apply()
     }
 
+    fun getFrontendMode(): AppFrontendMode =
+        prefs.getString(KEY_FRONTEND_MODE, null)
+            ?.let(AppFrontendMode::fromStorageValue)
+            ?: DEFAULT_FRONTEND_MODE
+
+    fun setFrontendMode(value: AppFrontendMode) {
+        prefs.edit().putString(KEY_FRONTEND_MODE, value.storageValue).apply()
+    }
+
     fun getSteamLanguagePreference(): SteamLanguagePreference =
         prefs.getString(KEY_STEAM_LANGUAGE_PREFERENCE, null)
             ?.let(SteamLanguagePreference::fromStorageValue)
@@ -142,6 +151,7 @@ class DownloadSettingsRepository(context: Context) {
         private const val KEY_MOD_UPDATE_CONCURRENT_CHECKS = "mod_update_concurrent_checks"
         private const val KEY_USAGE_NOTICE_ACKNOWLEDGED = "usage_notice_acknowledged"
         private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_FRONTEND_MODE = "frontend_mode"
         private const val KEY_STEAM_LANGUAGE_PREFERENCE = "steam_language_preference"
         private const val KEY_TRANSLATION_PROVIDER = "translation_provider"
         private const val KEY_MOD_LIBRARY_DISPLAY_MODE = "mod_library_display_mode"
@@ -166,6 +176,7 @@ class DownloadSettingsRepository(context: Context) {
         const val DEFAULT_AUTO_CHECK_UPDATES_ENABLED = true
         const val DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP = false
         val DEFAULT_THEME_MODE: AppThemeMode = AppThemeMode.FollowSystem
+        val DEFAULT_FRONTEND_MODE: AppFrontendMode = AppFrontendMode.LiquidGlass
         val DEFAULT_STEAM_LANGUAGE_PREFERENCE: SteamLanguagePreference = SteamLanguagePreference.SimplifiedChinese
         val DEFAULT_TRANSLATION_PROVIDER: TranslationProvider = TranslationProvider.OnDevice
         val DEFAULT_MOD_LIBRARY_DISPLAY_MODE: ModLibraryDisplayMode = ModLibraryDisplayMode.CompactList

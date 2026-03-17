@@ -322,6 +322,16 @@ class DownloadCenterManager private constructor(
             return
         }
         val taskClient = OkHttpClient.Builder()
+            .cookieJar(
+                SteamWebSessionCookieJar(
+                    projectedCookiesProvider = { url ->
+                        steamAuthRepository.blockingProjectedCookiesFor(
+                            url = url,
+                            accountId = task.boundAccountId,
+                        )
+                    },
+                ),
+            )
             .addInterceptor(
                 SteamAuthenticatedCleartextInterceptor(
                     hasAuthenticatedSteamSession = { accountSession != null },
@@ -329,13 +339,6 @@ class DownloadCenterManager private constructor(
                 ),
             )
             .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
-            .addInterceptor(
-                SteamCookieInterceptor(
-                    authRepository = steamAuthRepository,
-                    accountIdProvider = { task.boundAccountId },
-                    fallbackToActiveAccount = false,
-                ),
-            )
             .build()
         val engine = WorkshopDownloadEngine.createDefault(
             client = taskClient,

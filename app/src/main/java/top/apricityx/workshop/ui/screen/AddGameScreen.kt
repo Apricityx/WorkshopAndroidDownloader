@@ -8,9 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -27,6 +25,9 @@ import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
+import top.apricityx.workshop.ui.theme.workshopListContentPadding
 
 @Composable
 fun AddGameScreen(
@@ -42,6 +43,7 @@ fun AddGameScreen(
 ) {
     LazyColumn(
         modifier = modifier,
+        contentPadding = workshopListContentPadding(topExtra = 20.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -63,14 +65,14 @@ fun AddGameScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    OutlinedTextField(
+                    WorkshopOutlinedTextField(
                         value = state.searchQuery,
                         onValueChange = onSearchQueryChange,
                         label = { Text("搜索游戏") },
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    Button(onClick = onSearch, modifier = Modifier.padding(top = 8.dp)) {
+                    WorkshopButton(onClick = onSearch, modifier = Modifier.padding(top = 8.dp)) {
                         Text("搜索")
                     }
                 }
@@ -88,7 +90,7 @@ fun AddGameScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    OutlinedTextField(
+                    WorkshopOutlinedTextField(
                         value = state.directAppIdText,
                         onValueChange = onDirectAppIdChange,
                         label = { Text("直接填写 GameID") },
@@ -96,7 +98,7 @@ fun AddGameScreen(
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    Button(onClick = onAddById, modifier = Modifier.padding(top = 8.dp)) {
+                    WorkshopButton(onClick = onAddById, modifier = Modifier.padding(top = 8.dp)) {
                         Text("添加")
                     }
                 }
@@ -180,14 +182,6 @@ fun AddGameScreen(
                     onSecondaryAction = { onOpenGame(game) },
                 )
             }
-        }
-
-        item {
-            androidx.compose.foundation.layout.Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-            )
         }
     }
 }

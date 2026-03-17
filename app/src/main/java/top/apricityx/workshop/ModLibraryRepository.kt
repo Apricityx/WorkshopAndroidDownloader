@@ -81,6 +81,35 @@ class ModLibraryRepository(
         }
     }
 
+    suspend fun renameMod(
+        appId: UInt,
+        publishedFileId: ULong,
+        newTitle: String,
+    ): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
+        val normalizedTitle = newTitle.trim()
+        require(normalizedTitle.isNotBlank()) { "模组名称不能为空。" }
+        store.withFileLock {
+            val currentEntries = store.loadEntries()
+            require(currentEntries.any { it.appId == appId && it.publishedFileId == publishedFileId }) {
+                "没有找到要重命名的模组。"
+            }
+            val renamedEntries = currentEntries.map { entry ->
+                if (entry.appId == appId && entry.publishedFileId == publishedFileId) {
+                    entry.copy(itemTitle = normalizedTitle)
+                } else {
+                    entry
+                }
+            }
+            val synced = mergeIndexedAndLocalMods(
+                indexedEntries = renamedEntries,
+                localMods = localDataSource.listLocalMods(renamedEntries),
+                nowMillis = nowMillis,
+            )
+            store.saveEntries(synced)
+            synced
+        }
+    }
+
     interface ModLibraryLocalDataSource {
         suspend fun listLocalMods(indexedEntries: List<DownloadedModEntry>): List<LocalModSnapshot>
 

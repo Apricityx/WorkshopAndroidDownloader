@@ -13,7 +13,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -35,7 +34,9 @@ import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.theme.workshopChromePadding
 
 @Composable
 fun DownloadTaskDetailScreen(
@@ -48,7 +49,9 @@ fun DownloadTaskDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()),
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .workshopChromePadding(topExtra = 8.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ScreenSummaryCard(
@@ -84,7 +87,7 @@ fun DownloadTaskDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (task.canPause()) {
-                    OutlinedButton(onClick = onPauseTask) {
+                    WorkshopOutlinedButton(onClick = onPauseTask) {
                         Icon(
                             imageVector = Icons.Default.Pause,
                             contentDescription = null,
@@ -93,7 +96,7 @@ fun DownloadTaskDetailScreen(
                     }
                 }
                 if (task.canResume()) {
-                    OutlinedButton(onClick = onResumeTask) {
+                    WorkshopOutlinedButton(onClick = onResumeTask) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
@@ -101,7 +104,7 @@ fun DownloadTaskDetailScreen(
                         Text(" ${task.resumeActionLabel()}")
                     }
                 }
-                OutlinedButton(onClick = onRemoveTask) {
+                WorkshopOutlinedButton(onClick = onRemoveTask) {
                     Text(task.removeActionLabel())
                 }
             }
@@ -147,10 +150,10 @@ fun DownloadTaskDetailScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedButton(onClick = onShareDebugLog) {
+                WorkshopOutlinedButton(onClick = onShareDebugLog) {
                     Text("分享调试日志")
                 }
-                OutlinedButton(onClick = onShareRuntimeLog) {
+                WorkshopOutlinedButton(onClick = onShareRuntimeLog) {
                     Text("分享运行日志")
                 }
                 if (task.logs.isEmpty()) {

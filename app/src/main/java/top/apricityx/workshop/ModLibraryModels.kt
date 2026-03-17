@@ -1,6 +1,7 @@
 package top.apricityx.workshop
 
 import kotlinx.serialization.Serializable
+import kotlin.LazyThreadSafetyMode
 
 @Serializable
 data class DownloadedModEntry(
@@ -14,7 +15,20 @@ data class DownloadedModEntry(
     val versionUpdatedAtMillis: Long? = null,
     val storedAtMillis: Long,
     val files: List<ExportedDownloadFile>,
-)
+) {
+    internal val cachedVersionLabel: String by lazy(LazyThreadSafetyMode.NONE) {
+        formatModVersionLabel(
+            versionId = versionId,
+            updatedAtMillis = versionUpdatedAtMillis,
+        )
+    }
+    internal val normalizedVersionId: String by lazy(LazyThreadSafetyMode.NONE) {
+        versionId.lowercase()
+    }
+    internal val normalizedVersionLabel: String by lazy(LazyThreadSafetyMode.NONE) {
+        cachedVersionLabel.lowercase()
+    }
+}
 
 data class DownloadedModGroup(
     val appId: UInt,
@@ -24,7 +38,40 @@ data class DownloadedModGroup(
     val description: String = "",
     val previewImagePath: String? = null,
     val versions: List<DownloadedModEntry>,
-)
+) {
+    internal val cachedLatestVersion: DownloadedModEntry by lazy(LazyThreadSafetyMode.NONE) {
+        versions.first()
+    }
+    internal val cachedLatestVersionKey: String by lazy(LazyThreadSafetyMode.NONE) {
+        cachedLatestVersion.modLibraryKey()
+    }
+    internal val normalizedGameTitle: String by lazy(LazyThreadSafetyMode.NONE) {
+        gameTitle.lowercase()
+    }
+    internal val normalizedItemTitle: String by lazy(LazyThreadSafetyMode.NONE) {
+        itemTitle.lowercase()
+    }
+    internal val cachedTotalFileCount: Int by lazy(LazyThreadSafetyMode.NONE) {
+        versions.sumOf { it.files.size }
+    }
+    internal val cachedSearchIndex: String by lazy(LazyThreadSafetyMode.NONE) {
+        buildString {
+            append(normalizedItemTitle)
+            append('\n')
+            append(normalizedGameTitle)
+            append('\n')
+            append(appId)
+            append('\n')
+            append(publishedFileId)
+            versions.forEach { version ->
+                append('\n')
+                append(version.normalizedVersionId)
+                append('\n')
+                append(version.normalizedVersionLabel)
+            }
+        }
+    }
+}
 
 fun DownloadedModEntry.primaryFile(): ExportedDownloadFile? =
     files.sortedBy(ExportedDownloadFile::relativePath).firstOrNull()
@@ -36,7 +83,7 @@ fun DownloadedModGroup.modGroupKey(): String =
     "${appId}-${publishedFileId}"
 
 fun DownloadedModGroup.latestVersion(): DownloadedModEntry =
-    versions.first()
+    cachedLatestVersion
 
 fun DownloadedModGroup.primaryFile(): ExportedDownloadFile? =
     latestVersion().primaryFile()
@@ -45,7 +92,7 @@ fun DownloadedModGroup.versionCount(): Int =
     versions.size
 
 fun DownloadedModGroup.totalFileCount(): Int =
-    versions.sumOf { it.files.size }
+    cachedTotalFileCount
 
 fun DownloadedModGroup.matches(
     appId: UInt,
@@ -76,10 +123,7 @@ fun DownloadedModEntry.matches(other: DownloadedModEntry): Boolean =
     )
 
 fun DownloadedModEntry.versionLabel(): String =
-    formatModVersionLabel(
-        versionId = versionId,
-        updatedAtMillis = versionUpdatedAtMillis,
-    )
+    cachedVersionLabel
 
 fun List<DownloadedModEntry>.groupedForDisplay(): List<DownloadedModGroup> =
     groupBy(DownloadedModEntry::modGroupKey)

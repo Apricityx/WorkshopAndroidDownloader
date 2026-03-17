@@ -1,4 +1,10 @@
 package top.apricityx.workshop.ui.screen
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,24 +20,28 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -46,13 +56,21 @@ import top.apricityx.workshop.ui.component.MetricPill
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.SectionHeading
 import top.apricityx.workshop.ui.component.WorkshopCenteredState
+import top.apricityx.workshop.ui.component.WorkshopGlassIconButton
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
+import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.theme.workshopListContentPadding
 
 @Composable
 fun GameWorkshopScreen(
     state: GameWorkshopUiState,
+    downloadedItemIds: Set<ULong>,
+    pendingDownloadItemIds: Set<ULong>,
+    activeDownloadItemIds: Set<ULong>,
     onSearchQueryChange: (String) -> Unit,
     onSortOptionSelected: (WorkshopBrowseSortOption) -> Unit,
     onTimeWindowSelected: (WorkshopBrowseTimeWindow) -> Unit,
@@ -68,11 +86,30 @@ fun GameWorkshopScreen(
     ) {
         LazyListState()
     }
+    var directPublishedFileIdText by rememberSaveable(state.game.appId.toString()) {
+        mutableStateOf("")
+    }
     val showingRefreshState = state.isLoading && state.items.isNotEmpty()
+    val directPublishedFileId = directPublishedFileIdText.toULongOrNull()
+    val canDirectDownload =
+        directPublishedFileIdText.isNotBlank() &&
+            directPublishedFileIdText != "0" &&
+            directPublishedFileId != null
+    val directDownloadState = when {
+        directPublishedFileId != null && directPublishedFileId in activeDownloadItemIds ->
+            DownloadActionUiState.Downloading
+
+        directPublishedFileId != null && directPublishedFileId in pendingDownloadItemIds ->
+            DownloadActionUiState.Loading
+
+        else -> DownloadActionUiState.Idle
+    }
+    val shouldShowDirectDownloadCard = !state.showConnectionErrorState
 
     LazyColumn(
         state = listState,
         modifier = modifier,
+        contentPadding = workshopListContentPadding(topExtra = 20.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -105,7 +142,7 @@ fun GameWorkshopScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    OutlinedTextField(
+                    WorkshopOutlinedTextField(
                         value = state.searchQuery,
                         onValueChange = onSearchQueryChange,
                         label = { Text("搜索模组") },
@@ -113,7 +150,7 @@ fun GameWorkshopScreen(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         modifier = Modifier.weight(1f),
                     )
-                    Button(onClick = onSearch, modifier = Modifier.padding(top = 8.dp)) {
+                    WorkshopButton(onClick = onSearch, modifier = Modifier.padding(top = 8.dp)) {
                         Icon(Icons.Default.Search, contentDescription = null)
                     }
                 }
@@ -126,9 +163,35 @@ fun GameWorkshopScreen(
             }
         }
 
+        if (shouldShowDirectDownloadCard) {
+            item {
+                DirectPublishedIdDownloadCard(
+                    directPublishedFileIdText = directPublishedFileIdText,
+                    downloadActionState = directDownloadState,
+                    canDirectDownload = canDirectDownload,
+                    onPublishedFileIdChange = { value ->
+                        directPublishedFileIdText = value.filter(Char::isDigit)
+                    },
+                    onDownload = {
+                        val publishedFileId = directPublishedFileId ?: return@DirectPublishedIdDownloadCard
+                        onDownloadSingleItem(
+                            WorkshopBrowseItem(
+                                appId = state.game.appId,
+                                publishedFileId = publishedFileId,
+                                title = "Workshop $publishedFileId",
+                                authorName = "",
+                                previewImageUrl = "",
+                                descriptionSnippet = "",
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+
         item {
             WorkshopPanelCard {
-                OutlinedButton(
+                WorkshopOutlinedButton(
                     onClick = onSearch,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -175,7 +238,7 @@ fun GameWorkshopScreen(
             } else if (state.items.isEmpty()) {
                 item {
                     WorkshopCenteredState(
-                        title = "没有可显示的模组",
+                        title = if (state.searchQuery.isBlank()) "没有可显示的模组" else "没有找到结果",
                         message = if (state.searchQuery.isBlank()) {
                             state.message ?: "这个游戏当前没有抓取到公开模组。"
                         } else {
@@ -194,8 +257,15 @@ fun GameWorkshopScreen(
                 }
 
                 items(state.items, key = { it.publishedFileId.toString() }) { item ->
+                    val downloadActionState = when {
+                        item.publishedFileId in activeDownloadItemIds -> DownloadActionUiState.Downloading
+                        item.publishedFileId in pendingDownloadItemIds -> DownloadActionUiState.Loading
+                        else -> DownloadActionUiState.Idle
+                    }
                     WorkshopItemCard(
                         item = item,
+                        isDownloaded = item.publishedFileId in downloadedItemIds,
+                        downloadActionState = downloadActionState,
                         onOpenDetail = { onOpenItemDetail(item) },
                         onDownload = { onDownloadSingleItem(item) },
                     )
@@ -208,11 +278,72 @@ fun GameWorkshopScreen(
                 }
             } else if (state.hasNextPage) {
                 item {
-                    OutlinedButton(
+                    WorkshopOutlinedButton(
                         onClick = onLoadMore,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("加载更多")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectPublishedIdDownloadCard(
+    directPublishedFileIdText: String,
+    downloadActionState: DownloadActionUiState,
+    canDirectDownload: Boolean,
+    onPublishedFileIdChange: (String) -> Unit,
+    onDownload: () -> Unit,
+) {
+    WorkshopPanelCard {
+        Text(
+            text = "直接填写 publishedID",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = "如果你已经知道这个工坊物品的 publishedID，可以直接发起下载。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            WorkshopOutlinedTextField(
+                value = directPublishedFileIdText,
+                onValueChange = onPublishedFileIdChange,
+                label = { Text("直接填写 publishedID") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            WorkshopButton(
+                onClick = {
+                    if (downloadActionState == DownloadActionUiState.Idle) {
+                        onDownload()
+                    }
+                },
+                enabled = downloadActionState != DownloadActionUiState.Idle || canDirectDownload,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                when (downloadActionState) {
+                    DownloadActionUiState.Idle -> Text("下载")
+                    DownloadActionUiState.Loading -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text(" 准备下载…")
+                    }
+
+                    DownloadActionUiState.Downloading -> {
+                        DownloadingAnimatedIcon()
+                        Text(" 下载中…")
                     }
                 }
             }
@@ -273,6 +404,8 @@ private fun WorkshopBrowseSortControls(
 @Composable
 private fun WorkshopItemCard(
     item: WorkshopBrowseItem,
+    isDownloaded: Boolean,
+    downloadActionState: DownloadActionUiState,
     onOpenDetail: () -> Unit,
     onDownload: () -> Unit,
 ) {
@@ -280,14 +413,11 @@ private fun WorkshopItemCard(
         "大小 ${formatBinaryFileSize(sizeBytes)}"
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onOpenDetail,
+    WorkshopPanelCard(
+        modifier = Modifier.clickable(onClick = onOpenDetail),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.Top,
         ) {
@@ -329,15 +459,82 @@ private fun WorkshopItemCard(
                 }
             }
 
-            IconButton(
+            WorkshopDownloadActionButton(
+                actionState = downloadActionState,
+                isDownloaded = isDownloaded,
                 onClick = onDownload,
                 modifier = Modifier.align(Alignment.Top),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = "下载",
-                )
-            }
+            )
         }
     }
+}
+
+private enum class DownloadActionUiState {
+    Idle,
+    Loading,
+    Downloading,
+}
+
+@Composable
+private fun WorkshopDownloadActionButton(
+    actionState: DownloadActionUiState,
+    isDownloaded: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val idleImageVector = if (isDownloaded) Icons.Default.Refresh else Icons.Default.Download
+    val contentDescription = when (actionState) {
+        DownloadActionUiState.Idle -> if (isDownloaded) "重新下载" else "下载"
+        DownloadActionUiState.Loading -> "准备下载"
+        DownloadActionUiState.Downloading -> "下载中"
+    }
+
+    WorkshopGlassIconButton(
+        onClick = onClick,
+        imageVector = if (actionState == DownloadActionUiState.Idle) idleImageVector else Icons.Default.Sync,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        enabled = actionState == DownloadActionUiState.Idle,
+        content = when (actionState) {
+            DownloadActionUiState.Idle -> null
+            DownloadActionUiState.Loading -> {
+                {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+
+            DownloadActionUiState.Downloading -> {
+                {
+                    DownloadingAnimatedIcon()
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun DownloadingAnimatedIcon(
+    modifier: Modifier = Modifier,
+) {
+    val infiniteTransition = rememberInfiniteTransition()
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+        ),
+    )
+
+    Icon(
+        imageVector = Icons.Default.Sync,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier
+            .size(18.dp)
+            .graphicsLayer { rotationZ = rotation },
+    )
 }

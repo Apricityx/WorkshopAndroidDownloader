@@ -13,10 +13,15 @@ data class ParsedJwtInfo(
     val expiresAtEpochSeconds: Long? = null,
 )
 
+fun buildSteamLoginSecureCookieValue(
+    steamId: Long,
+    accessToken: String,
+): String = "${steamId}||$accessToken"
+
 fun buildSteamLoginSecureCookie(
     steamId: Long,
     accessToken: String,
-): String = "steamLoginSecure=${steamId}||$accessToken"
+): String = "steamLoginSecure=${buildSteamLoginSecureCookieValue(steamId, accessToken)}"
 
 fun parseSteamJwtInfo(token: String): ParsedJwtInfo {
     val parts = token.split('.')

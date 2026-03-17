@@ -17,6 +17,8 @@ import top.apricityx.workshop.ui.component.SectionHeading
 import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
+import top.apricityx.workshop.ui.theme.workshopChromePadding
+import top.apricityx.workshop.ui.theme.workshopListContentPadding
 
 @Composable
 fun LibraryScreen(
@@ -32,7 +34,7 @@ fun LibraryScreen(
     when {
         isLoading && games.isEmpty() -> WorkshopLoadingBlock(
             label = "",
-            modifier = modifier.padding(top = 24.dp),
+            modifier = modifier.workshopChromePadding(topExtra = 24.dp, bottomExtra = 24.dp),
         )
 
         error != null && games.isEmpty() -> WorkshopCenteredState(
@@ -45,17 +47,18 @@ fun LibraryScreen(
             },
             actionLabel = "重试",
             onAction = onRetry,
-            modifier = modifier.padding(top = 24.dp),
+            modifier = modifier.workshopChromePadding(topExtra = 24.dp, bottomExtra = 24.dp),
         )
 
         games.isEmpty() -> WorkshopCenteredState(
             title = "游戏库还是空的",
             message = message ?: "点右上角 + 添加支持创意工坊的游戏。",
-            modifier = modifier.padding(top = 24.dp),
+            modifier = modifier.workshopChromePadding(topExtra = 24.dp, bottomExtra = 24.dp),
         )
 
         else -> LazyColumn(
             modifier = modifier.fillMaxSize(),
+            contentPadding = workshopListContentPadding(topExtra = 20.dp, bottomExtra = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
 

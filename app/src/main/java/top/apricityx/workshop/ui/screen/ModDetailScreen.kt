@@ -7,12 +7,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -37,8 +34,12 @@ import top.apricityx.workshop.ui.component.ModPreviewImage
 import top.apricityx.workshop.ui.component.ModUpdateStatusText
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
+import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopDestructiveButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
 import top.apricityx.workshop.ui.component.formatModLibraryTimestamp
+import top.apricityx.workshop.ui.theme.workshopChromePadding
 import top.apricityx.workshop.versionCount
 import top.apricityx.workshop.versionLabel
 
@@ -48,6 +49,7 @@ fun ModDetailScreen(
     descriptionTranslationState: ModLibraryDescriptionTranslationUiState,
     updateResults: Map<String, ModUpdateCheckResult>,
     onTranslateDescription: () -> Unit,
+    onRenameMod: () -> Unit,
     onOpenFile: (ExportedDownloadFile) -> Unit,
     onShareFile: (ExportedDownloadFile) -> Unit,
     onUpdateMod: (DownloadedModEntry) -> Unit,
@@ -57,7 +59,9 @@ fun ModDetailScreen(
     val latestVersion = group.latestVersion()
     val latestUpdateResult = updateResults[latestVersion.modLibraryKey()]
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()),
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .workshopChromePadding(topExtra = 8.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ScreenSummaryCard(
@@ -82,6 +86,12 @@ fun ModDetailScreen(
                 )
             }
             ModUpdateStatusText(result = latestUpdateResult)
+            WorkshopOutlinedButton(
+                onClick = onRenameMod,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("重命名模组")
+            }
             if (group.versionCount() > 1) {
                 Text(
                     text = "该模组共保存了 ${group.versionCount()} 个版本，下面可以分别查看、更新或删除。",
@@ -110,7 +120,7 @@ fun ModDetailScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedButton(
+                WorkshopOutlinedButton(
                     onClick = onTranslateDescription,
                     enabled = !descriptionTranslationState.isTranslatingDescription,
                     modifier = Modifier.fillMaxWidth(),
@@ -197,7 +207,7 @@ private fun ModVersionPanel(
         }
         ModUpdateStatusText(result = updateResult)
         if (updateResult?.status == ModUpdateCheckStatus.UpdateAvailable) {
-            Button(
+            WorkshopButton(
                 onClick = onUpdateMod,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -225,13 +235,9 @@ private fun ModVersionPanel(
             }
         }
 
-        Button(
+        WorkshopDestructiveButton(
             onClick = onRemoveMod,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error,
-                contentColor = MaterialTheme.colorScheme.onError,
-            ),
         ) {
             Text("删除这个版本")
         }
@@ -271,13 +277,13 @@ private fun FileRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedButton(
+            WorkshopOutlinedButton(
                 onClick = onOpenFile,
                 modifier = Modifier.weight(1f),
             ) {
                 Text("打开")
             }
-            OutlinedButton(
+            WorkshopOutlinedButton(
                 onClick = onShareFile,
                 modifier = Modifier.weight(1f),
             ) {

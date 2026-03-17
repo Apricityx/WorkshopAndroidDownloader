@@ -1,16 +1,19 @@
 package top.apricityx.workshop.ui.screen
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,7 +28,6 @@ import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,11 +35,23 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import top.apricityx.workshop.DownloadCenterTaskUiState
@@ -51,8 +65,17 @@ import top.apricityx.workshop.showsDownloadCenterShortcut
 import top.apricityx.workshop.showsSettingsShortcut
 import top.apricityx.workshop.toggleContentDescription
 import top.apricityx.workshop.versionLabel
+import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
+import top.apricityx.workshop.ui.component.liquid.LiquidBottomTab
+import top.apricityx.workshop.ui.component.liquid.LiquidBottomTabs
+import top.apricityx.workshop.ui.component.liquid.LiquidButton
+import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
+import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WorkshopTopBar(
     state: WorkshopUiState,
@@ -60,76 +83,21 @@ internal fun WorkshopTopBar(
     selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
 ) {
-    CenterAlignedTopAppBar(
-        title = {
-            Text(state.titleForScreen(selectedTask = selectedTask, selectedMod = selectedMod))
-        },
-        navigationIcon = {
-            if (!state.currentScreen.isLibraryRoot()) {
-                IconButton(onClick = actions.onNavigateBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                    )
-                }
-            }
-        },
-        actions = {
-            if (state.currentScreen.showsDownloadCenterShortcut()) {
-                IconButton(onClick = actions.onNavigateToDownloadCenter) {
-                    BadgedBox(
-                        badge = {
-                            if (state.downloadCenterState.activeCount > 0) {
-                                Badge {
-                                    Text(state.downloadCenterState.activeCount.toString())
-                                }
-                            }
-                        },
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = "下载中心",
-                        )
-                    }
-                }
-            }
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopLiquidTopBar(
+            state = state,
+            selectedTask = selectedTask,
+            selectedMod = selectedMod,
+            actions = actions,
+        )
+        return
+    }
 
-            if (state.currentScreen == WorkshopScreenDestination.GameLibrary) {
-                IconButton(onClick = actions.onNavigateToAddGame) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "添加游戏",
-                    )
-                }
-            }
-
-            if (state.currentScreen == WorkshopScreenDestination.ModLibrary) {
-                val toggleContentDescription = state.modLibraryState.displayMode.toggleContentDescription()
-                val toggleIcon = when (state.modLibraryState.displayMode) {
-                    ModLibraryDisplayMode.LargePreview -> Icons.AutoMirrored.Filled.ViewList
-                    ModLibraryDisplayMode.CompactList -> Icons.Default.Dashboard
-                    ModLibraryDisplayMode.Overview -> Icons.Default.ViewModule
-                }
-                IconButton(
-                    onClick = actions.onToggleModLibraryDisplayMode,
-                    modifier = Modifier.testTag("modLibraryDisplayModeToggle"),
-                ) {
-                    Icon(
-                        imageVector = toggleIcon,
-                        contentDescription = toggleContentDescription,
-                    )
-                }
-            }
-
-            if (state.currentScreen.showsSettingsShortcut()) {
-                IconButton(onClick = actions.onNavigateToSettings) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "设置",
-                    )
-                }
-            }
-        },
+    LegacyWorkshopTopBar(
+        state = state,
+        selectedTask = selectedTask,
+        selectedMod = selectedMod,
+        actions = actions,
     )
 }
 
@@ -142,32 +110,18 @@ internal fun WorkshopLibraryBottomBar(
         return
     }
 
-    NavigationBar {
-        NavigationBarItem(
-            selected = state.currentScreen == WorkshopScreenDestination.GameLibrary,
-            onClick = actions.onNavigateToGameLibrary,
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = null,
-                )
-            },
-            label = { Text("游戏库") },
-            modifier = Modifier.testTag("gameLibraryTab"),
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopLiquidBottomBar(
+            state = state,
+            actions = actions,
         )
-        NavigationBarItem(
-            selected = state.currentScreen == WorkshopScreenDestination.ModLibrary,
-            onClick = actions.onNavigateToModLibrary,
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Storage,
-                    contentDescription = null,
-                )
-            },
-            label = { Text("模组库") },
-            modifier = Modifier.testTag("modLibraryTab"),
-        )
+        return
     }
+
+    LegacyWorkshopBottomBar(
+        state = state,
+        actions = actions,
+    )
 }
 
 @Composable
@@ -176,6 +130,7 @@ internal fun WorkshopBody(
     selectedTask: DownloadCenterTaskUiState?,
     selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
+    pendingDownloadPublishedFileIds: Set<ULong>,
     saveableStateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
 ) {
@@ -191,6 +146,7 @@ internal fun WorkshopBody(
             selectedTask = selectedTask,
             selectedMod = selectedMod,
             actions = actions,
+            pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
             saveableStateHolder = saveableStateHolder,
             modifier = Modifier.fillMaxSize(),
         )
@@ -210,7 +166,7 @@ private fun WorkshopDialogs(
                 Text("欢迎使用创意工坊下载器！如果出现模组无法正常浏览或正常下载的问题，请自备加速器加速 steam 或者使用科学上网。")
             },
             confirmButton = {
-                Button(onClick = actions.onDismissUsageNotice) {
+                WorkshopButton(onClick = actions.onDismissUsageNotice) {
                     Text("我知道了")
                 }
             },
@@ -221,6 +177,7 @@ private fun WorkshopDialogs(
     val updatePrompt = state.settingsState.updatePromptState
     val pendingRemoveGame = state.pendingRemoveGame
     val pendingRemoveMod = state.pendingRemoveMod
+    val pendingRenameMod = state.pendingRenameMod
 
     if (updatePrompt != null) {
         AlertDialog(
@@ -248,7 +205,7 @@ private fun WorkshopDialogs(
                 }
             },
             confirmButton = {
-                Button(
+                WorkshopButton(
                     onClick = {
                         actions.onOpenExternalUrl(updatePrompt.downloadUrl)
                         actions.onDismissUpdatePrompt()
@@ -258,8 +215,41 @@ private fun WorkshopDialogs(
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = actions.onDismissUpdatePrompt) {
+                WorkshopOutlinedButton(onClick = actions.onDismissUpdatePrompt) {
                     Text("稍后")
+                }
+            },
+        )
+    }
+
+    if (pendingRenameMod != null) {
+        val trimmedRenameTitle = state.renameModTitleInput.trim()
+        AlertDialog(
+            onDismissRequest = actions.onDismissRenameMod,
+            title = { Text("重命名模组") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("只修改应用内显示名称，不会重命名已经导出的文件。")
+                    WorkshopOutlinedTextField(
+                        value = state.renameModTitleInput,
+                        onValueChange = actions.onUpdateRenameModTitleInput,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("模组名称") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                WorkshopButton(
+                    onClick = actions.onConfirmRenameMod,
+                    enabled = trimmedRenameTitle.isNotBlank(),
+                ) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                WorkshopOutlinedButton(onClick = actions.onDismissRenameMod) {
+                    Text("取消")
                 }
             },
         )
@@ -271,12 +261,12 @@ private fun WorkshopDialogs(
             title = { Text("移出游戏库") },
             text = { Text("确定要移除「${pendingRemoveGame.name}」吗？") },
             confirmButton = {
-                OutlinedButton(onClick = actions.onConfirmRemoveGame) {
+                WorkshopOutlinedButton(onClick = actions.onConfirmRemoveGame) {
                     Text("确定")
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = actions.onDismissRemoveGame) {
+                WorkshopOutlinedButton(onClick = actions.onDismissRemoveGame) {
                     Text("取消")
                 }
             },
@@ -291,12 +281,12 @@ private fun WorkshopDialogs(
                 Text("确定要删除「${pendingRemoveMod.itemTitle}」的 ${pendingRemoveMod.versionLabel()} 本地文件吗？下载历史会保留。")
             },
             confirmButton = {
-                OutlinedButton(onClick = actions.onConfirmRemoveMod) {
+                WorkshopOutlinedButton(onClick = actions.onConfirmRemoveMod) {
                     Text("确定")
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = actions.onDismissRemoveMod) {
+                WorkshopOutlinedButton(onClick = actions.onDismissRemoveMod) {
                     Text("取消")
                 }
             },
@@ -310,19 +300,73 @@ private fun WorkshopScreenContent(
     selectedTask: DownloadCenterTaskUiState?,
     selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
+    pendingDownloadPublishedFileIds: Set<ULong>,
     saveableStateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
 ) {
-    AnimatedContent(
-        targetState = state.currentScreen,
-        transitionSpec = {
-            val slideIn = slideInHorizontally { width -> width / 6 }
-            val slideOut = slideOutHorizontally { width -> -width / 6 }
-            (slideIn + fadeIn()).togetherWith(slideOut + fadeOut())
-        },
-        label = "screen-transition",
-        modifier = modifier,
-    ) { screen ->
+    val density = LocalDensity.current
+    val compactTransition = state.currentScreen.prefersImmediateScreenSwap()
+
+    androidx.compose.runtime.key(state.currentScreen) {
+        var entered by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            entered = true
+        }
+        val alpha by animateFloatAsState(
+            targetValue = if (entered) 1f else 0f,
+            animationSpec = tween(durationMillis = if (compactTransition) 140 else 180),
+            label = "screenEnterAlpha",
+        )
+        val translateY by animateDpAsState(
+            targetValue = if (entered) 0.dp else if (compactTransition) 10.dp else 18.dp,
+            animationSpec = tween(durationMillis = if (compactTransition) 180 else 220),
+            label = "screenEnterTranslateY",
+        )
+        WorkshopScreenScene(
+            screen = state.currentScreen,
+            state = state,
+            selectedTask = selectedTask,
+            selectedMod = selectedMod,
+            actions = actions,
+            pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
+            saveableStateHolder = saveableStateHolder,
+            modifier = modifier.graphicsLayer {
+                this.alpha = alpha
+                translationY = with(density) { translateY.toPx() }
+            },
+        )
+    }
+}
+
+private fun WorkshopScreenDestination.prefersImmediateScreenSwap(): Boolean =
+    when (this) {
+        WorkshopScreenDestination.GameLibrary,
+        WorkshopScreenDestination.ModLibrary,
+        WorkshopScreenDestination.AddGame,
+        WorkshopScreenDestination.GameWorkshop,
+        WorkshopScreenDestination.DownloadCenter,
+        -> true
+
+        WorkshopScreenDestination.WorkshopItemDetail,
+        WorkshopScreenDestination.ModDetail,
+        WorkshopScreenDestination.DownloadTaskDetail,
+        WorkshopScreenDestination.Settings,
+        WorkshopScreenDestination.BaiduTranslationApiKey,
+        -> false
+    }
+
+@Composable
+private fun WorkshopScreenScene(
+    screen: WorkshopScreenDestination,
+    state: WorkshopUiState,
+    selectedTask: DownloadCenterTaskUiState?,
+    selectedMod: DownloadedModGroup?,
+    actions: WorkshopScreenActions,
+    pendingDownloadPublishedFileIds: Set<ULong>,
+    saveableStateHolder: SaveableStateHolder,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
         saveableStateHolder.SaveableStateProvider(key = screen.name) {
             when (screen) {
                 WorkshopScreenDestination.GameLibrary -> LibraryScreen(
@@ -364,8 +408,21 @@ private fun WorkshopScreenContent(
                 )
 
                 WorkshopScreenDestination.GameWorkshop -> state.gameWorkshopState?.let { workshopState ->
+                    val downloadedItemIds = state.modLibraryState.items
+                        .asSequence()
+                        .filter { it.appId == workshopState.game.appId }
+                        .map { it.publishedFileId }
+                        .toSet()
+                    val activeDownloadItemIds = state.downloadCenterState.activeTasks
+                        .asSequence()
+                        .filter { it.appId == workshopState.game.appId }
+                        .map { it.publishedFileId }
+                        .toSet()
                     GameWorkshopScreen(
                         state = workshopState,
+                        downloadedItemIds = downloadedItemIds,
+                        pendingDownloadItemIds = pendingDownloadPublishedFileIds,
+                        activeDownloadItemIds = activeDownloadItemIds,
                         onSearchQueryChange = actions.onUpdateWorkshopSearchQuery,
                         onSortOptionSelected = actions.onUpdateWorkshopSort,
                         onTimeWindowSelected = actions.onUpdateWorkshopTimeWindow,
@@ -394,6 +451,7 @@ private fun WorkshopScreenContent(
                         descriptionTranslationState = state.modLibraryState.detailDescriptionTranslation,
                         updateResults = state.modLibraryState.updateCheckState.results,
                         onTranslateDescription = actions.onTranslateModLibraryDescription,
+                        onRenameMod = { actions.onRequestRenameMod(entry) },
                         onOpenFile = actions.onOpenModFile,
                         onShareFile = actions.onShareModFile,
                         onUpdateMod = actions.onUpdateMod,
@@ -436,6 +494,7 @@ private fun WorkshopScreenContent(
                     onSetActiveSteamAccount = actions.onSetActiveSteamAccount,
                     onReauthenticateSteamAccount = actions.onReauthenticateSteamAccount,
                     onRemoveSteamAccount = actions.onRemoveSteamAccount,
+                    onFrontendModeSelected = actions.onUpdateFrontendMode,
                     onThemeModeSelected = actions.onUpdateThemeMode,
                     onSteamLanguagePreferenceSelected = actions.onUpdateSteamLanguagePreference,
                     onTranslationProviderSelected = actions.onUpdateTranslationProvider,
@@ -488,3 +547,399 @@ private fun WorkshopUiState.titleForScreen(
     }
 
 private const val baiduApiKeyGuideUrl = "https://fanyi-api.baidu.com/product/13"
+
+@Composable
+private fun LegacyBlurBar(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val backdrop = LocalWorkshopBackdrop.current
+    val containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)
+
+    if (backdrop == null) {
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            color = containerColor,
+            tonalElevation = 0.dp,
+            content = content,
+        )
+        return
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedCornerShape(0.dp) },
+                effects = {
+                    blur(24.dp.toPx())
+                },
+                onDrawSurface = {
+                    drawRect(containerColor)
+                },
+            ),
+    ) {
+        content()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LegacyWorkshopTopBar(
+    state: WorkshopUiState,
+    selectedTask: DownloadCenterTaskUiState?,
+    selectedMod: DownloadedModGroup?,
+    actions: WorkshopScreenActions,
+) {
+    LegacyBlurBar {
+        CenterAlignedTopAppBar(
+            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
+            title = {
+                Text(state.titleForScreen(selectedTask = selectedTask, selectedMod = selectedMod))
+            },
+            navigationIcon = {
+                if (!state.currentScreen.isLibraryRoot()) {
+                    IconButton(onClick = actions.onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                        )
+                    }
+                }
+            },
+            actions = {
+                if (state.currentScreen.showsDownloadCenterShortcut()) {
+                    IconButton(onClick = actions.onNavigateToDownloadCenter) {
+                        BadgedBox(
+                            badge = {
+                                if (state.downloadCenterState.activeCount > 0) {
+                                    Badge {
+                                        Text(state.downloadCenterState.activeCount.toString())
+                                    }
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "下载中心",
+                            )
+                        }
+                    }
+                }
+
+                if (state.currentScreen == WorkshopScreenDestination.GameLibrary) {
+                    IconButton(onClick = actions.onNavigateToAddGame) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "添加游戏",
+                        )
+                    }
+                }
+
+                if (state.currentScreen == WorkshopScreenDestination.ModLibrary) {
+                    val toggleContentDescription = state.modLibraryState.displayMode.toggleContentDescription()
+                    val toggleIcon = when (state.modLibraryState.displayMode) {
+                        ModLibraryDisplayMode.LargePreview -> Icons.AutoMirrored.Filled.ViewList
+                        ModLibraryDisplayMode.CompactList -> Icons.Default.Dashboard
+                        ModLibraryDisplayMode.Overview -> Icons.Default.ViewModule
+                    }
+                    IconButton(
+                        onClick = actions.onToggleModLibraryDisplayMode,
+                        modifier = Modifier.testTag("modLibraryDisplayModeToggle"),
+                    ) {
+                        Icon(
+                            imageVector = toggleIcon,
+                            contentDescription = toggleContentDescription,
+                        )
+                    }
+                }
+
+                if (state.currentScreen.showsSettingsShortcut()) {
+                    IconButton(onClick = actions.onNavigateToSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "设置",
+                        )
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun WorkshopLiquidTopBar(
+    state: WorkshopUiState,
+    selectedTask: DownloadCenterTaskUiState?,
+    selectedMod: DownloadedModGroup?,
+    actions: WorkshopScreenActions,
+) {
+    val backdrop = LocalWorkshopBackdrop.current ?: run {
+        LegacyWorkshopTopBar(
+            state = state,
+            selectedTask = selectedTask,
+            selectedMod = selectedMod,
+            actions = actions,
+        )
+        return
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!state.currentScreen.isLibraryRoot()) {
+                WorkshopLiquidTopBarActionButton(
+                    onClick = actions.onNavigateBack,
+                    backdrop = backdrop,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                )
+            }
+
+            LiquidButton(
+                onClick = null,
+                backdrop = backdrop,
+                modifier = Modifier.weight(1f),
+                isInteractive = false,
+                surfaceColor = Color.Transparent,
+                enableVibrancy = false,
+                blurRadius = 1.dp,
+                lensHeight = 8.dp,
+                lensAmount = 16.dp,
+                height = 52.dp,
+                horizontalPadding = 18.dp,
+            ) {
+                Text(
+                    text = state.titleForScreen(selectedTask = selectedTask, selectedMod = selectedMod),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (state.currentScreen.showsDownloadCenterShortcut()) {
+                    WorkshopLiquidTopBarActionButton(
+                        onClick = actions.onNavigateToDownloadCenter,
+                        backdrop = backdrop,
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "下载中心",
+                        badgeCount = state.downloadCenterState.activeCount,
+                    )
+                }
+
+                if (state.currentScreen == WorkshopScreenDestination.GameLibrary) {
+                    WorkshopLiquidTopBarActionButton(
+                        onClick = actions.onNavigateToAddGame,
+                        backdrop = backdrop,
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "添加游戏",
+                    )
+                }
+
+                if (state.currentScreen == WorkshopScreenDestination.ModLibrary) {
+                    val toggleContentDescription = state.modLibraryState.displayMode.toggleContentDescription()
+                    val toggleIcon = when (state.modLibraryState.displayMode) {
+                        ModLibraryDisplayMode.LargePreview -> Icons.AutoMirrored.Filled.ViewList
+                        ModLibraryDisplayMode.CompactList -> Icons.Default.Dashboard
+                        ModLibraryDisplayMode.Overview -> Icons.Default.ViewModule
+                    }
+                    WorkshopLiquidTopBarActionButton(
+                        onClick = actions.onToggleModLibraryDisplayMode,
+                        backdrop = backdrop,
+                        imageVector = toggleIcon,
+                        contentDescription = toggleContentDescription,
+                        modifier = Modifier.testTag("modLibraryDisplayModeToggle"),
+                    )
+                }
+
+                if (state.currentScreen.showsSettingsShortcut()) {
+                    WorkshopLiquidTopBarActionButton(
+                        onClick = actions.onNavigateToSettings,
+                        backdrop = backdrop,
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "设置",
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegacyWorkshopBottomBar(
+    state: WorkshopUiState,
+    actions: WorkshopScreenActions,
+) {
+    LegacyBlurBar {
+        NavigationBar(
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+        ) {
+            NavigationBarItem(
+                selected = state.currentScreen == WorkshopScreenDestination.GameLibrary,
+                onClick = actions.onNavigateToGameLibrary,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                    )
+                },
+                label = { Text("游戏库") },
+                modifier = Modifier.testTag("gameLibraryTab"),
+            )
+            NavigationBarItem(
+                selected = state.currentScreen == WorkshopScreenDestination.ModLibrary,
+                onClick = actions.onNavigateToModLibrary,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Storage,
+                        contentDescription = null,
+                    )
+                },
+                label = { Text("模组库") },
+                modifier = Modifier.testTag("modLibraryTab"),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkshopLiquidBottomBar(
+    state: WorkshopUiState,
+    actions: WorkshopScreenActions,
+) {
+    val backdrop = LocalWorkshopBackdrop.current ?: run {
+        LegacyWorkshopBottomBar(state = state, actions = actions)
+        return
+    }
+    val selectedIndex = when (state.currentScreen) {
+        WorkshopScreenDestination.GameLibrary -> 0
+        WorkshopScreenDestination.ModLibrary -> 1
+        else -> 0
+    }
+    var requestedIndex by remember {
+        mutableIntStateOf(selectedIndex)
+    }
+
+    LaunchedEffect(selectedIndex) {
+        requestedIndex = selectedIndex
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        LiquidBottomTabs(
+            selectedTabIndex = { requestedIndex },
+            onTabSelected = { index ->
+                when (index) {
+                    0 -> if (state.currentScreen != WorkshopScreenDestination.GameLibrary) {
+                        actions.onNavigateToGameLibrary()
+                    }
+
+                    1 -> if (state.currentScreen != WorkshopScreenDestination.ModLibrary) {
+                        actions.onNavigateToModLibrary()
+                    }
+                }
+            },
+            backdrop = backdrop,
+            tabsCount = 2,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            LiquidBottomTab(
+                selected = state.currentScreen == WorkshopScreenDestination.GameLibrary,
+                onClick = {
+                    if (requestedIndex != 0) {
+                        requestedIndex = 0
+                    }
+                },
+                modifier = Modifier.testTag("gameLibraryTab"),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "游戏库",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            LiquidBottomTab(
+                selected = state.currentScreen == WorkshopScreenDestination.ModLibrary,
+                onClick = {
+                    if (requestedIndex != 1) {
+                        requestedIndex = 1
+                    }
+                },
+                modifier = Modifier.testTag("modLibraryTab"),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Storage,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "模组库",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkshopLiquidTopBarActionButton(
+    onClick: () -> Unit,
+    backdrop: com.kyant.backdrop.Backdrop,
+    imageVector: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    badgeCount: Int = 0,
+) {
+    LiquidButton(
+        onClick = onClick,
+        backdrop = backdrop,
+        modifier = modifier,
+        surfaceColor = Color.Transparent,
+        enableVibrancy = false,
+        blurRadius = 1.dp,
+        lensHeight = 8.dp,
+        lensAmount = 16.dp,
+        horizontalPadding = if (badgeCount > 0) 14.dp else 12.dp,
+    ) {
+        Icon(
+            imageVector = imageVector,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
+        if (badgeCount > 0) {
+            Text(
+                text = badgeCount.coerceAtMost(99).toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}

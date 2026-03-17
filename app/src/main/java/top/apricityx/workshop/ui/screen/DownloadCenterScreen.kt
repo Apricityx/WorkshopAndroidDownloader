@@ -17,7 +17,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +39,8 @@ import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.SectionHeading
 import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.component.WorkshopTextButton
+import top.apricityx.workshop.ui.theme.workshopListContentPadding
 
 @Composable
 fun DownloadCenterScreen(
@@ -51,6 +52,7 @@ fun DownloadCenterScreen(
 ) {
     LazyColumn(
         modifier = modifier,
+        contentPadding = workshopListContentPadding(topExtra = 20.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -187,7 +189,7 @@ private fun DownloadTaskCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onRemoveTask) {
+                WorkshopTextButton(onClick = onRemoveTask) {
                     Text(task.removeActionLabel())
                 }
             }

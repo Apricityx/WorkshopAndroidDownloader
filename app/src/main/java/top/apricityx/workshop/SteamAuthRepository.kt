@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okhttp3.Cookie
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -259,16 +260,33 @@ class SteamAuthRepository(context: Context) {
     suspend fun cookieHeaderForAccount(
         url: HttpUrl,
         accountId: String?,
-    ): String? {
+    ): String? =
+        projectedCookiesForAccount(
+            url = url,
+            accountId = accountId,
+        ).takeIf { it.isNotEmpty() }
+            ?.joinToString(separator = "; ") { cookie -> "${cookie.name}=${cookie.value}" }
+
+    suspend fun projectedCookiesForAccount(
+        url: HttpUrl,
+        accountId: String?,
+    ): List<Cookie> {
         if (!url.host.isSteamDomain()) {
-            return null
+            return emptyList()
         }
-        val account = loadState().accounts.firstOrNull { it.accountId == accountId } ?: return null
+        val account = loadState().accounts.firstOrNull { it.accountId == accountId } ?: return emptyList()
         if (account.requiresReauthentication) {
-            return null
+            return emptyList()
         }
-        val refreshed = ensureFreshAccessToken(account.accountId) ?: return null
-        return buildSteamLoginSecureCookie(account.steamId, refreshed.accessToken)
+        val refreshed = ensureFreshAccessToken(account.accountId) ?: return emptyList()
+        return listOf(
+            Cookie.Builder()
+                .name("steamLoginSecure")
+                .value(buildSteamLoginSecureCookieValue(account.steamId, refreshed.accessToken))
+                .domain(url.host)
+                .path("/")
+                .build(),
+        )
     }
 
     fun blockingCookieHeaderFor(
@@ -276,6 +294,13 @@ class SteamAuthRepository(context: Context) {
         accountId: String?,
     ): String? = runBlocking {
         cookieHeaderForAccount(url, accountId)
+    }
+
+    fun blockingProjectedCookiesFor(
+        url: HttpUrl,
+        accountId: String?,
+    ): List<Cookie> = runBlocking {
+        projectedCookiesForAccount(url, accountId)
     }
 
     private suspend fun finalizePendingAuth(): SteamSignInStep {
@@ -512,5 +537,10 @@ private fun StoredSteamAccount.toProtocolSession(): SteamAccountSession =
         refreshToken = refreshToken,
     )
 
-private fun String.isSteamDomain(): Boolean =
-    endsWith("steamcommunity.com") || this == "store.steampowered.com" || this == "api.steampowered.com"
+internal fun String.isSteamDomain(): Boolean {
+    val host = lowercase()
+    return host == "steamcommunity.com" ||
+        host.endsWith(".steamcommunity.com") ||
+        host == "steampowered.com" ||
+        host.endsWith(".steampowered.com")
+}

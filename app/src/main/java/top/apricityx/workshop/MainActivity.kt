@@ -16,8 +16,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +30,8 @@ import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.screen.WorkshopScreen
 import top.apricityx.workshop.ui.screen.WorkshopScreenActions
+import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
 import kotlinx.coroutines.launch
 
@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
     private val workshopViewModel: WorkshopViewModel by viewModels { WorkshopViewModel.Factory }
     private val downloadDebugLogManager by lazy { DownloadDebugLogManager(application) }
     private var pendingDownloadItem: WorkshopBrowseItem? = null
+    private var pendingDownloadPublishedFileIds by mutableStateOf<Set<ULong>>(emptySet())
     private var downloadDependencyWarningDialogState: DownloadDependencyWarningDialogState? by mutableStateOf(null)
     private var isCheckingDownloadDependencies by mutableStateOf(false)
     private val legacyStoragePermissionLauncher =
@@ -52,7 +53,9 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_LONG,
                 ).show()
             }
-            workshopViewModel.downloadSingleItem(item)
+            if (!workshopViewModel.downloadSingleItem(item)) {
+                clearPendingDownload(item)
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,8 +67,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val uiState = workshopViewModel.uiState.collectAsStateWithLifecycle().value
+            val activeDownloadPublishedFileIds = uiState.downloadCenterState.activeTasks
+                .map(DownloadCenterTaskUiState::publishedFileId)
+                .toSet()
 
-            SteamWorkshopDemoTheme(themeMode = uiState.themeMode) {
+            SteamWorkshopDemoTheme(
+                themeMode = uiState.themeMode,
+                frontendMode = uiState.frontendMode,
+            ) {
                 LaunchedEffect(uiState.themeMode) {
                     applySystemNightMode(uiState.themeMode)
                 }
@@ -74,10 +83,16 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
                     }
                 }
+                LaunchedEffect(activeDownloadPublishedFileIds) {
+                    if (activeDownloadPublishedFileIds.isNotEmpty()) {
+                        pendingDownloadPublishedFileIds -= activeDownloadPublishedFileIds
+                    }
+                }
 
                 WorkshopScreen(
                     state = uiState,
                     actions = buildWorkshopScreenActions(),
+                    pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
                 )
 
                 downloadDependencyWarningDialogState?.let { dialogState ->
@@ -93,10 +108,11 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         confirmButton = {
-                            Button(
+                            WorkshopButton(
                                 onClick = {
                                     val item = dialogState.item
                                     downloadDependencyWarningDialogState = null
+                                    markDownloadPending(item)
                                     startDownloadSingleItemWithCompatibilityGuard(item)
                                 },
                             ) {
@@ -104,7 +120,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         dismissButton = {
-                            OutlinedButton(onClick = { downloadDependencyWarningDialogState = null }) {
+                            WorkshopOutlinedButton(onClick = { downloadDependencyWarningDialogState = null }) {
                                 Text("取消")
                             }
                         },
@@ -128,12 +144,14 @@ class MainActivity : ComponentActivity() {
         if (isCheckingDownloadDependencies) {
             return
         }
+        markDownloadPending(item)
 
         lifecycleScope.launch {
             isCheckingDownloadDependencies = true
             val requiredItems = workshopViewModel.loadRequiredItemsForDownload(item)
             isCheckingDownloadDependencies = false
             if (requiredItems.isNotEmpty()) {
+                clearPendingDownload(item)
                 downloadDependencyWarningDialogState = DownloadDependencyWarningDialogState(
                     item = item,
                     requiredItems = requiredItems,
@@ -146,12 +164,22 @@ class MainActivity : ComponentActivity() {
 
     private fun startDownloadSingleItemWithCompatibilityGuard(item: WorkshopBrowseItem) {
         if (!shouldRequestLegacyStoragePermission()) {
-            workshopViewModel.downloadSingleItem(item)
+            if (!workshopViewModel.downloadSingleItem(item)) {
+                clearPendingDownload(item)
+            }
             return
         }
 
         pendingDownloadItem = item
         legacyStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    }
+
+    private fun markDownloadPending(item: WorkshopBrowseItem) {
+        pendingDownloadPublishedFileIds += item.publishedFileId
+    }
+
+    private fun clearPendingDownload(item: WorkshopBrowseItem) {
+        pendingDownloadPublishedFileIds -= item.publishedFileId
     }
 
     private fun openExportedFile(file: ExportedDownloadFile) {
@@ -279,6 +307,10 @@ class MainActivity : ComponentActivity() {
             onConfirmRemoveGame = workshopViewModel::confirmRemoveGame,
             onDismissRemoveGame = workshopViewModel::dismissRemoveGameDialog,
             onOpenModDetail = workshopViewModel::openModDetail,
+            onRequestRenameMod = workshopViewModel::requestRenameMod,
+            onUpdateRenameModTitleInput = workshopViewModel::updateRenameModTitleInput,
+            onConfirmRenameMod = workshopViewModel::confirmRenameMod,
+            onDismissRenameMod = workshopViewModel::dismissRenameModDialog,
             onOpenModFile = ::openExportedFile,
             onShareModFile = ::shareExportedFile,
             onUpdateMod = workshopViewModel::updateMod,
@@ -299,6 +331,7 @@ class MainActivity : ComponentActivity() {
             onReauthenticateSteamAccount = workshopViewModel::reauthenticateSteamAccount,
             onRemoveSteamAccount = workshopViewModel::removeSteamAccount,
             onUpdateThemeMode = workshopViewModel::updateThemeMode,
+            onUpdateFrontendMode = workshopViewModel::updateFrontendMode,
             onUpdateSteamLanguagePreference = workshopViewModel::updateSteamLanguagePreference,
             onUpdateTranslationProvider = workshopViewModel::updateTranslationProvider,
             onOpenBaiduTranslationApiKeyScreen = workshopViewModel::openBaiduTranslationApiKeyScreen,

@@ -10,13 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -40,10 +38,13 @@ import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
+import top.apricityx.workshop.ui.component.WorkshopButton
 import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.theme.workshopChromePadding
 
 @Composable
 fun WorkshopItemDetailScreen(
@@ -74,11 +75,13 @@ fun WorkshopItemDetailScreen(
                 ?: "啊哦，加载超时，您的网络环境可能不支持直连创意工坊，请开启加速器加速 steam 或科学上网后重试。",
             actionLabel = "重试",
             onAction = onRetry,
-            modifier = modifier,
+            modifier = modifier.workshopChromePadding(topExtra = 24.dp, bottomExtra = 24.dp),
         )
     } else {
         Column(
-            modifier = modifier.verticalScroll(rememberScrollState()),
+            modifier = modifier
+                .verticalScroll(rememberScrollState())
+                .workshopChromePadding(topExtra = 8.dp, bottomExtra = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             ScreenSummaryCard(
@@ -111,7 +114,7 @@ fun WorkshopItemDetailScreen(
                 }
 
                 if (canTranslateDescription) {
-                    OutlinedButton(
+                    WorkshopOutlinedButton(
                         onClick = onTranslateDescription,
                         enabled = !state.isTranslatingDescription,
                         modifier = Modifier.fillMaxWidth(),
@@ -154,7 +157,7 @@ fun WorkshopItemDetailScreen(
                     )
                 }
 
-                Button(
+                WorkshopButton(
                     onClick = { onDownload(state.item) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -166,7 +169,7 @@ fun WorkshopItemDetailScreen(
                 }
 
                 if (state.message != null) {
-                    OutlinedButton(
+                    WorkshopOutlinedButton(
                         onClick = onRetry,
                         modifier = Modifier.fillMaxWidth(),
                     ) {

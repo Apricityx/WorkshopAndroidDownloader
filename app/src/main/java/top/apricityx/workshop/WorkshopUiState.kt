@@ -46,6 +46,18 @@ enum class AppThemeMode(
     }
 }
 
+enum class AppFrontendMode(
+    val storageValue: String,
+) {
+    LiquidGlass("liquid_glass"),
+    Legacy("legacy");
+
+    companion object {
+        fun fromStorageValue(value: String): AppFrontendMode =
+            entries.firstOrNull { it.storageValue == value } ?: LiquidGlass
+    }
+}
+
 enum class TranslationProvider(
     val storageValue: String,
 ) {
@@ -174,6 +186,7 @@ data class WorkshopUiState(
     val currentScreen: WorkshopScreenDestination = WorkshopScreenDestination.GameLibrary,
     val previousScreen: WorkshopScreenDestination = WorkshopScreenDestination.GameLibrary,
     val themeMode: AppThemeMode = DownloadSettingsRepository.DEFAULT_THEME_MODE,
+    val frontendMode: AppFrontendMode = DownloadSettingsRepository.DEFAULT_FRONTEND_MODE,
     val libraryGames: List<SteamGame> = emptyList(),
     val isLibraryLoading: Boolean = true,
     val libraryMessage: String? = null,
@@ -181,6 +194,8 @@ data class WorkshopUiState(
     val pendingRemoveGame: SteamGame? = null,
     val modLibraryState: ModLibraryUiState = ModLibraryUiState(isLoading = true),
     val pendingRemoveMod: DownloadedModEntry? = null,
+    val pendingRenameMod: DownloadedModGroup? = null,
+    val renameModTitleInput: String = "",
     val showUsageNoticeDialog: Boolean = false,
     val addGameState: AddGameUiState = AddGameUiState(),
     val gameWorkshopState: GameWorkshopUiState? = null,
@@ -204,6 +219,7 @@ data class SettingsUiState(
     val modUpdateConcurrentCheckCountInput: String = "",
     val savedModUpdateConcurrentCheckCount: Int = DownloadSettingsRepository.DEFAULT_MOD_UPDATE_CONCURRENT_CHECKS,
     val selectedThemeMode: AppThemeMode = DownloadSettingsRepository.DEFAULT_THEME_MODE,
+    val selectedFrontendMode: AppFrontendMode = DownloadSettingsRepository.DEFAULT_FRONTEND_MODE,
     val selectedSteamLanguagePreference: SteamLanguagePreference =
         DownloadSettingsRepository.DEFAULT_STEAM_LANGUAGE_PREFERENCE,
     val selectedTranslationProvider: TranslationProvider = DownloadSettingsRepository.DEFAULT_TRANSLATION_PROVIDER,
@@ -279,6 +295,12 @@ fun AppThemeMode.displayName(): String =
         AppThemeMode.FollowSystem -> "跟随系统"
         AppThemeMode.Light -> "亮色模式"
         AppThemeMode.Dark -> "深色模式"
+    }
+
+fun AppFrontendMode.displayName(): String =
+    when (this) {
+        AppFrontendMode.LiquidGlass -> "液态玻璃"
+        AppFrontendMode.Legacy -> "旧版经典"
     }
 
 fun SteamLanguagePreference.displayName(): String =

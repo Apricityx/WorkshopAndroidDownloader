@@ -10,11 +10,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -30,7 +27,11 @@ import top.apricityx.workshop.R
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
+import top.apricityx.workshop.ui.theme.workshopChromePadding
 
 @Composable
 fun BaiduTranslationApiKeyScreen(
@@ -46,7 +47,8 @@ fun BaiduTranslationApiKeyScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 16.dp)
+            .workshopChromePadding(topExtra = 16.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         WorkshopPanelCard {
@@ -61,7 +63,7 @@ fun BaiduTranslationApiKeyScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            OutlinedTextField(
+            WorkshopOutlinedTextField(
                 value = state.appIdInput,
                 onValueChange = onAppIdChange,
                 label = { Text("AppID") },
@@ -70,7 +72,7 @@ fun BaiduTranslationApiKeyScreen(
                 singleLine = true,
             )
 
-            OutlinedTextField(
+            WorkshopOutlinedTextField(
                 value = state.apiKeyInput,
                 onValueChange = onApiKeyChange,
                 label = { Text("API Key") },
@@ -80,14 +82,14 @@ fun BaiduTranslationApiKeyScreen(
                 singleLine = true,
             )
 
-            Button(
+            WorkshopButton(
                 onClick = onSave,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("保存")
             }
 
-            OutlinedButton(
+            WorkshopOutlinedButton(
                 onClick = onTestTranslation,
                 enabled = !state.isTesting,
                 modifier = Modifier.fillMaxWidth(),
@@ -157,7 +159,7 @@ private fun BaiduTranslationTutorialCard(
     WorkshopPanelCard {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("教程", style = MaterialTheme.typography.titleLarge)
-            OutlinedButton(
+            WorkshopOutlinedButton(
                 onClick = onOpenApiKeyGuide,
                 modifier = Modifier.fillMaxWidth(),
             ) {

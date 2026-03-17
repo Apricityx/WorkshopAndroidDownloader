@@ -15,18 +15,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,9 +30,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import top.apricityx.workshop.AppFrontendMode
 import top.apricityx.workshop.AppThemeMode
 import top.apricityx.workshop.DownloadSettingsRepository
 import top.apricityx.workshop.SettingsUiState
@@ -52,8 +49,15 @@ import top.apricityx.workshop.isSteamConfirmationChallenge
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.ui.component.MessageTone
+import top.apricityx.workshop.ui.component.WorkshopButton
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
+import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
+import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
+import top.apricityx.workshop.ui.component.WorkshopRadioButton
+import top.apricityx.workshop.ui.component.WorkshopSwitch
+import top.apricityx.workshop.ui.component.WorkshopTextButton
+import top.apricityx.workshop.ui.theme.workshopChromePadding
 
 @Composable
 fun SettingsScreen(
@@ -70,6 +74,7 @@ fun SettingsScreen(
     onSetActiveSteamAccount: (String) -> Unit,
     onReauthenticateSteamAccount: (String) -> Unit,
     onRemoveSteamAccount: (String) -> Unit,
+    onFrontendModeSelected: (AppFrontendMode) -> Unit,
     onThemeModeSelected: (AppThemeMode) -> Unit,
     onSteamLanguagePreferenceSelected: (SteamLanguagePreference) -> Unit,
     onTranslationProviderSelected: (TranslationProvider) -> Unit,
@@ -88,7 +93,8 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 16.dp)
+            .workshopChromePadding(topExtra = 16.dp, bottomExtra = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         WorkshopPanelCard {
@@ -103,10 +109,10 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Button(onClick = onOpenSteamLoginDialog) {
+                WorkshopButton(onClick = onOpenSteamLoginDialog) {
                     Text("添加账号")
                 }
-                OutlinedButton(onClick = onSwitchToAnonymousSteamAccount) {
+                WorkshopOutlinedButton(onClick = onSwitchToAnonymousSteamAccount) {
                     Text("切回匿名")
                 }
             }
@@ -119,30 +125,45 @@ fun SettingsScreen(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     state.steamAuthState.accounts.forEach { account ->
+                        val statusText = when {
+                            account.requiresReauthentication ->
+                                "需要重新认证，浏览会回退到匿名，新下载也会被阻止。"
+                            account.isActive -> "当前浏览账号"
+                            else -> "已保存账号"
+                        }
                         WorkshopPanelCard {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(account.accountName, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    if (account.requiresReauthentication) {
-                                        "该账号需要重新认证。浏览会回退到匿名，绑定到它的新下载也会被阻止。"
-                                    } else if (account.isActive) {
-                                        "当前浏览账号"
-                                    } else {
-                                        "已保存账号"
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = account.accountName,
+                                        style = MaterialTheme.typography.titleMedium.copy(lineHeight = 22.sp),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = statusText,
+                                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     if (!account.isActive) {
-                                        OutlinedButton(onClick = { onSetActiveSteamAccount(account.accountId) }) {
+                                        WorkshopOutlinedButton(onClick = { onSetActiveSteamAccount(account.accountId) }) {
                                             Text("设为当前")
                                         }
                                     }
-                                    Spacer(modifier = Modifier.weight(1f))
                                     SteamAccountActionsButton(
                                         onReauthenticate = { onReauthenticateSteamAccount(account.accountId) },
                                         onRemove = { onRemoveSteamAccount(account.accountId) },
@@ -179,7 +200,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        RadioButton(
+                        WorkshopRadioButton(
                             selected = state.selectedTranslationProvider == provider,
                             onClick = null,
                         )
@@ -202,7 +223,7 @@ fun SettingsScreen(
             }
 
             if (state.selectedTranslationProvider == TranslationProvider.BaiduGeneralText) {
-                OutlinedButton(
+                WorkshopOutlinedButton(
                     onClick = onOpenBaiduTranslationApiKeyScreen,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -220,10 +241,55 @@ fun SettingsScreen(
         WorkshopPanelCard {
             Text("外观设置", style = MaterialTheme.typography.titleLarge)
             Text(
-                "支持亮色、深色和跟随系统主题，切换后会立即生效。",
+                "新版前端使用 AndroidLiquidGlass 的液态玻璃容器与导航，旧版保留当前经典界面；主题模式切换后会立即生效。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            Text("前端样式", style = MaterialTheme.typography.titleMedium)
+
+            Column(
+                modifier = Modifier.selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AppFrontendMode.entries.forEach { mode ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = state.selectedFrontendMode == mode,
+                                onClick = { onFrontendModeSelected(mode) },
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        WorkshopRadioButton(
+                            selected = state.selectedFrontendMode == mode,
+                            onClick = null,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = mode.displayName(),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                text = when (mode) {
+                                    AppFrontendMode.LiquidGlass ->
+                                        "新的液态玻璃外观，完全重构了前端。"
+
+                                    AppFrontendMode.Legacy ->
+                                        "保留稳定的经典 Material 风格界面。"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Text("颜色主题", style = MaterialTheme.typography.titleMedium)
 
             Column(
                 modifier = Modifier.selectableGroup(),
@@ -241,7 +307,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        RadioButton(
+                        WorkshopRadioButton(
                             selected = state.selectedThemeMode == mode,
                             onClick = null,
                         )
@@ -289,7 +355,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        RadioButton(
+                        WorkshopRadioButton(
                             selected = state.selectedSteamLanguagePreference == preference,
                             onClick = null,
                         )
@@ -333,7 +399,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
+                WorkshopSwitch(
                     checked = state.autoCheckUpdatesEnabled,
                     onCheckedChange = onAutoCheckUpdatesChanged,
                 )
@@ -362,7 +428,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        RadioButton(
+                        WorkshopRadioButton(
                             selected = state.preferredUpdateSource == source,
                             onClick = null,
                         )
@@ -388,7 +454,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(
+                WorkshopButton(
                     onClick = onManualCheckUpdates,
                     enabled = !state.updateCheckInProgress,
                 ) {
@@ -440,13 +506,13 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
+                WorkshopSwitch(
                     checked = state.allowSteamAuthenticatedCleartextHttp,
                     onCheckedChange = onAllowSteamAuthenticatedCleartextHttpChanged,
                 )
             }
 
-            OutlinedTextField(
+            WorkshopOutlinedTextField(
                 value = state.downloadThreadCountInput,
                 onValueChange = onThreadCountChange,
                 label = { Text("单任务线程数") },
@@ -458,7 +524,7 @@ fun SettingsScreen(
                 singleLine = true,
             )
 
-            OutlinedTextField(
+            WorkshopOutlinedTextField(
                 value = state.concurrentDownloadTaskCountInput,
                 onValueChange = onConcurrentTaskCountChange,
                 label = { Text("同时下载任务数") },
@@ -470,7 +536,7 @@ fun SettingsScreen(
                 singleLine = true,
             )
 
-            OutlinedTextField(
+            WorkshopOutlinedTextField(
                 value = state.modUpdateConcurrentCheckCountInput,
                 onValueChange = onModUpdateConcurrentCheckCountChange,
                 label = { Text("模组更新并发检查数") },
@@ -486,7 +552,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                Button(onClick = onSave) {
+                WorkshopButton(onClick = onSave) {
                     Text("保存")
                 }
             }
@@ -572,7 +638,7 @@ private fun SteamAccountActionsButton(
     var expanded by remember { mutableStateOf(false) }
 
     Box {
-        OutlinedButton(onClick = { expanded = true }) {
+        WorkshopOutlinedButton(onClick = { expanded = true }) {
             Text("操作")
         }
         DropdownMenu(
@@ -640,7 +706,7 @@ private fun SteamLoginDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        OutlinedTextField(
+                        WorkshopOutlinedTextField(
                             value = state.username,
                             onValueChange = onUsernameChange,
                             label = {
@@ -656,7 +722,7 @@ private fun SteamLoginDialog(
                             singleLine = true,
                             enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
                         )
-                        OutlinedTextField(
+                        WorkshopOutlinedTextField(
                             value = state.refreshToken,
                             onValueChange = onRefreshTokenChange,
                             label = { Text("Refresh Token") },
@@ -672,7 +738,7 @@ private fun SteamLoginDialog(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        OutlinedTextField(
+                        WorkshopOutlinedTextField(
                             value = state.guardCode,
                             onValueChange = onGuardCodeChange,
                             label = { Text("验证码") },
@@ -707,7 +773,7 @@ private fun SteamLoginDialog(
                     }
 
                     else -> {
-                        OutlinedTextField(
+                        WorkshopOutlinedTextField(
                             value = state.username,
                             onValueChange = onUsernameChange,
                             label = { Text("账号名") },
@@ -715,7 +781,7 @@ private fun SteamLoginDialog(
                             singleLine = true,
                             enabled = state.mode != SteamLoginDialogMode.Reauthenticate,
                         )
-                        OutlinedTextField(
+                        WorkshopOutlinedTextField(
                             value = state.password,
                             onValueChange = onPasswordChange,
                             label = { Text("密码") },
@@ -726,7 +792,7 @@ private fun SteamLoginDialog(
                 }
 
                 if (state.canSwitchSteamLoginInputMode()) {
-                    TextButton(
+                    WorkshopTextButton(
                         onClick = {
                             onSwitchInputMode(
                                 if (isTokenMode) {
@@ -763,10 +829,10 @@ private fun SteamLoginDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    OutlinedButton(onClick = onDismiss, enabled = !state.isSubmitting) {
+                    WorkshopOutlinedButton(onClick = onDismiss, enabled = !state.isSubmitting) {
                         Text("关闭")
                     }
-                    Button(
+                    WorkshopButton(
                         onClick = onSubmit,
                         enabled = !state.isSubmitting && !state.isPollingConfirmation,
                     ) {

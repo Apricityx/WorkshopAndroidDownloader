@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -31,6 +32,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.data.GameLibraryRepository
 import top.apricityx.workshop.data.SteamGame
@@ -54,7 +56,17 @@ class WorkshopViewModel(
     private val steamAuthRepository = SteamAuthRepository(application)
     private val baiduTranslationCredentialsRepository = BaiduTranslationCredentialsRepository(application)
     private val settingsRepository = DownloadSettingsRepository(application)
+    private val steamWebCookieJar = SteamWebSessionCookieJar(
+        projectedCookiesProvider = { url ->
+            steamAuthRepository.blockingProjectedCookiesFor(
+                url = url,
+                accountId = steamAuthRepository.activeAccountId(),
+            )
+        },
+        sessionScopeProvider = steamAuthRepository::activeAccountId,
+    )
     private val httpClient = OkHttpClient.Builder()
+        .cookieJar(steamWebCookieJar)
         .addInterceptor(
             SteamAuthenticatedCleartextInterceptor(
                 hasAuthenticatedSteamSession = {
@@ -64,7 +76,6 @@ class WorkshopViewModel(
                 allowAuthenticatedCleartextHttpProvider = settingsRepository::isSteamAuthenticatedCleartextHttpAllowed,
             ),
         )
-        .addInterceptor(SteamCookieInterceptor(steamAuthRepository))
         .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
         .build()
     private val gameRepository = SteamGameRepository(
@@ -95,6 +106,10 @@ class WorkshopViewModel(
 
     private var lastDownloadCenterModSignature: String? = null
     private var steamConfirmationWaitJob: Job? = null
+    @Volatile
+    private var isSteamWebSessionPrimed = false
+    @Volatile
+    private var primedSteamWebSessionAccountId: String? = null
 
     init {
         refreshLibrary()
@@ -168,6 +183,7 @@ class WorkshopViewModel(
         val currentConcurrentTasks = settingsRepository.getConcurrentDownloadTaskCount()
         val currentModUpdateConcurrentChecks = settingsRepository.getModUpdateConcurrentCheckCount()
         val currentThemeMode = settingsRepository.getThemeMode()
+        val currentFrontendMode = settingsRepository.getFrontendMode()
         val currentSteamLanguagePreference = settingsRepository.getSteamLanguagePreference()
         val currentTranslationProvider = settingsRepository.getTranslationProvider()
         val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
@@ -177,6 +193,7 @@ class WorkshopViewModel(
         _uiState.update { state ->
             state.copy(
                 themeMode = currentThemeMode,
+                frontendMode = currentFrontendMode,
                 settingsState = state.settingsState.copy(
                     downloadThreadCountInput = currentThreads.toString(),
                     savedDownloadThreadCount = currentThreads,
@@ -185,6 +202,7 @@ class WorkshopViewModel(
                     modUpdateConcurrentCheckCountInput = currentModUpdateConcurrentChecks.toString(),
                     savedModUpdateConcurrentCheckCount = currentModUpdateConcurrentChecks,
                     selectedThemeMode = currentThemeMode,
+                    selectedFrontendMode = currentFrontendMode,
                     selectedSteamLanguagePreference = currentSteamLanguagePreference,
                     selectedTranslationProvider = currentTranslationProvider,
                     allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
@@ -437,12 +455,17 @@ class WorkshopViewModel(
             state.copy(
                 settingsState = state.settingsState.copy(
                     allowSteamAuthenticatedCleartextHttp = allowed,
-                    message = if (allowed) {
-                        "已允许带 Steam 登录态的 HTTP 请求，请仅在可信网络环境下使用。"
-                    } else {
-                        "已禁止带 Steam 登录态的 HTTP 请求。"
-                    },
+                    message = null,
                 ),
+            )
+        }
+        viewModelScope.launch {
+            _toastMessages.emit(
+                if (allowed) {
+                    "已允许带 Steam 登录态的 HTTP 请求，请仅在可信网络环境下使用。"
+                } else {
+                    "已禁止带 Steam 登录态的 HTTP 请求。"
+                },
             )
         }
     }
@@ -457,6 +480,22 @@ class WorkshopViewModel(
                     message = "已切换为${themeMode.displayName()}。",
                 ),
             )
+        }
+    }
+
+    fun updateFrontendMode(frontendMode: AppFrontendMode) {
+        settingsRepository.setFrontendMode(frontendMode)
+        _uiState.update { state ->
+            state.copy(
+                frontendMode = frontendMode,
+                settingsState = state.settingsState.copy(
+                    selectedFrontendMode = frontendMode,
+                    message = null,
+                ),
+            )
+        }
+        viewModelScope.launch {
+            _toastMessages.emit("已切换为${frontendMode.displayName()}前端。")
         }
     }
 
@@ -479,7 +518,7 @@ class WorkshopViewModel(
                 settingsState = state.settingsState.copy(
                     selectedTranslationProvider = provider,
                     baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
-                    message = "已切换描述翻译方式：${provider.displayName()}。",
+                    message = null,
                 ),
             )
         }
@@ -799,11 +838,13 @@ class WorkshopViewModel(
     fun switchToAnonymousSteamAccount() {
         steamAuthRepository.setActiveAccount(null)
         syncSteamAuthState(message = "已切换为匿名浏览。")
+        primeSteamWebSessionAsync(force = true)
     }
 
     fun setActiveSteamAccount(accountId: String) {
         steamAuthRepository.setActiveAccount(accountId)
-        syncSteamAuthState(message = "已切换浏览账号。")
+        syncSteamAuthState(message = null)
+        primeSteamWebSessionAsync(force = true)
     }
 
     fun reauthenticateSteamAccount(accountId: String) {
@@ -1057,6 +1098,69 @@ class WorkshopViewModel(
         )
     }
 
+    fun requestRenameMod(entry: DownloadedModGroup) {
+        _uiState.update {
+            it.copy(
+                pendingRenameMod = entry,
+                renameModTitleInput = entry.itemTitle,
+            )
+        }
+    }
+
+    fun updateRenameModTitleInput(value: String) {
+        _uiState.update { it.copy(renameModTitleInput = value) }
+    }
+
+    fun confirmRenameMod() {
+        val entry = _uiState.value.pendingRenameMod ?: return
+        val newTitle = _uiState.value.renameModTitleInput.trim()
+        if (newTitle.isBlank()) {
+            return
+        }
+        if (newTitle == entry.itemTitle) {
+            _uiState.update {
+                it.copy(
+                    pendingRenameMod = null,
+                    renameModTitleInput = "",
+                )
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                pendingRenameMod = null,
+                renameModTitleInput = "",
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                modLibraryRepository.renameMod(
+                    appId = entry.appId,
+                    publishedFileId = entry.publishedFileId,
+                    newTitle = newTitle,
+                )
+            }.onSuccess { entries ->
+                var persistedUpdateCheckState: ModLibraryUpdateCheckState? = null
+                _uiState.update { state ->
+                    val nextState = applyModLibraryEntries(
+                        state = state.copy(
+                            pendingRenameMod = null,
+                            renameModTitleInput = "",
+                        ),
+                        entries = entries,
+                    )
+                    persistedUpdateCheckState = nextState.modLibraryState.updateCheckState
+                    nextState
+                }
+                persistedUpdateCheckState?.let(::persistModLibraryUpdateStateIfStable)
+                _toastMessages.emit("已将「${entry.itemTitle}」重命名为「$newTitle」。")
+            }.onFailure { error ->
+                _toastMessages.emit(error.message ?: "重命名模组失败。")
+                refreshModLibrary(showLoading = false)
+            }
+        }
+    }
+
     fun requestRemoveMod(entry: DownloadedModEntry) {
         _uiState.update { it.copy(pendingRemoveMod = entry) }
     }
@@ -1089,6 +1193,15 @@ class WorkshopViewModel(
 
     fun dismissRemoveModDialog() {
         _uiState.update { it.copy(pendingRemoveMod = null) }
+    }
+
+    fun dismissRenameModDialog() {
+        _uiState.update {
+            it.copy(
+                pendingRenameMod = null,
+                renameModTitleInput = "",
+            )
+        }
     }
 
     fun openGameWorkshop(game: SteamGame) {
@@ -1502,13 +1615,12 @@ class WorkshopViewModel(
         )
     }
 
-    fun downloadSingleItem(item: WorkshopBrowseItem) {
+    fun downloadSingleItem(item: WorkshopBrowseItem): Boolean =
         enqueueWorkshopItems(
             appId = item.appId,
             gameTitle = _uiState.value.gameWorkshopState?.game?.name ?: "Workshop",
             items = listOf(item),
         )
-    }
 
     suspend fun loadRequiredItemsForDownload(item: WorkshopBrowseItem): List<WorkshopRequiredItem> {
         val currentDetail = _uiState.value.workshopItemDetailState
@@ -1773,6 +1885,9 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
+                ensureSteamWebSessionPrimed()
+            }
+            runCatching {
                 withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
                     browseRepository.browseGameWorkshop(
                         appId = game.appId,
@@ -1851,12 +1966,12 @@ class WorkshopViewModel(
         appId: UInt,
         gameTitle: String,
         items: List<WorkshopBrowseItem>,
-    ) {
+    ): Boolean {
         if (steamAuthRepository.activeAccountRequiresReauthentication()) {
             viewModelScope.launch {
                 _toastMessages.emit("当前 Steam 账号需要重新认证，新的下载任务暂时不能开始。")
             }
-            return
+            return false
         }
         val downloadBinding = steamAuthRepository.currentDownloadBinding()
         val enqueuedCount = downloadCenterManager.enqueueDownloads(
@@ -1873,7 +1988,7 @@ class WorkshopViewModel(
         )
 
         if (enqueuedCount <= 0) {
-            return
+            return false
         }
 
         viewModelScope.launch {
@@ -1885,6 +2000,7 @@ class WorkshopViewModel(
                 },
             )
         }
+        return true
     }
 
     private fun showAddGameMessage(message: String) {
@@ -2135,8 +2251,54 @@ class WorkshopViewModel(
                     message = "已登录 ${step.account.accountName}。",
                     loginDialogState = null,
                 )
+                primeSteamWebSessionAsync(force = true)
             }
         }
+    }
+
+    private fun primeSteamWebSessionAsync(force: Boolean = false) {
+        if (force) {
+            isSteamWebSessionPrimed = false
+        }
+        viewModelScope.launch {
+            runCatching {
+                ensureSteamWebSessionPrimed()
+            }
+        }
+    }
+
+    private suspend fun ensureSteamWebSessionPrimed() {
+        val accountId = steamAuthRepository.activeAccountId()
+        val hasAuthenticatedSteamSession = accountId
+            ?.let(steamAuthRepository::accountSessionFor) != null
+        if (!hasAuthenticatedSteamSession) {
+            primedSteamWebSessionAccountId = accountId
+            isSteamWebSessionPrimed = true
+            return
+        }
+        if (isSteamWebSessionPrimed && primedSteamWebSessionAccountId == accountId) {
+            return
+        }
+        withContext(Dispatchers.IO) {
+            listOf(
+                "https://login.steampowered.com/",
+                "https://store.steampowered.com/account/preferences/",
+                "https://steamcommunity.com/login/home/?goto=workshop%2F",
+            ).forEach { url ->
+                httpClient.newCall(
+                    Request.Builder()
+                        .url(url)
+                        .header("User-Agent", STEAM_WEB_SESSION_USER_AGENT)
+                        .build(),
+                ).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        error("Steam web session prime request failed: ${response.code}")
+                    }
+                }
+            }
+        }
+        primedSteamWebSessionAccountId = accountId
+        isSteamWebSessionPrimed = true
     }
 
     private fun startSteamConfirmationWait() {
@@ -2265,6 +2427,9 @@ class WorkshopViewModel(
         val selectedEntry = state.modLibraryState.selectedEntry?.let { current ->
             groupedEntries.firstOrNull { it.matches(current) }
         }
+        val pendingRenameMod = state.pendingRenameMod?.let { current ->
+            groupedEntries.firstOrNull { it.matches(current) }
+        }
         val nextScreen = if (state.currentScreen == WorkshopScreenDestination.ModDetail && selectedEntry == null) {
             WorkshopScreenDestination.ModLibrary
         } else {
@@ -2280,6 +2445,12 @@ class WorkshopViewModel(
         } ?: ModLibraryDescriptionTranslationUiState()
         return state.copy(
             currentScreen = nextScreen,
+            pendingRenameMod = pendingRenameMod,
+            renameModTitleInput = if (pendingRenameMod == null) {
+                ""
+            } else {
+                state.renameModTitleInput
+            },
             modLibraryState = state.modLibraryState.copy(
                 items = groupedEntries,
                 selectedEntry = selectedEntry,
@@ -2319,6 +2490,7 @@ class WorkshopViewModel(
 
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
+        private const val STEAM_WEB_SESSION_USER_AGENT = "WorkshopOnAndroid/1.0"
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"
         private const val WORKSHOP_CONNECTION_FAILURE_MESSAGE =
             "啊哦，加载超时，您的网络环境可能不支持直连创意工坊，请开启加速器加速 steam 或科学上网后重试。"
@@ -2332,6 +2504,7 @@ class WorkshopViewModel(
 
     private fun createInitialUiState(): WorkshopUiState {
         val themeMode = settingsRepository.getThemeMode()
+        val frontendMode = settingsRepository.getFrontendMode()
         val steamLanguagePreference = settingsRepository.getSteamLanguagePreference()
         val translationProvider = settingsRepository.getTranslationProvider()
         val threadCount = settingsRepository.getDownloadThreadCount()
@@ -2342,6 +2515,7 @@ class WorkshopViewModel(
         val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
         return WorkshopUiState(
             themeMode = themeMode,
+            frontendMode = frontendMode,
             modLibraryState = ModLibraryUiState(
                 isLoading = true,
                 updateCheckState = modLibraryUpdateStateStore.loadState(),
@@ -2356,6 +2530,7 @@ class WorkshopViewModel(
                 modUpdateConcurrentCheckCountInput = modUpdateConcurrentChecks.toString(),
                 savedModUpdateConcurrentCheckCount = modUpdateConcurrentChecks,
                 selectedThemeMode = themeMode,
+                selectedFrontendMode = frontendMode,
                 selectedSteamLanguagePreference = steamLanguagePreference,
                 selectedTranslationProvider = translationProvider,
                 allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
