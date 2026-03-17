@@ -90,7 +90,7 @@ class SteamContentClient(
             parser = CContentServerDirectory_GetCDNAuthToken_Response.parser(),
         )
         return CdnAuthToken(
-            token = response.token,
+            token = response.token.trim().removePrefix("?"),
             expiration = Instant.ofEpochSecond(response.expirationTime.toLong()),
         )
     }

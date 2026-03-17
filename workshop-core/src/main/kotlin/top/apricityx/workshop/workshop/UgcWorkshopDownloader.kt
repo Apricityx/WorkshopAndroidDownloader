@@ -1,11 +1,11 @@
 package top.apricityx.workshop.workshop
 
 import top.apricityx.workshop.steam.protocol.CdnServer
-import top.apricityx.workshop.steam.protocol.CdnRequestEndpoint
 import top.apricityx.workshop.steam.protocol.OkHttpSteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamContentClient
 import top.apricityx.workshop.steam.protocol.SteamDirectoryClient
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -14,9 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -42,6 +40,7 @@ class UgcWorkshopDownloader(
         log("Loading Steam CM websocket candidates")
         val cmServers = directoryClient.loadServers()
         log("Loaded ${cmServers.size} CM websocket candidates")
+        val cdnTransport = SteamCdnTransport(client)
 
         sessionFactory().use { session ->
             val contentClient = SteamContentClient(session, directoryClient)
@@ -72,10 +71,20 @@ class UgcWorkshopDownloader(
             }.getOrElse {
                 log("Falling back to public content server directory API")
                 directoryClient.loadContentServers()
-            }.sortedBy { it.weightedLoad }
+            }
 
             require(contentServers.isNotEmpty()) { "No CDN servers available for SteamPipe" }
             log("Loaded ${contentServers.size} SteamPipe content servers")
+            val serverPool = cdnTransport.buildServerPool(request.appId, contentServers)
+            require(serverPool.downloadServers.isNotEmpty()) { "No CDN download servers available for app=${request.appId}" }
+            log(
+                "Selected ${serverPool.downloadServers.size} weighted CDN entries " +
+                    "from ${serverPool.downloadServers.distinctBy(CdnServer::host).size} servers",
+            )
+            serverPool.proxyServer?.let { proxy ->
+                log("Detected CDN proxy host=${proxy.host} template=${proxy.proxyRequestPathTemplate ?: "(none)"}")
+            }
+            val cdnAuthTokenCache = ConcurrentHashMap<String, String>()
 
             val depotKey = runCatching {
                 session.requestDepotDecryptionKey(
@@ -91,9 +100,12 @@ class UgcWorkshopDownloader(
             val manifest = downloadManifest(
                 appId = request.appId,
                 item = item,
-                contentServers = contentServers,
+                contentServers = serverPool.downloadServers,
+                proxyServer = serverPool.proxyServer,
                 manifestRequestCode = manifestRequestCode,
                 contentClient = contentClient,
+                cdnTransport = cdnTransport,
+                cdnAuthTokenCache = cdnAuthTokenCache,
                 log = log,
             )
             val preparedManifest = when {
@@ -136,8 +148,11 @@ class UgcWorkshopDownloader(
             cacheChunks(
                 appId = request.appId,
                 depotId = item.depotId,
-                contentServers = contentServers,
+                contentServers = serverPool.downloadServers,
+                proxyServer = serverPool.proxyServer,
                 contentClient = contentClient,
+                cdnTransport = cdnTransport,
+                cdnAuthTokenCache = cdnAuthTokenCache,
                 chunks = chunks,
                 stageDir = stageDir,
                 depotKey = depotKey,
@@ -163,8 +178,11 @@ class UgcWorkshopDownloader(
         appId: UInt,
         item: ResolvedWorkshopItem.UgcManifestItem,
         contentServers: List<CdnServer>,
+        proxyServer: CdnServer?,
         manifestRequestCode: ULong,
         contentClient: SteamContentClient,
+        cdnTransport: SteamCdnTransport,
+        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
         log: suspend (String) -> Unit,
     ): DepotManifest {
         var lastError: Throwable? = null
@@ -177,7 +195,17 @@ class UgcWorkshopDownloader(
                         append("/$manifestRequestCode")
                     }
                 }
-                val bytes = requestZipBytes(server, path, appId, item.depotId, contentClient)
+                val bytes = requestBytes(
+                    server = server,
+                    proxyServer = proxyServer,
+                    path = path,
+                    query = cdnAuthTokenCache[server.host],
+                    appId = appId,
+                    depotId = item.depotId,
+                    contentClient = contentClient,
+                    cdnTransport = cdnTransport,
+                    cdnAuthTokenCache = cdnAuthTokenCache,
+                )
                 return DepotManifestParser.parse(unzipSingleEntry(bytes))
             } catch (error: Throwable) {
                 lastError = error
@@ -191,7 +219,10 @@ class UgcWorkshopDownloader(
         appId: UInt,
         depotId: UInt,
         contentServers: List<CdnServer>,
+        proxyServer: CdnServer?,
         contentClient: SteamContentClient,
+        cdnTransport: SteamCdnTransport,
+        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
         chunks: List<ManifestChunk>,
         stageDir: File,
         depotKey: ByteArray?,
@@ -217,7 +248,10 @@ class UgcWorkshopDownloader(
                         appId = appId,
                         depotId = depotId,
                         contentServers = contentServers,
+                        proxyServer = proxyServer,
                         contentClient = contentClient,
+                        cdnTransport = cdnTransport,
+                        cdnAuthTokenCache = cdnAuthTokenCache,
                         chunk = chunk,
                         depotKey = depotKey,
                         log = log,
@@ -274,7 +308,10 @@ class UgcWorkshopDownloader(
         appId: UInt,
         depotId: UInt,
         contentServers: List<CdnServer>,
+        proxyServer: CdnServer?,
         contentClient: SteamContentClient,
+        cdnTransport: SteamCdnTransport,
+        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
         chunk: ManifestChunk,
         depotKey: ByteArray?,
         log: suspend (String) -> Unit,
@@ -287,11 +324,14 @@ class UgcWorkshopDownloader(
                     val path = "depot/$depotId/chunk/${chunk.idHex}"
                     val raw = requestBytes(
                         server = server,
+                        proxyServer = proxyServer,
                         path = path,
-                        query = null,
+                        query = cdnAuthTokenCache[server.host],
                         appId = appId,
                         depotId = depotId,
                         contentClient = contentClient,
+                        cdnTransport = cdnTransport,
+                        cdnAuthTokenCache = cdnAuthTokenCache,
                     )
                     return ChunkProcessor.process(raw, chunk, depotKey)
                 } catch (error: Throwable) {
@@ -410,89 +450,28 @@ class UgcWorkshopDownloader(
         }
     }
 
-    private suspend fun requestZipBytes(
-        server: CdnServer,
-        path: String,
-        appId: UInt,
-        depotId: UInt,
-        contentClient: SteamContentClient,
-    ): ByteArray = requestBytes(server, path, null, appId, depotId, contentClient)
-
     private suspend fun requestBytes(
         server: CdnServer,
+        proxyServer: CdnServer?,
         path: String,
         query: String?,
         appId: UInt,
         depotId: UInt,
         contentClient: SteamContentClient,
+        cdnTransport: SteamCdnTransport,
+        cdnAuthTokenCache: ConcurrentHashMap<String, String>,
     ): ByteArray {
-        var lastError: Throwable? = null
-        for (endpoint in server.requestEndpoints()) {
-            try {
-                return requestBytesFromEndpoint(
-                    server = server,
-                    endpoint = endpoint,
-                    path = path,
-                    query = query,
-                    appId = appId,
-                    depotId = depotId,
-                    contentClient = contentClient,
-                )
-            } catch (error: Throwable) {
-                lastError = error
-            }
-        }
-        val detail = lastError?.message?.takeIf(String::isNotBlank)
-        throw WorkshopDownloadException(
-            detail?.let { "Steam CDN request exhausted retries: $it" } ?: "Steam CDN request exhausted retries",
-            lastError,
+        return cdnTransport.requestBytes(
+            server = server,
+            path = path,
+            query = query,
+            proxyServer = proxyServer,
+            resolveAuthToken = { host ->
+                cdnAuthTokenCache[host] ?: contentClient.getCdnAuthToken(appId, depotId, host).token.also {
+                    cdnAuthTokenCache[host] = it
+                }
+            },
         )
-    }
-
-    private suspend fun requestBytesFromEndpoint(
-        server: CdnServer,
-        endpoint: CdnRequestEndpoint,
-        path: String,
-        query: String?,
-        appId: UInt,
-        depotId: UInt,
-        contentClient: SteamContentClient,
-    ): ByteArray {
-        var currentQuery = query
-        repeat(2) { attempt ->
-            val request = Request.Builder()
-                .url(buildServerUrl(server, endpoint, path, currentQuery))
-                .build()
-            client.newCall(request).execute().use { response ->
-                when {
-                    response.isSuccessful -> return response.body?.bytes() ?: ByteArray(0)
-                    response.code == 403 && attempt == 0 -> {
-                        currentQuery = contentClient.getCdnAuthToken(appId, depotId, server.host).token
-                    }
-                    else -> throw WorkshopDownloadException("Steam CDN request failed: ${response.code}")
-                }
-            }
-        }
-        throw WorkshopDownloadException("Steam CDN request exhausted retries")
-    }
-
-    private fun buildServerUrl(
-        server: CdnServer,
-        endpoint: CdnRequestEndpoint,
-        path: String,
-        query: String?,
-    ): HttpUrl {
-        return HttpUrl.Builder()
-            .scheme(endpoint.scheme)
-            .host(server.vHost)
-            .port(endpoint.port)
-            .addEncodedPathSegments(path)
-            .apply {
-                if (!query.isNullOrBlank()) {
-                    encodedQuery(query)
-                }
-            }
-            .build()
     }
 
     private fun unzipSingleEntry(zipBytes: ByteArray): ByteArray {

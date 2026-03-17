@@ -29,19 +29,16 @@ data class CdnServer(
 
     val supportsHttps: Boolean = normalizedHttpsSupport == "mandatory" || normalizedHttpsSupport == "optional"
     val requiresHttps: Boolean = normalizedHttpsSupport == "mandatory"
-    val port: Int = if (supportsHttps) 443 else 80
-    val secureScheme: String = if (supportsHttps) "https" else "http"
+    val port: Int = if (requiresHttps) 443 else 80
+    val secureScheme: String = if (requiresHttps) "https" else "http"
 
     fun requestEndpoints(): List<CdnRequestEndpoint> =
-        when {
-            requiresHttps -> listOf(CdnRequestEndpoint(scheme = "https", port = 443))
-            supportsHttps -> listOf(
-                CdnRequestEndpoint(scheme = "https", port = 443),
-                CdnRequestEndpoint(scheme = "http", port = 80),
-            )
-
-            else -> listOf(CdnRequestEndpoint(scheme = "http", port = 80))
-        }
+        listOf(
+            CdnRequestEndpoint(
+                scheme = secureScheme,
+                port = port,
+            ),
+        )
 }
 
 data class CdnRequestEndpoint(
