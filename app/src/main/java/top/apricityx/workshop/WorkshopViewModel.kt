@@ -151,8 +151,25 @@ class WorkshopViewModel(
             WorkshopScreenDestination.GameWorkshop,
             -> navigateTo(WorkshopScreenDestination.GameLibrary, rememberPrevious = false)
 
-            WorkshopScreenDestination.WorkshopItemDetail ->
-                navigateTo(WorkshopScreenDestination.GameWorkshop, rememberPrevious = false)
+            WorkshopScreenDestination.WorkshopItemDetail -> {
+                val previousDetailState = state.workshopItemDetailBackStack.lastOrNull()
+                if (previousDetailState != null) {
+                    _uiState.update { current ->
+                        current.copy(
+                            workshopItemDetailState = previousDetailState,
+                            workshopItemDetailBackStack = current.workshopItemDetailBackStack.dropLast(1),
+                        )
+                    }
+                } else {
+                    _uiState.update { current ->
+                        current.copy(
+                            workshopItemDetailState = null,
+                            workshopItemDetailBackStack = emptyList(),
+                        )
+                    }
+                    navigateTo(WorkshopScreenDestination.GameWorkshop, rememberPrevious = false)
+                }
+            }
 
             WorkshopScreenDestination.ModDetail ->
                 navigateTo(WorkshopScreenDestination.ModLibrary, rememberPrevious = false)
@@ -1221,6 +1238,7 @@ class WorkshopViewModel(
                     isLoading = true,
                 ),
                 workshopItemDetailState = null,
+                workshopItemDetailBackStack = emptyList(),
             )
         }
         loadWorkshopPage(
@@ -1234,8 +1252,19 @@ class WorkshopViewModel(
     }
 
     fun openWorkshopItemDetail(item: WorkshopBrowseItem) {
+        val targetAppId = item.appId
+        val targetPublishedFileId = item.publishedFileId
         _uiState.update { state ->
+            val shouldPushCurrentDetail = state.currentScreen == WorkshopScreenDestination.WorkshopItemDetail &&
+                state.workshopItemDetailState?.item?.matches(targetAppId, targetPublishedFileId) == false
             state.copy(
+                workshopItemDetailBackStack = if (shouldPushCurrentDetail) {
+                    state.workshopItemDetailBackStack + requireNotNull(state.workshopItemDetailState)
+                } else if (state.currentScreen == WorkshopScreenDestination.WorkshopItemDetail) {
+                    state.workshopItemDetailBackStack
+                } else {
+                    emptyList()
+                },
                 workshopItemDetailState = WorkshopItemDetailUiState(
                     item = item,
                     isLoading = true,
@@ -1252,30 +1281,28 @@ class WorkshopViewModel(
                 }
             }.onSuccess { detail ->
                 _uiState.update { state ->
-                    val current = state.workshopItemDetailState ?: return@update state
-                    state.copy(
-                        workshopItemDetailState = current.copy(
+                    state.updateWorkshopItemDetailState(targetAppId, targetPublishedFileId) { current ->
+                        current.copy(
                             detail = detail,
                             isLoading = false,
                             message = null,
                             showConnectionErrorState = false,
-                        ),
-                    )
+                        )
+                    }
                 }
             }.onFailure { error ->
                 val showConnectionErrorState = error.isWorkshopConnectionFailure()
                 _uiState.update { state ->
-                    val current = state.workshopItemDetailState ?: return@update state
-                    state.copy(
-                        workshopItemDetailState = current.copy(
+                    state.updateWorkshopItemDetailState(targetAppId, targetPublishedFileId) { current ->
+                        current.copy(
                             isLoading = false,
                             message = workshopRequestFailureMessage(
                                 error = error,
                                 fallbackMessage = error.message ?: "加载模组详情失败。",
                             ),
                             showConnectionErrorState = showConnectionErrorState,
-                        ),
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -1303,16 +1330,12 @@ class WorkshopViewModel(
         val targetAppId = detailState.item.appId
         val targetPublishedFileId = detailState.item.publishedFileId
         _uiState.update { state ->
-            val current = state.workshopItemDetailState ?: return@update state
-            if (current.item.appId != targetAppId || current.item.publishedFileId != targetPublishedFileId) {
-                return@update state
-            }
-            state.copy(
-                workshopItemDetailState = current.copy(
+            state.updateWorkshopItemDetailState(targetAppId, targetPublishedFileId) { current ->
+                current.copy(
                     isTranslatingDescription = true,
                     translationErrorMessage = null,
-                ),
-            )
+                )
+            }
         }
 
         viewModelScope.launch {
@@ -1320,33 +1343,25 @@ class WorkshopViewModel(
                 translateDescriptionWithSelectedProvider(description)
             }.onSuccess { result ->
                 _uiState.update { state ->
-                    val current = state.workshopItemDetailState ?: return@update state
-                    if (current.item.appId != targetAppId || current.item.publishedFileId != targetPublishedFileId) {
-                        return@update state
-                    }
-                    state.copy(
-                        workshopItemDetailState = current.copy(
+                    state.updateWorkshopItemDetailState(targetAppId, targetPublishedFileId) { current ->
+                        current.copy(
                             isTranslatingDescription = false,
                             translatedDescription = result.translatedText,
                             translationErrorMessage = null,
-                        ),
-                    )
+                        )
+                    }
                 }
                 result.fallbackToastMessage?.let { fallbackToastMessage ->
                     _toastMessages.emit(fallbackToastMessage)
                 }
             }.onFailure { error ->
                 _uiState.update { state ->
-                    val current = state.workshopItemDetailState ?: return@update state
-                    if (current.item.appId != targetAppId || current.item.publishedFileId != targetPublishedFileId) {
-                        return@update state
-                    }
-                    state.copy(
-                        workshopItemDetailState = current.copy(
+                    state.updateWorkshopItemDetailState(targetAppId, targetPublishedFileId) { current ->
+                        current.copy(
                             isTranslatingDescription = false,
                             translationErrorMessage = error.message ?: "翻译描述失败，请稍后重试。",
-                        ),
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -2735,6 +2750,33 @@ class WorkshopViewModel(
             )
         }
     }
+
+    private fun WorkshopUiState.updateWorkshopItemDetailState(
+        appId: UInt,
+        publishedFileId: ULong,
+        transform: (WorkshopItemDetailUiState) -> WorkshopItemDetailUiState,
+    ): WorkshopUiState {
+        val currentDetailState = workshopItemDetailState
+        if (currentDetailState?.item?.matches(appId, publishedFileId) == true) {
+            return copy(workshopItemDetailState = transform(currentDetailState))
+        }
+
+        val backStackIndex = workshopItemDetailBackStack.indexOfLast { detailState ->
+            detailState.item.matches(appId, publishedFileId)
+        }
+        if (backStackIndex < 0) {
+            return this
+        }
+
+        val updatedBackStack = workshopItemDetailBackStack.toMutableList()
+        updatedBackStack[backStackIndex] = transform(updatedBackStack[backStackIndex])
+        return copy(workshopItemDetailBackStack = updatedBackStack)
+    }
+
+    private fun WorkshopBrowseItem.matches(
+        appId: UInt,
+        publishedFileId: ULong,
+    ): Boolean = this.appId == appId && this.publishedFileId == publishedFileId
 
     private fun applyModLibraryEntries(
         state: WorkshopUiState,

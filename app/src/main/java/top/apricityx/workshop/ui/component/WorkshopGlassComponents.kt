@@ -27,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -46,7 +45,7 @@ import com.kyant.backdrop.shadow.Shadow
 import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
-import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
+import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
 
 @Composable
 fun WorkshopLiquidGlassWallpaper(
@@ -99,23 +98,22 @@ fun WorkshopLiquidGlassWallpaper(
             center = Offset(size.width * 0.72f, size.height * 0.82f),
         )
 
-        drawRoundRect(
-            brush = Brush.linearGradient(
+        drawOval(
+            brush = Brush.radialGradient(
                 colors = listOf(
-                    blueGlow.copy(alpha = blueGlow.alpha * 0.6f),
-                    peachGlow.copy(alpha = peachGlow.alpha * 0.12f),
+                    blueGlow.copy(alpha = blueGlow.alpha * 0.42f),
+                    peachGlow.copy(alpha = peachGlow.alpha * 0.16f),
                     Color.Transparent,
                 ),
-                start = Offset(size.width * 0.1f, size.height * 0.35f),
-                end = Offset(size.width * 0.78f, size.height * 0.9f),
+                center = Offset(size.width * 0.28f, size.height * 0.76f),
+                radius = size.minDimension * 0.58f,
             ),
-            topLeft = Offset(size.width * 0.04f, size.height * 0.48f),
+            topLeft = Offset(size.width * -0.08f, size.height * 0.56f),
             size = androidx.compose.ui.geometry.Size(
-                width = size.width * 0.78f,
-                height = size.height * 0.28f,
+                width = size.width * 0.92f,
+                height = size.height * 0.24f,
             ),
-            cornerRadius = CornerRadius(size.minDimension * 0.12f, size.minDimension * 0.12f),
-            alpha = if (isDark) 0.32f else 0.2f,
+            alpha = if (isDark) 0.24f else 0.16f,
         )
     }
 }
@@ -133,28 +131,28 @@ fun WorkshopGlassSurface(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val liquidEnabled = isLiquidGlassFrontendEnabled()
-    val liteLiquidEnabled = isLiteLiquidGlassFrontendEnabled()
+    val reduceEffects = shouldReduceLiquidGlassEffects()
     val backdrop = LocalWorkshopBackdrop.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
-    val liteSurfaceColor = if (liteLiquidEnabled) {
+    val liteSurfaceColor = if (reduceEffects) {
         surfaceColor.copy(
             alpha = (surfaceColor.alpha + if (isDark) 0.34f else 0.42f).coerceAtMost(0.92f),
         )
     } else {
         surfaceColor
     }
-    val liteBorderColor = if (liteLiquidEnabled) {
+    val liteBorderColor = if (reduceEffects) {
         borderColor.copy(alpha = borderColor.alpha.coerceAtLeast(if (isDark) 0.18f else 0.14f))
     } else {
         borderColor
     }
 
-    if (!liquidEnabled || backdrop == null || liteLiquidEnabled) {
+    if (!liquidEnabled || backdrop == null || reduceEffects) {
         Surface(
             modifier = modifier,
             shape = shape,
-            color = if (liteLiquidEnabled) liteSurfaceColor else surfaceColor,
-            border = if (liteLiquidEnabled) BorderStroke(1.dp, liteBorderColor) else null,
+            color = if (reduceEffects) liteSurfaceColor else surfaceColor,
+            border = if (reduceEffects) BorderStroke(1.dp, liteBorderColor) else null,
             contentColor = contentColor,
         ) {
             CompositionLocalProvider(LocalContentColor provides contentColor) {

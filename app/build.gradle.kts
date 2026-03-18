@@ -1,5 +1,5 @@
 import org.gradle.api.GradleException
-import java.io.File
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -10,13 +10,31 @@ plugins {
 
 apply(from = rootProject.file("gradle/workshop-adb.gradle.kts"))
 
+// Keep local-only signing credentials in local.properties so Android Studio and CLI can share them.
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.isFile) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun localProperty(name: String): String = localProperties.getProperty(name)?.trim().orEmpty()
+
+fun releaseSigningValue(gradleName: String, envName: String): String =
+    providers.gradleProperty(gradleName).orNull?.trim().orEmpty().ifEmpty {
+        providers.environmentVariable(envName).orNull?.trim().orEmpty().ifEmpty {
+            localProperty(gradleName)
+        }
+    }
+
 val appVersionCode = providers.gradleProperty("application.version.code").orNull?.trim()?.toInt() ?: 1
 val appVersionName = providers.gradleProperty("application.version.name").orNull?.trim().orEmpty().ifBlank { "1.0" }
-val releaseStoreFilePath = providers.environmentVariable("RELEASE_STORE_FILE").orNull?.trim().orEmpty()
-val releaseStorePassword = providers.environmentVariable("RELEASE_STORE_PASSWORD").orNull?.trim().orEmpty()
-val releaseKeyAlias = providers.environmentVariable("RELEASE_KEY_ALIAS").orNull?.trim().orEmpty()
-val releaseKeyPassword = providers.environmentVariable("RELEASE_KEY_PASSWORD").orNull?.trim().orEmpty()
-val hasReleaseSigning = releaseStoreFilePath.isNotEmpty() &&
+val releaseStoreFilePath = releaseSigningValue("release.storeFile", "RELEASE_STORE_FILE")
+val releaseStorePassword = releaseSigningValue("release.storePassword", "RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = releaseSigningValue("release.keyAlias", "RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningValue("release.keyPassword", "RELEASE_KEY_PASSWORD")
+val releaseStoreFile = releaseStoreFilePath.takeIf { it.isNotEmpty() }?.let(rootProject::file)
+val hasReleaseSigning = releaseStoreFile != null &&
     releaseStorePassword.isNotEmpty() &&
     releaseKeyAlias.isNotEmpty() &&
     releaseKeyPassword.isNotEmpty()
@@ -24,13 +42,14 @@ val isReleaseTaskRequested = gradle.startParameter.taskNames.any { taskName ->
     taskName.contains("Release", ignoreCase = true)
 }
 
-if (hasReleaseSigning && !File(releaseStoreFilePath).isFile) {
-    throw GradleException("RELEASE_STORE_FILE does not exist: $releaseStoreFilePath")
+if (releaseStoreFile != null && !releaseStoreFile.isFile) {
+    throw GradleException("Release signing store file does not exist: ${releaseStoreFile.path}")
 }
 if (isReleaseTaskRequested && !hasReleaseSigning) {
     throw GradleException(
-        "Missing release signing env vars. Required: " +
-            "RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD"
+        "Missing release signing config. Set gradle properties or local.properties keys " +
+            "release.storeFile, release.storePassword, release.keyAlias, release.keyPassword " +
+            "or env vars RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD"
     )
 }
 
@@ -53,7 +72,7 @@ android {
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
-                storeFile = file(releaseStoreFilePath)
+                storeFile = releaseStoreFile
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword

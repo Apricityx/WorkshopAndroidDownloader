@@ -203,6 +203,7 @@ data class WorkshopUiState(
     val addGameState: AddGameUiState = AddGameUiState(),
     val gameWorkshopState: GameWorkshopUiState? = null,
     val workshopItemDetailState: WorkshopItemDetailUiState? = null,
+    val workshopItemDetailBackStack: List<WorkshopItemDetailUiState> = emptyList(),
     val downloadCenterState: DownloadCenterUiState = DownloadCenterUiState(),
     val selectedDownloadTaskId: String? = null,
     val settingsState: SettingsUiState = SettingsUiState(),

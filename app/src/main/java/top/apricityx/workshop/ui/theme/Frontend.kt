@@ -29,6 +29,10 @@ fun isLiteLiquidGlassFrontendEnabled(): Boolean =
     LocalWorkshopFrontendMode.current == AppFrontendMode.LiteLiquidGlass
 
 @Composable
+fun shouldReduceLiquidGlassEffects(): Boolean =
+    isLiteLiquidGlassFrontendEnabled()
+
+@Composable
 fun workshopListContentPadding(
     topExtra: Dp = 0.dp,
     bottomExtra: Dp = 0.dp,

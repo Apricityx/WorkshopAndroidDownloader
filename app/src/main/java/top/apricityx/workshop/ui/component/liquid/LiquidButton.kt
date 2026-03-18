@@ -30,7 +30,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.Capsule
-import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
+import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -62,7 +62,7 @@ fun LiquidButton(
     } else {
         MaterialTheme.colorScheme.surface.copy(alpha = 0.18f)
     }
-    if (isLiteLiquidGlassFrontendEnabled()) {
+    if (shouldReduceLiquidGlassEffects()) {
         val liteBorderColor = if (tint.isSpecified) {
             tint.copy(alpha = 0.2f)
         } else {

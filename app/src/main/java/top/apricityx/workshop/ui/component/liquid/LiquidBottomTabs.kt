@@ -66,7 +66,7 @@ import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
-import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
+import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -84,7 +84,7 @@ fun LiquidBottomTabs(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    if (isLiteLiquidGlassFrontendEnabled()) {
+    if (shouldReduceLiquidGlassEffects()) {
         LiteLiquidBottomTabs(
             selectedTabIndex = selectedTabIndex,
             onTabSelected = onTabSelected,

@@ -54,7 +54,7 @@ import top.apricityx.workshop.ui.component.liquid.LiquidSlider
 import top.apricityx.workshop.ui.component.liquid.LiquidToggle
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
-import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
+import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
 import kotlin.math.round
 
 private enum class WorkshopButtonVariant {
@@ -255,7 +255,7 @@ fun WorkshopSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    if (!isLiquidGlassFrontendEnabled() || isLiteLiquidGlassFrontendEnabled()) {
+    if (!isLiquidGlassFrontendEnabled() || shouldReduceLiquidGlassEffects()) {
         MaterialSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -358,7 +358,7 @@ fun WorkshopSlider(
         onValueChange(snappedValue)
     }
 
-    if (!isLiquidGlassFrontendEnabled() || isLiteLiquidGlassFrontendEnabled()) {
+    if (!isLiquidGlassFrontendEnabled() || shouldReduceLiquidGlassEffects()) {
         MaterialSlider(
             value = clampedValue,
             onValueChange = emitValue,
