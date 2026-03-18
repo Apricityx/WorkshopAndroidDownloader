@@ -59,6 +59,7 @@ import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ModLibraryDisplayMode
 import top.apricityx.workshop.WorkshopScreenDestination
 import top.apricityx.workshop.WorkshopUiState
+import top.apricityx.workshop.downloadedPublishedFileIds
 import top.apricityx.workshop.isLibraryRoot
 import top.apricityx.workshop.showsDownloadCenterShortcut
 import top.apricityx.workshop.showsSettingsShortcut
@@ -397,11 +398,7 @@ private fun WorkshopScreenScene(
                 )
 
                 WorkshopScreenDestination.GameWorkshop -> state.gameWorkshopState?.let { workshopState ->
-                    val downloadedItemIds = state.modLibraryState.items
-                        .asSequence()
-                        .filter { it.appId == workshopState.game.appId }
-                        .map { it.publishedFileId }
-                        .toSet()
+                    val downloadedItemIds = state.modLibraryState.items.downloadedPublishedFileIds(workshopState.game.appId)
                     val activeDownloadItemIds = state.downloadCenterState.activeTasks
                         .asSequence()
                         .filter { it.appId == workshopState.game.appId }
@@ -424,8 +421,11 @@ private fun WorkshopScreenScene(
                 }
 
                 WorkshopScreenDestination.WorkshopItemDetail -> state.workshopItemDetailState?.let { detailState ->
+                    val downloadedRequiredItemIds = state.modLibraryState.items
+                        .downloadedPublishedFileIds(detailState.item.appId)
                     WorkshopItemDetailScreen(
                         state = detailState,
+                        downloadedRequiredItemIds = downloadedRequiredItemIds,
                         onRetry = actions.onRetryWorkshopItemDetail,
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onDownload = actions.onDownloadSingleItem,

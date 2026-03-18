@@ -151,6 +151,12 @@ fun List<DownloadedModEntry>.groupedForDisplay(): List<DownloadedModGroup> =
 fun List<DownloadedModGroup>.latestVersionsForUpdateCheck(): List<DownloadedModEntry> =
     map(DownloadedModGroup::latestVersion)
 
+fun List<DownloadedModGroup>.downloadedPublishedFileIds(appId: UInt? = null): Set<ULong> =
+    asSequence()
+        .filter { group -> appId == null || group.appId == appId }
+        .map(DownloadedModGroup::publishedFileId)
+        .toSet()
+
 private val downloadedModEntryDisplayComparator =
     compareByDescending<DownloadedModEntry> { it.storedAtMillis }
         .thenByDescending { it.versionUpdatedAtMillis ?: Long.MIN_VALUE }

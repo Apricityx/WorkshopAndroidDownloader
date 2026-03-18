@@ -36,6 +36,7 @@ import top.apricityx.workshop.formatBinaryFileSize
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.component.MessageTone
+import top.apricityx.workshop.ui.component.MetricPill
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ScreenSummaryCard
 import top.apricityx.workshop.ui.component.WorkshopButton
@@ -49,6 +50,7 @@ import top.apricityx.workshop.ui.theme.workshopChromePadding
 @Composable
 fun WorkshopItemDetailScreen(
     state: WorkshopItemDetailUiState,
+    downloadedRequiredItemIds: Set<ULong>,
     onRetry: () -> Unit,
     onTranslateDescription: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
@@ -208,6 +210,7 @@ fun WorkshopItemDetailScreen(
                     requiredItems.forEach { requiredItem ->
                         RequiredItemLine(
                             item = requiredItem,
+                            isDownloaded = requiredItem.publishedFileId in downloadedRequiredItemIds,
                             onClick = { onOpenRequiredItem(requiredItem.toBrowseItem()) },
                         )
                     }
@@ -305,13 +308,18 @@ private fun DetailLine(
 @Composable
 private fun RequiredItemLine(
     item: WorkshopRequiredItem,
+    isDownloaded: Boolean,
     onClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            containerColor = if (isDownloaded) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+            } else {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+            },
         ),
     ) {
         Row(
@@ -349,14 +357,24 @@ private fun RequiredItemLine(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = item.title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (isDownloaded) {
+                        MetricPill(text = "已下载")
+                    }
+                }
                 Text(
                     text = item.descriptionSnippet.ifBlank { "暂无描述" },
                     style = MaterialTheme.typography.bodySmall,

@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
                 downloadDependencyWarningDialogState?.let { dialogState ->
                     WorkshopDialog(
                         onDismissRequest = { downloadDependencyWarningDialogState = null },
-                        title = { Text("该模组有前置内容") },
+                        title = { Text("还有前置未下载") },
                         buttons = {
                             WorkshopOutlinedButton(onClick = { downloadDependencyWarningDialogState = null }) {
                                 Text("取消")
@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
                         },
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("「${dialogState.item.title}」依赖 ${dialogState.requiredItems.size} 个前置工坊物品，未准备完整时可能无法正常使用。")
+                            Text("「${dialogState.item.title}」还有 ${dialogState.requiredItems.size} 个前置工坊物品未下载，未准备完整时可能无法正常使用。")
                             Text(
                                 text = dialogState.requiredItems.joinToString(separator = "\n") { "• ${it.title}" },
                             )

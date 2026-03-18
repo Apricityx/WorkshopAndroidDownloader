@@ -1623,6 +1623,7 @@ class WorkshopViewModel(
         )
 
     suspend fun loadRequiredItemsForDownload(item: WorkshopBrowseItem): List<WorkshopRequiredItem> {
+        val downloadedItemIds = _uiState.value.modLibraryState.items.downloadedPublishedFileIds(item.appId)
         val currentDetail = _uiState.value.workshopItemDetailState
             ?.takeIf { detailState ->
                 detailState.item.appId == item.appId &&
@@ -1630,12 +1631,16 @@ class WorkshopViewModel(
             }
             ?.detail
         if (currentDetail != null) {
-            return currentDetail.requiredItems
+            return currentDetail.requiredItems.filterNot { requiredItem ->
+                requiredItem.publishedFileId in downloadedItemIds
+            }
         }
 
         return runCatching {
             withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
-                detailRepository.loadWorkshopItemDetail(item).requiredItems
+                detailRepository.loadWorkshopItemDetail(item).requiredItems.filterNot { requiredItem ->
+                    requiredItem.publishedFileId in downloadedItemIds
+                }
             }
         }.getOrElse {
             emptyList()
