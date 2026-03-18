@@ -14,10 +14,11 @@ class AdbDownloadCommandParserTest {
             ),
         )
 
-        assertThat(command).isNotNull()
-        assertThat(command?.appIdText).isEqualTo("646570")
-        assertThat(command?.publishedFileIdText).isEqualTo("3677098410")
-        assertThat(command?.autoStart).isTrue()
+        assertThat(command).isInstanceOf(AdbDownloadCommand::class.java)
+        val downloadCommand = command as AdbDownloadCommand
+        assertThat(downloadCommand.appIdText).isEqualTo("646570")
+        assertThat(downloadCommand.publishedFileIdText).isEqualTo("3677098410")
+        assertThat(downloadCommand.autoStart).isTrue()
     }
 
     @Test
@@ -31,10 +32,11 @@ class AdbDownloadCommandParserTest {
             ),
         )
 
-        assertThat(command).isNotNull()
-        assertThat(command?.appIdText).isEqualTo("480")
-        assertThat(command?.publishedFileIdText).isEqualTo("1234567890")
-        assertThat(command?.autoStart).isTrue()
+        assertThat(command).isInstanceOf(AdbDownloadCommand::class.java)
+        val downloadCommand = command as AdbDownloadCommand
+        assertThat(downloadCommand.appIdText).isEqualTo("480")
+        assertThat(downloadCommand.publishedFileIdText).isEqualTo("1234567890")
+        assertThat(downloadCommand.autoStart).isTrue()
     }
 
     @Test
@@ -45,5 +47,23 @@ class AdbDownloadCommandParserTest {
         )
 
         assertThat(command).isNull()
+    }
+
+    @Test
+    fun `search probe extras parse into probe command`() {
+        val command = AdbDownloadCommandParser.parse(
+            action = AdbDownloadCommandParser.actionWorkshopSearchProbe,
+            extras = mapOf(
+                "app_id" to "646570",
+                "search_query" to "nsfw",
+                "expected_published_file_id" to "3367459929",
+            ),
+        )
+
+        assertThat(command).isInstanceOf(AdbWorkshopSearchProbeCommand::class.java)
+        val probeCommand = command as AdbWorkshopSearchProbeCommand
+        assertThat(probeCommand.appIdText).isEqualTo("646570")
+        assertThat(probeCommand.searchQuery).isEqualTo("nsfw")
+        assertThat(probeCommand.expectedPublishedFileIdText).isEqualTo("3367459929")
     }
 }

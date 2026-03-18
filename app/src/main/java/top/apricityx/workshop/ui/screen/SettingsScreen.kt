@@ -285,6 +285,9 @@ fun SettingsScreen(
                                     AppFrontendMode.LiquidGlass ->
                                         "新的液态玻璃外观，完全重构了前端。"
 
+                                    AppFrontendMode.LiteLiquidGlass ->
+                                        "保留液态玻璃的视觉语言，但减少滚动时的模糊和动态效果，优先保证流畅度。"
+
                                     AppFrontendMode.Legacy ->
                                         "保留稳定的经典 Material 风格界面。"
                                 },

@@ -1,7 +1,9 @@
 package top.apricityx.workshop
 
 import android.app.Application
+import android.app.KeyguardManager
 import com.elvishew.xlog.XLog.Log
+import android.os.UserManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -31,8 +33,13 @@ import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import top.apricityx.workshop.steam.protocol.SteamPublishedFileQuery
+import top.apricityx.workshop.steam.protocol.STEAM_PUBLISHED_FILE_QUERY_TYPE_RANKED_BY_TEXT_SEARCH
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.data.GameLibraryRepository
 import top.apricityx.workshop.data.SteamGame
@@ -41,6 +48,7 @@ import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.data.WorkshopBrowseRepository
 import top.apricityx.workshop.data.WorkshopDetailRepository
 import top.apricityx.workshop.data.WorkshopRequiredItem
+import top.apricityx.workshop.data.toWorkshopBrowsePage
 import top.apricityx.workshop.update.UpdateCheckExecutionResult
 import top.apricityx.workshop.update.UpdateDownloadResolution
 import top.apricityx.workshop.update.UpdateReleaseInfo
@@ -1647,7 +1655,14 @@ class WorkshopViewModel(
         }
     }
 
-    fun applyAdbCommand(command: AdbDownloadCommand) {
+    fun applyAdbCommand(command: AdbCommand) {
+        when (command) {
+            is AdbDownloadCommand -> applyAdbDownloadCommand(command)
+            is AdbWorkshopSearchProbeCommand -> applyAdbWorkshopSearchProbeCommand(command)
+        }
+    }
+
+    private fun applyAdbDownloadCommand(command: AdbDownloadCommand) {
         Log.i(
             WorkshopAppContract.logTag,
             "ADB command received appId=${command.appIdText} publishedFileId=${command.publishedFileIdText} autoStart=${command.autoStart}",
@@ -1682,6 +1697,65 @@ class WorkshopViewModel(
             WorkshopAppContract.logTag,
             "ADB download task enqueued count=$enqueued appId=$appId publishedFileId=$publishedFileId",
         )
+    }
+
+    private fun applyAdbWorkshopSearchProbeCommand(command: AdbWorkshopSearchProbeCommand) {
+        Log.i(
+            WorkshopAppContract.logTag,
+            "ADB workshop search probe received appId=${command.appIdText} searchQuery=${command.searchQuery} expectedPublishedFileId=${command.expectedPublishedFileIdText.ifBlank { "-" }}",
+        )
+
+        val appId = command.appIdText.toUIntOrNull()
+        if (appId == null) {
+            Log.w(WorkshopAppContract.logTag, "ADB workshop search probe rejected: invalid appId=${command.appIdText}")
+            return
+        }
+        val expectedPublishedFileId = command.expectedPublishedFileIdText
+            .takeIf(String::isNotBlank)
+            ?.toULongOrNull()
+        if (command.expectedPublishedFileIdText.isNotBlank() && expectedPublishedFileId == null) {
+            Log.w(
+                WorkshopAppContract.logTag,
+                "ADB workshop search probe rejected: invalid expectedPublishedFileId=${command.expectedPublishedFileIdText}",
+            )
+            return
+        }
+        val normalizedQuery = command.searchQuery.trim()
+        if (normalizedQuery.isBlank()) {
+            Log.w(WorkshopAppContract.logTag, "ADB workshop search probe rejected: empty search query")
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS * 2) {
+                    browseWorkshopPage(
+                        appId = appId,
+                        searchQuery = normalizedQuery,
+                        sortOption = WorkshopBrowseSortOption.MostPopular,
+                        timeWindow = WorkshopBrowseTimeWindow.OneWeek,
+                        page = 1,
+                    )
+                }
+            }.onSuccess { page ->
+                val topItems = page.items.take(10).joinToString(" | ") { item ->
+                    "${item.publishedFileId}:${item.title.take(32)}"
+                }
+                val expectedFound = expectedPublishedFileId?.let { publishedFileId ->
+                    page.items.any { item -> item.publishedFileId == publishedFileId }
+                }
+                Log.i(
+                    WorkshopAppContract.logTag,
+                    "ADB workshop search probe result appId=$appId query=$normalizedQuery itemCount=${page.items.size} hasNext=${page.hasNextPage} expectedId=${expectedPublishedFileId ?: "-"} expectedFound=${expectedFound ?: "n/a"} topItems=$topItems",
+                )
+            }.onFailure { error ->
+                Log.w(
+                    WorkshopAppContract.logTag,
+                    "ADB workshop search probe failed appId=$appId query=$normalizedQuery errorType=${error.javaClass.simpleName} errorMessage=${error.message}",
+                    error,
+                )
+            }
+        }
     }
 
     private fun refreshLibrary() {
@@ -1890,11 +1964,8 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                ensureSteamWebSessionPrimed()
-            }
-            runCatching {
                 withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
-                    browseRepository.browseGameWorkshop(
+                    browseWorkshopPage(
                         appId = game.appId,
                         searchQuery = searchQuery,
                         sortOption = sortOption,
@@ -2272,10 +2343,97 @@ class WorkshopViewModel(
         }
     }
 
+    private suspend fun browseWorkshopPage(
+        appId: UInt,
+        searchQuery: String,
+        sortOption: WorkshopBrowseSortOption,
+        timeWindow: WorkshopBrowseTimeWindow,
+        page: Int,
+    ) =
+        browseWorkshopPageWithAuthenticatedFallback(
+            appId = appId,
+            searchQuery = searchQuery.trim(),
+            sortOption = sortOption,
+            timeWindow = timeWindow,
+            page = page,
+        )
+
+    private suspend fun browseWorkshopPageWithAuthenticatedFallback(
+        appId: UInt,
+        searchQuery: String,
+        sortOption: WorkshopBrowseSortOption,
+        timeWindow: WorkshopBrowseTimeWindow,
+        page: Int,
+    ): top.apricityx.workshop.data.WorkshopBrowsePage {
+        if (searchQuery.isNotBlank()) {
+            val accountId = steamAuthRepository.activeAccountId()
+            val publishedFileLanguage = settingsRepository.getSteamLanguagePreference().toSteamPublishedFileLanguage()
+            val authenticatedResult = runCatching {
+                steamAuthRepository.queryPublishedFiles(
+                    accountId = accountId,
+                    query = SteamPublishedFileQuery(
+                        appId = appId,
+                        searchText = searchQuery,
+                        page = page,
+                        pageSize = WORKSHOP_ITEMS_PER_PAGE,
+                        queryType = STEAM_PUBLISHED_FILE_QUERY_TYPE_RANKED_BY_TEXT_SEARCH,
+                        language = publishedFileLanguage,
+                    ),
+                )
+            }.onFailure { error ->
+                Log.w(
+                    WorkshopAppContract.logTag,
+                    "Workshop authenticated published-file query failed; falling back to community browse appId=$appId page=$page query=$searchQuery language=$publishedFileLanguage error=${error.message}",
+                    error,
+                )
+            }.getOrNull()
+            if (authenticatedResult != null) {
+                Log.i(
+                    WorkshopAppContract.logTag,
+                    "Workshop search using authenticated published-file query appId=$appId page=$page query=$searchQuery language=$publishedFileLanguage total=${authenticatedResult.total} returned=${authenticatedResult.items.size}",
+                )
+                return authenticatedResult.toWorkshopBrowsePage(
+                    page = page,
+                    pageSize = WORKSHOP_ITEMS_PER_PAGE,
+                )
+            }
+        }
+
+        ensureSteamWebSessionPrimed()
+        val browseUrl = buildWorkshopBrowseUrl(
+            appId = appId,
+            searchQuery = searchQuery,
+            sortOption = sortOption,
+            timeWindow = timeWindow,
+            page = page,
+        )
+        if (searchQuery.isNotBlank()) {
+            logSteamWebCookiesForUrl("community-browse-before-search", browseUrl)
+        }
+        val pageResult = browseRepository.browseGameWorkshop(
+            appId = appId,
+            searchQuery = searchQuery,
+            sortOption = sortOption,
+            timeWindow = timeWindow,
+            page = page,
+        )
+        if (searchQuery.isNotBlank()) {
+            logSteamWebCookiesForUrl("community-browse-after-search", browseUrl)
+        }
+        return pageResult
+    }
+
     private suspend fun ensureSteamWebSessionPrimed() {
         val accountId = steamAuthRepository.activeAccountId()
         val hasAuthenticatedSteamSession = accountId
             ?.let(steamAuthRepository::accountSessionFor) != null
+        val appContext = getApplication<Application>()
+        val keyguardManager = appContext.getSystemService(KeyguardManager::class.java)
+        val userManager = appContext.getSystemService(UserManager::class.java)
+        Log.i(
+            WorkshopAppContract.logTag,
+            "Steam web session prime start accountIdPresent=${accountId != null} hasAuthenticatedSession=$hasAuthenticatedSteamSession deviceLocked=${keyguardManager?.isDeviceLocked} userUnlocked=${userManager?.isUserUnlocked}",
+        )
         if (!hasAuthenticatedSteamSession) {
             primedSteamWebSessionAccountId = accountId
             isSteamWebSessionPrimed = true
@@ -2284,26 +2442,182 @@ class WorkshopViewModel(
         if (isSteamWebSessionPrimed && primedSteamWebSessionAccountId == accountId) {
             return
         }
+        val storePreferencesUrl = "https://store.steampowered.com/account/preferences/".toHttpUrl()
+        val communityLoginUrl = "https://steamcommunity.com/login/home/?goto=workshop%2F".toHttpUrl()
         withContext(Dispatchers.IO) {
-            listOf(
-                "https://login.steampowered.com/",
-                "https://store.steampowered.com/account/preferences/",
-                "https://steamcommunity.com/login/home/?goto=workshop%2F",
-            ).forEach { url ->
-                httpClient.newCall(
-                    Request.Builder()
-                        .url(url)
-                        .header("User-Agent", STEAM_WEB_SESSION_USER_AGENT)
-                        .build(),
-                ).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        error("Steam web session prime request failed: ${response.code}")
-                    }
+            listOf(storePreferencesUrl, communityLoginUrl).forEach { url ->
+                runCatching {
+                    primeSteamWebSessionUrl(url)
+                }.onFailure { error ->
+                    Log.w(
+                        WorkshopAppContract.logTag,
+                        "Steam web session prime skipped for host=${url.host} error=${error.message}",
+                    )
                 }
             }
+            logSteamWebCookiesForUrl("store-after-prime", storePreferencesUrl)
+            logSteamWebCookiesForUrl("community-after-prime", communityLoginUrl)
         }
         primedSteamWebSessionAccountId = accountId
         isSteamWebSessionPrimed = true
+    }
+
+    private fun primeSteamWebSessionUrl(url: HttpUrl) {
+        httpClient.newCall(
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", STEAM_WEB_SESSION_USER_AGENT)
+                .build(),
+        ).execute().use { response ->
+            if (!response.isSuccessful) {
+                error("Steam web session prime request failed: ${response.code}")
+            }
+        }
+    }
+
+    private fun logSteamWebCookiesForUrl(
+        label: String,
+        url: HttpUrl,
+    ) {
+        val cookieSummary = steamWebCookieJar.loadForRequest(url)
+            .sortedWith(compareBy({ it.name }, { it.domain }, { it.path }))
+            .joinToString(",") { cookie -> "${cookie.name}@${cookie.domain}${cookie.path}" }
+            .ifBlank { "-" }
+        Log.i(
+            WorkshopAppContract.logTag,
+            "Steam web cookies[$label] host=${url.host} count=${steamWebCookieJar.loadForRequest(url).size} entries=$cookieSummary",
+        )
+    }
+
+    private fun buildWorkshopBrowseUrl(
+        appId: UInt,
+        searchQuery: String,
+        sortOption: WorkshopBrowseSortOption,
+        timeWindow: WorkshopBrowseTimeWindow,
+        page: Int,
+    ): HttpUrl =
+        "https://steamcommunity.com/".toHttpUrl()
+            .newBuilder()
+            .addPathSegments("workshop/browse/")
+            .addQueryParameter("appid", appId.toString())
+            .addQueryParameter("searchtext", searchQuery)
+            .addQueryParameter("childpublishedfileid", "0")
+            .addQueryParameter("l", settingsRepository.getSteamLanguagePreference().requestValue)
+            .addQueryParameter("browsesort", sortOption.browseSortValue)
+            .addQueryParameter("section", "readytouseitems")
+            .addQueryParameter("actualsort", sortOption.actualSortValue)
+            .addQueryParameter("p", page.toString())
+            .addQueryParameter("numperpage", WORKSHOP_ITEMS_PER_PAGE.toString())
+            .apply {
+                if (sortOption.supportsTimeWindow) {
+                    addQueryParameter("days", timeWindow.daysValue.toString())
+                }
+            }
+            .build()
+
+    private fun performSteamWebTransferLogin(
+        storeSessionId: String,
+        webLoginContext: SteamWebLoginContext,
+        redirectUrl: String,
+    ): Boolean {
+        val sanitizedRedirectUrl = sanitizeSteamTransferLoginRedirect(redirectUrl)
+        val finalizeLoginBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("nonce", webLoginContext.accessToken)
+            .addFormDataPart("sessionid", storeSessionId)
+            .addFormDataPart("redir", sanitizedRedirectUrl)
+            .build()
+        val finalizeLoginResponse = httpClient.newCall(
+            Request.Builder()
+                .url("https://login.steampowered.com/jwt/finalizelogin")
+                .header("Accept", "application/json, text/plain, */*")
+                .header("Origin", "https://store.steampowered.com")
+                .header("Referer", sanitizedRedirectUrl)
+                .header("User-Agent", STEAM_WEB_SESSION_USER_AGENT)
+                .post(finalizeLoginBody)
+                .build(),
+        ).execute().use { response ->
+            val payload = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                error("Steam finalizelogin request failed: ${response.code}")
+            }
+            val payloadSummary = summarizeSteamFinalizeLoginPayload(payload)
+            Log.i(
+                WorkshopAppContract.logTag,
+                "Steam finalizelogin response status=${response.code} contentType=${response.body?.contentType()} summary=$payloadSummary",
+            )
+            parseSteamFinalizeLoginResponse(payload)
+        }
+        val finalizedSteamId = finalizeLoginResponse.steamId
+            ?.takeIf(String::isNotBlank)
+            ?: webLoginContext.steamId.toString().also {
+                Log.w(
+                    WorkshopAppContract.logTag,
+                    "Steam finalizelogin response did not include steamID; falling back to authenticated account steamId.",
+                )
+            }
+        if (finalizeLoginResponse.transferInfo.isEmpty()) {
+            error("Steam finalizelogin response did not include transfer_info.")
+        }
+
+        var allTransfersSucceeded = true
+        finalizeLoginResponse.transferInfo.forEach { transferInfo ->
+            val transferUrl = runCatching { transferInfo.url.toHttpUrl() }
+                .getOrElse { error ->
+                    allTransfersSucceeded = false
+                    Log.w(
+                        WorkshopAppContract.logTag,
+                        "Steam transfer-login returned an invalid transfer URL: ${transferInfo.url}",
+                        error,
+                    )
+                    return@forEach
+                }
+            val transferBodyBuilder = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+            transferInfo.params.forEach { (key, value) ->
+                transferBodyBuilder.addFormDataPart(key, value)
+            }
+            transferBodyBuilder.addFormDataPart("steamID", finalizedSteamId)
+
+            httpClient.newCall(
+                Request.Builder()
+                    .url(transferUrl)
+                    .header("Accept", "application/json, text/plain, */*")
+                    .header("Origin", "https://store.steampowered.com")
+                    .header("Referer", sanitizedRedirectUrl)
+                    .header("User-Agent", STEAM_WEB_SESSION_USER_AGENT)
+                    .post(transferBodyBuilder.build())
+                    .build(),
+            ).execute().use { response ->
+                val payload = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    allTransfersSucceeded = false
+                    Log.w(
+                        WorkshopAppContract.logTag,
+                        "Steam transfer-login failed for ${transferUrl.host} with status=${response.code}.",
+                    )
+                    return@use
+                }
+                val responseCookies = response.headers("Set-Cookie")
+                    .mapNotNull { header -> header.substringBefore("=").takeIf(String::isNotBlank) }
+                    .distinct()
+                    .joinToString(",")
+                    .ifBlank { "-" }
+                val transferResult = parseSteamSetTokenResult(payload)
+                Log.i(
+                    WorkshopAppContract.logTag,
+                    "Steam transfer-login response host=${transferUrl.host} status=${response.code} result=${transferResult ?: "blank"} setCookieNames=$responseCookies",
+                )
+                if (transferResult != null && transferResult != 1) {
+                    allTransfersSucceeded = false
+                    Log.w(
+                        WorkshopAppContract.logTag,
+                        "Steam transfer-login returned result=$transferResult for ${transferUrl.host}.",
+                    )
+                }
+            }
+        }
+        return allTransfersSucceeded
     }
 
     private fun startSteamConfirmationWait() {
@@ -2495,6 +2809,7 @@ class WorkshopViewModel(
 
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
+        private const val WORKSHOP_ITEMS_PER_PAGE = 30
         private const val STEAM_WEB_SESSION_USER_AGENT = "WorkshopOnAndroid/1.0"
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"
         private const val WORKSHOP_CONNECTION_FAILURE_MESSAGE =

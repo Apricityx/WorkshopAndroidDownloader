@@ -92,13 +92,16 @@ fun SteamWorkshopDemoTheme(
     }
     val colors = when (frontendMode) {
         AppFrontendMode.LiquidGlass -> if (darkTheme) LiquidDarkColors else LiquidLightColors
+        AppFrontendMode.LiteLiquidGlass -> if (darkTheme) LiquidDarkColors else LiquidLightColors
         AppFrontendMode.Legacy -> if (darkTheme) LegacyDarkColors else LegacyLightColors
     }
+    val usesLiquidShapes =
+        frontendMode == AppFrontendMode.LiquidGlass || frontendMode == AppFrontendMode.LiteLiquidGlass
 
     CompositionLocalProvider(LocalWorkshopFrontendMode provides frontendMode) {
         MaterialTheme(
             colorScheme = colors,
-            shapes = if (frontendMode == AppFrontendMode.LiquidGlass) LiquidGlassShapes else Shapes(),
+            shapes = if (usesLiquidShapes) LiquidGlassShapes else Shapes(),
             content = content,
         )
     }

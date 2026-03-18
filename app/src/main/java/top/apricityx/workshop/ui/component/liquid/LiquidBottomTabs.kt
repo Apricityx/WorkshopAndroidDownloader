@@ -2,9 +2,11 @@ package top.apricityx.workshop.ui.component.liquid
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,10 +14,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +66,7 @@ import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
+import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -78,6 +84,16 @@ fun LiquidBottomTabs(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
+    if (isLiteLiquidGlassFrontendEnabled()) {
+        LiteLiquidBottomTabs(
+            selectedTabIndex = selectedTabIndex,
+            onTabSelected = onTabSelected,
+            tabsCount = tabsCount,
+            modifier = modifier,
+            content = content,
+        )
+        return
+    }
     val isLightTheme = !isSystemInDarkTheme()
     val accentColor = if (isLightTheme) {
         Color(0xFF0088FF)
@@ -306,6 +322,102 @@ fun LiquidBottomTabs(
                 .height(56.dp)
                 .fillMaxWidth(1f / tabsCount),
         )
+    }
+}
+
+@Composable
+private fun LiteLiquidBottomTabs(
+    selectedTabIndex: () -> Int,
+    onTabSelected: (Int) -> Unit,
+    tabsCount: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val latestSelectedTabIndex by rememberUpdatedState(selectedTabIndex)
+    val latestOnTabSelected by rememberUpdatedState(onTabSelected)
+    var currentIndex by remember {
+        mutableIntStateOf(latestSelectedTabIndex())
+    }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { latestSelectedTabIndex() }
+            .collectLatest { index ->
+                currentIndex = index
+            }
+    }
+
+    LaunchedEffect(latestOnTabSelected) {
+        snapshotFlow { currentIndex }
+            .drop(1)
+            .collectLatest { index ->
+                latestOnTabSelected(index)
+            }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier.height(64.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val indicatorProgress by animateFloatAsState(
+            targetValue = currentIndex.toFloat().coerceIn(0f, (tabsCount - 1).coerceAtLeast(0).toFloat()),
+            label = "liteLiquidBottomTabsIndicator",
+        )
+        val density = LocalDensity.current
+        val isLightTheme = !isSystemInDarkTheme()
+        val containerColor = if (isLightTheme) {
+            Color.White.copy(alpha = 0.72f)
+        } else {
+            Color(0xFF112131).copy(alpha = 0.84f)
+        }
+        val indicatorColor = if (isLightTheme) {
+            Color(0xFF0088FF).copy(alpha = 0.16f)
+        } else {
+            Color(0xFF4FA6FF).copy(alpha = 0.22f)
+        }
+        val borderColor = if (isLightTheme) {
+            Color.Black.copy(alpha = 0.06f)
+        } else {
+            Color.White.copy(alpha = 0.08f)
+        }
+        val innerPadding = 4.dp
+        val indicatorWidthPx = with(density) {
+            ((constraints.maxWidth.toFloat() - innerPadding.toPx() * 2f) / tabsCount.coerceAtLeast(1)).coerceAtLeast(0f)
+        }
+        val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = Capsule(),
+            color = containerColor,
+            border = BorderStroke(1.dp, borderColor),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(indicatorWidthDp)
+                        .graphicsLayer {
+                            translationX = indicatorProgress * indicatorWidthPx
+                        }
+                        .fillMaxHeight(),
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        shape = Capsule(),
+                        color = indicatorColor,
+                    ) {}
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = content,
+                )
+            }
+        }
     }
 }
 

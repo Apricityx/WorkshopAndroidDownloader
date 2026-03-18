@@ -1,6 +1,7 @@
 package top.apricityx.workshop.ui.component
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,6 +46,7 @@ import com.kyant.backdrop.shadow.Shadow
 import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
+import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
 
 @Composable
 fun WorkshopLiquidGlassWallpaper(
@@ -131,14 +133,28 @@ fun WorkshopGlassSurface(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val liquidEnabled = isLiquidGlassFrontendEnabled()
+    val liteLiquidEnabled = isLiteLiquidGlassFrontendEnabled()
     val backdrop = LocalWorkshopBackdrop.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    val liteSurfaceColor = if (liteLiquidEnabled) {
+        surfaceColor.copy(
+            alpha = (surfaceColor.alpha + if (isDark) 0.34f else 0.42f).coerceAtMost(0.92f),
+        )
+    } else {
+        surfaceColor
+    }
+    val liteBorderColor = if (liteLiquidEnabled) {
+        borderColor.copy(alpha = borderColor.alpha.coerceAtLeast(if (isDark) 0.18f else 0.14f))
+    } else {
+        borderColor
+    }
 
-    if (!liquidEnabled || backdrop == null) {
+    if (!liquidEnabled || backdrop == null || liteLiquidEnabled) {
         Surface(
             modifier = modifier,
             shape = shape,
-            color = surfaceColor,
+            color = if (liteLiquidEnabled) liteSurfaceColor else surfaceColor,
+            border = if (liteLiquidEnabled) BorderStroke(1.dp, liteBorderColor) else null,
             contentColor = contentColor,
         ) {
             CompositionLocalProvider(LocalContentColor provides contentColor) {

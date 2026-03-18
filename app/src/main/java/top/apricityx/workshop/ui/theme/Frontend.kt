@@ -21,7 +21,12 @@ val LocalWorkshopChromePadding = staticCompositionLocalOf { WorkshopChromePaddin
 
 @Composable
 fun isLiquidGlassFrontendEnabled(): Boolean =
-    LocalWorkshopFrontendMode.current == AppFrontendMode.LiquidGlass
+    LocalWorkshopFrontendMode.current == AppFrontendMode.LiquidGlass ||
+        LocalWorkshopFrontendMode.current == AppFrontendMode.LiteLiquidGlass
+
+@Composable
+fun isLiteLiquidGlassFrontendEnabled(): Boolean =
+    LocalWorkshopFrontendMode.current == AppFrontendMode.LiteLiquidGlass
 
 @Composable
 fun workshopListContentPadding(

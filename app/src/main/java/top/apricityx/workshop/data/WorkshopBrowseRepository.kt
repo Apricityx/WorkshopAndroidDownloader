@@ -15,6 +15,7 @@ import okhttp3.Request
 import top.apricityx.workshop.SteamLanguagePreference
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
+import top.apricityx.workshop.steam.protocol.SteamPublishedFileQueryResult
 
 class WorkshopBrowseRepository(
     private val client: OkHttpClient,
@@ -197,3 +198,20 @@ internal object WorkshopBrowseParser {
         )
     }
 }
+
+internal fun SteamPublishedFileQueryResult.toWorkshopBrowsePage(page: Int, pageSize: Int): WorkshopBrowsePage =
+    WorkshopBrowsePage(
+        items = items.map { item ->
+            WorkshopBrowseItem(
+                appId = item.appId,
+                publishedFileId = item.publishedFileId,
+                previewImageUrl = item.previewUrl,
+                title = item.title,
+                authorName = "",
+                descriptionSnippet = item.description,
+                fileSizeBytes = item.fileSizeBytes,
+            )
+        },
+        page = page,
+        hasNextPage = total > page * pageSize || !nextCursor.isNullOrBlank(),
+    )

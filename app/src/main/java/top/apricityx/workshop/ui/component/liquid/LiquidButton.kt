@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -15,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
@@ -27,6 +30,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.Capsule
+import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -57,6 +61,40 @@ fun LiquidButton(
         surfaceColor
     } else {
         MaterialTheme.colorScheme.surface.copy(alpha = 0.18f)
+    }
+    if (isLiteLiquidGlassFrontendEnabled()) {
+        val tintedSurfaceColor = if (tint.isSpecified) {
+            tint.copy(alpha = 0.12f).compositeOver(fallbackSurfaceColor)
+        } else {
+            fallbackSurfaceColor
+        }
+        Surface(
+            modifier = modifier.height(height),
+            shape = Capsule(),
+            color = tintedSurfaceColor,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .then(
+                        if (onClick != null) {
+                            Modifier.clickable(
+                                interactionSource = null,
+                                indication = LocalIndication.current,
+                                role = Role.Button,
+                                onClick = onClick,
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(horizontal = horizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
+        return
     }
 
     Row(

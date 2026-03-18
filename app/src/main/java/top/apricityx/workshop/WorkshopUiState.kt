@@ -2,6 +2,8 @@ package top.apricityx.workshop
 
 import top.apricityx.workshop.data.SteamGame
 import top.apricityx.workshop.data.WorkshopBrowseItem
+import top.apricityx.workshop.steam.protocol.STEAM_LANGUAGE_ENGLISH
+import top.apricityx.workshop.steam.protocol.STEAM_LANGUAGE_SIMPLIFIED_CHINESE
 import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 
@@ -50,6 +52,7 @@ enum class AppFrontendMode(
     val storageValue: String,
 ) {
     LiquidGlass("liquid_glass"),
+    LiteLiquidGlass("lite_liquid_glass"),
     Legacy("legacy");
 
     companion object {
@@ -300,6 +303,7 @@ fun AppThemeMode.displayName(): String =
 fun AppFrontendMode.displayName(): String =
     when (this) {
         AppFrontendMode.LiquidGlass -> "液态玻璃"
+        AppFrontendMode.LiteLiquidGlass -> "轻量液态"
         AppFrontendMode.Legacy -> "旧版经典"
     }
 
@@ -307,6 +311,12 @@ fun SteamLanguagePreference.displayName(): String =
     when (this) {
         SteamLanguagePreference.SimplifiedChinese -> "简体中文"
         SteamLanguagePreference.English -> "English"
+    }
+
+fun SteamLanguagePreference.toSteamPublishedFileLanguage(): Int =
+    when (this) {
+        SteamLanguagePreference.SimplifiedChinese -> STEAM_LANGUAGE_SIMPLIFIED_CHINESE
+        SteamLanguagePreference.English -> STEAM_LANGUAGE_ENGLISH
     }
 
 fun TranslationProvider.displayName(): String =

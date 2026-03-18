@@ -43,8 +43,8 @@ import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.ui.component.WorkshopLiquidGlassWallpaper
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.LocalWorkshopChromePadding
-import top.apricityx.workshop.ui.theme.LocalWorkshopFrontendMode
 import top.apricityx.workshop.ui.theme.WorkshopChromePadding
+import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 
 data class WorkshopScreenActions(
     val onNavigateBack: () -> Unit,
@@ -143,7 +143,7 @@ fun WorkshopScreen(
     val selectedTask = state.downloadCenterState.tasks.firstOrNull { it.id == state.selectedDownloadTaskId }
     val selectedMod = state.modLibraryState.selectedEntry
     val saveableStateHolder = rememberSaveableStateHolder()
-    val isLiquidGlassFrontend = LocalWorkshopFrontendMode.current == AppFrontendMode.LiquidGlass
+    val isLiquidGlassFrontend = isLiquidGlassFrontendEnabled()
     val density = LocalDensity.current
     val defaultTopBarHeight = with(density) {
         WindowInsets.statusBars.getTop(this).toDp() + if (isLiquidGlassFrontend) 80.dp else 64.dp

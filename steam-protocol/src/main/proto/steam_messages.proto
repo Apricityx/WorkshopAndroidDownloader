@@ -265,6 +265,64 @@ message CAuthentication_AccessToken_GenerateForApp_Response {
   optional string refresh_token = 2;
 }
 
+message PublishedFileDetails {
+  optional uint32 result = 1;
+  optional uint64 publishedfileid = 2;
+  optional fixed64 creator = 3;
+  optional uint32 creator_appid = 4;
+  optional uint32 consumer_appid = 5;
+  optional uint64 file_size = 8;
+  optional string preview_url = 11;
+  optional string title = 16;
+  optional string file_description = 17;
+  optional string short_description = 18;
+  optional uint32 time_created = 19;
+  optional uint32 time_updated = 20;
+  optional uint32 visibility = 21;
+  optional uint32 file_type = 34;
+  optional uint32 subscriptions = 36;
+  optional uint32 lifetime_subscriptions = 39;
+  optional uint32 views = 42;
+  optional bool maybe_inappropriate_sex = 65;
+  optional bool maybe_inappropriate_violence = 66;
+}
+
+message CPublishedFile_QueryFiles_Request {
+  optional uint32 query_type = 1;
+  optional uint32 page = 2;
+  optional uint32 numperpage = 3 [default = 1];
+  optional uint32 creator_appid = 4;
+  optional uint32 appid = 5;
+  repeated string requiredtags = 6;
+  repeated string excludedtags = 7;
+  optional bool match_all_tags = 8 [default = true];
+  optional string search_text = 11;
+  optional uint32 filetype = 12;
+  optional fixed64 child_publishedfileid = 13;
+  optional uint32 days = 14;
+  optional bool include_recent_votes_only = 15;
+  optional bool totalonly = 16;
+  optional bool return_vote_data = 17;
+  optional bool return_tags = 18;
+  optional bool return_kv_tags = 19;
+  optional bool return_previews = 20;
+  optional bool return_children = 21;
+  optional bool return_short_description = 22;
+  optional uint32 cache_max_age_seconds = 31 [default = 0];
+  optional bool return_metadata = 32 [default = false];
+  optional int32 language = 33 [default = 0];
+  optional bool ids_only = 35;
+  optional bool return_details = 37;
+  optional bool strip_description_bbcode = 38;
+  optional string cursor = 39;
+}
+
+message CPublishedFile_QueryFiles_Response {
+  optional uint32 total = 1;
+  repeated PublishedFileDetails publishedfiledetails = 2;
+  optional string next_cursor = 3;
+}
+
 message CAuthentication_RefreshToken_Revoke_Request {
   optional fixed64 token_id = 1;
   optional fixed64 steamid = 2;

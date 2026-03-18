@@ -22,9 +22,13 @@ import top.apricityx.workshop.steam.protocol.SteamCredentialAuthSession
 import top.apricityx.workshop.steam.protocol.SteamDirectoryClient
 import top.apricityx.workshop.steam.protocol.SteamGuardChallenge
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
+import top.apricityx.workshop.steam.protocol.SteamPublishedFileClient
+import top.apricityx.workshop.steam.protocol.SteamPublishedFileQuery
+import top.apricityx.workshop.steam.protocol.SteamPublishedFileQueryResult
 import top.apricityx.workshop.steam.protocol.SteamWebAccessTokens
 import java.util.UUID
 import java.io.IOException
+import java.security.SecureRandom
 import okhttp3.OkHttpClient
 
 data class SteamAccountSummary(
@@ -84,6 +88,12 @@ class SteamAuthRepository(context: Context) {
     private val directoryClient by lazy { SteamDirectoryClient(httpClient) }
     private val authenticationClient by lazy {
         SteamAuthenticationClient(
+            directoryClient = directoryClient,
+            sessionFactory = { OkHttpSteamCmSession(httpClient) },
+        )
+    }
+    private val publishedFileClient by lazy {
+        SteamPublishedFileClient(
             directoryClient = directoryClient,
             sessionFactory = { OkHttpSteamCmSession(httpClient) },
         )
@@ -274,18 +284,38 @@ class SteamAuthRepository(context: Context) {
         if (!url.host.isSteamDomain()) {
             return emptyList()
         }
-        val account = loadState().accounts.firstOrNull { it.accountId == accountId } ?: return emptyList()
-        if (account.requiresReauthentication) {
-            return emptyList()
+        val webLoginContext = webLoginContextForAccount(accountId) ?: return emptyList()
+        return buildList {
+            add(
+                Cookie.Builder()
+                    .name("steamLoginSecure")
+                    .value(buildSteamLoginSecureCookieValue(webLoginContext.steamId, webLoginContext.accessToken))
+                    .domain(url.host)
+                    .path("/")
+                    .build(),
+            )
+            add(
+                Cookie.Builder()
+                    .name("sessionid")
+                    .value(webLoginContext.sessionId)
+                    .domain(url.host)
+                    .path("/")
+                    .build(),
+            )
         }
-        val refreshed = ensureFreshAccessToken(account.accountId) ?: return emptyList()
-        return listOf(
-            Cookie.Builder()
-                .name("steamLoginSecure")
-                .value(buildSteamLoginSecureCookieValue(account.steamId, refreshed.accessToken))
-                .domain(url.host)
-                .path("/")
-                .build(),
+    }
+
+    suspend fun webLoginContextForAccount(accountId: String?): SteamWebLoginContext? {
+        val resolvedAccountId = accountId ?: return null
+        val account = ensureProjectedWebSessionState(resolvedAccountId) ?: return null
+        if (account.requiresReauthentication) {
+            return null
+        }
+        val refreshed = ensureFreshAccessToken(account.accountId) ?: return null
+        return SteamWebLoginContext(
+            steamId = account.steamId,
+            accessToken = refreshed.accessToken,
+            sessionId = account.webSessionId ?: generateSteamWebSessionId(),
         )
     }
 
@@ -301,6 +331,17 @@ class SteamAuthRepository(context: Context) {
         accountId: String?,
     ): List<Cookie> = runBlocking {
         projectedCookiesForAccount(url, accountId)
+    }
+
+    suspend fun queryPublishedFiles(
+        accountId: String?,
+        query: SteamPublishedFileQuery,
+    ): SteamPublishedFileQueryResult? {
+        val accountSession = accountSessionFor(accountId) ?: return null
+        return publishedFileClient.queryFiles(
+            account = accountSession,
+            query = query,
+        )
     }
 
     private suspend fun finalizePendingAuth(): SteamSignInStep {
@@ -396,6 +437,7 @@ class SteamAuthRepository(context: Context) {
             guardData = guardDataOverride ?: existing?.guardData,
             webAccessToken = accessToken,
             webAccessTokenExpEpochSeconds = accessTokenInfo.expiresAtEpochSeconds,
+            webSessionId = existing?.webSessionId ?: generateSteamWebSessionId(),
             requiresReauthentication = false,
         )
         saveState(
@@ -431,6 +473,28 @@ class SteamAuthRepository(context: Context) {
             it.accountId == replaceAccountId || it.accountName.equals(username, ignoreCase = true)
         }
         return account?.guardData
+    }
+
+    private fun ensureProjectedWebSessionState(accountId: String): StoredSteamAccount? {
+        val state = loadState()
+        val account = state.accounts.firstOrNull { it.accountId == accountId } ?: return null
+        if (!account.webSessionId.isNullOrBlank()) {
+            return account
+        }
+        val nextSessionId = generateSteamWebSessionId()
+        val updatedAccount = account.copy(webSessionId = nextSessionId)
+        saveState(
+            state.copy(
+                accounts = state.accounts.map { existing ->
+                    if (existing.accountId == accountId) {
+                        existing.copy(webSessionId = existing.webSessionId ?: nextSessionId)
+                    } else {
+                        existing
+                    }
+                },
+            ),
+        )
+        return updatedAccount
     }
 
     private fun clearLegacyCookieOnlyState() {
@@ -527,6 +591,7 @@ private data class StoredSteamAccount(
     val guardData: String? = null,
     val webAccessToken: String? = null,
     val webAccessTokenExpEpochSeconds: Long? = null,
+    val webSessionId: String? = null,
     val requiresReauthentication: Boolean = false,
 )
 
@@ -544,3 +609,22 @@ internal fun String.isSteamDomain(): Boolean {
         host == "steampowered.com" ||
         host.endsWith(".steampowered.com")
 }
+
+private val steamWebSessionRandom = SecureRandom()
+
+private fun generateSteamWebSessionId(): String {
+    val bytes = ByteArray(12)
+    steamWebSessionRandom.nextBytes(bytes)
+    val result = StringBuilder(bytes.size * 2)
+    bytes.forEach { byte ->
+        val value = byte.toInt() and 0xFF
+        result.append(HEX_CHARS[value ushr 4])
+        result.append(HEX_CHARS[value and 0x0F])
+    }
+    return result.toString()
+}
+
+private val HEX_CHARS = charArrayOf(
+    '0', '1', '2', '3', '4', '5', '6', '7',
+    '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+)
