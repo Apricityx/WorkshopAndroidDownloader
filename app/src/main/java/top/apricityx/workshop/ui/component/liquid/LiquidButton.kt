@@ -63,8 +63,13 @@ fun LiquidButton(
         MaterialTheme.colorScheme.surface.copy(alpha = 0.18f)
     }
     if (isLiteLiquidGlassFrontendEnabled()) {
+        val liteBorderColor = if (tint.isSpecified) {
+            tint.copy(alpha = 0.2f)
+        } else {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        }
         val tintedSurfaceColor = if (tint.isSpecified) {
-            tint.copy(alpha = 0.12f).compositeOver(fallbackSurfaceColor)
+            tint.copy(alpha = 0.24f).compositeOver(fallbackSurfaceColor)
         } else {
             fallbackSurfaceColor
         }
@@ -72,7 +77,7 @@ fun LiquidButton(
             modifier = modifier.height(height),
             shape = Capsule(),
             color = tintedSurfaceColor,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+            border = BorderStroke(1.dp, liteBorderColor),
         ) {
             Row(
                 modifier = Modifier

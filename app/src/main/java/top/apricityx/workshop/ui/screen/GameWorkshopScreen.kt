@@ -1,9 +1,4 @@
 package top.apricityx.workshop.ui.screen
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -98,15 +93,11 @@ fun GameWorkshopScreen(
         directPublishedFileIdText.isNotBlank() &&
             directPublishedFileIdText != "0" &&
             directPublishedFileId != null
-    val directDownloadState = when {
-        directPublishedFileId != null && directPublishedFileId in activeDownloadItemIds ->
-            DownloadActionUiState.Downloading
-
-        directPublishedFileId != null && directPublishedFileId in pendingDownloadItemIds ->
-            DownloadActionUiState.Loading
-
-        else -> DownloadActionUiState.Idle
-    }
+    val directDownloadState = resolveWorkshopDownloadActionState(
+        publishedFileId = directPublishedFileId,
+        pendingDownloadItemIds = pendingDownloadItemIds,
+        activeDownloadItemIds = activeDownloadItemIds,
+    )
     val shouldShowDirectDownloadCard = !state.showConnectionErrorState
 
     LazyColumn(
@@ -260,11 +251,11 @@ fun GameWorkshopScreen(
                 }
 
                 items(state.items, key = { it.publishedFileId.toString() }) { item ->
-                    val downloadActionState = when {
-                        item.publishedFileId in activeDownloadItemIds -> DownloadActionUiState.Downloading
-                        item.publishedFileId in pendingDownloadItemIds -> DownloadActionUiState.Loading
-                        else -> DownloadActionUiState.Idle
-                    }
+                    val downloadActionState = resolveWorkshopDownloadActionState(
+                        publishedFileId = item.publishedFileId,
+                        pendingDownloadItemIds = pendingDownloadItemIds,
+                        activeDownloadItemIds = activeDownloadItemIds,
+                    )
                     WorkshopItemCard(
                         item = item,
                         isDownloaded = item.publishedFileId in downloadedItemIds,
@@ -296,7 +287,7 @@ fun GameWorkshopScreen(
 @Composable
 private fun DirectPublishedIdDownloadCard(
     directPublishedFileIdText: String,
-    downloadActionState: DownloadActionUiState,
+    downloadActionState: WorkshopDownloadActionState,
     canDirectDownload: Boolean,
     onPublishedFileIdChange: (String) -> Unit,
     onDownload: () -> Unit,
@@ -327,16 +318,16 @@ private fun DirectPublishedIdDownloadCard(
             )
             WorkshopButton(
                 onClick = {
-                    if (downloadActionState == DownloadActionUiState.Idle) {
+                    if (downloadActionState == WorkshopDownloadActionState.Idle) {
                         onDownload()
                     }
                 },
-                enabled = downloadActionState != DownloadActionUiState.Idle || canDirectDownload,
+                enabled = downloadActionState != WorkshopDownloadActionState.Idle || canDirectDownload,
                 modifier = Modifier.padding(top = 8.dp),
             ) {
                 when (downloadActionState) {
-                    DownloadActionUiState.Idle -> Text("下载")
-                    DownloadActionUiState.Loading -> {
+                    WorkshopDownloadActionState.Idle -> Text("下载")
+                    WorkshopDownloadActionState.Loading -> {
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
@@ -344,7 +335,7 @@ private fun DirectPublishedIdDownloadCard(
                         Text(" 准备下载…")
                     }
 
-                    DownloadActionUiState.Downloading -> {
+                    WorkshopDownloadActionState.Downloading -> {
                         DownloadingAnimatedIcon()
                         Text(" 下载中…")
                     }
@@ -449,7 +440,7 @@ private fun WorkshopBrowseSelectionChip(
 private fun WorkshopItemCard(
     item: WorkshopBrowseItem,
     isDownloaded: Boolean,
-    downloadActionState: DownloadActionUiState,
+    downloadActionState: WorkshopDownloadActionState,
     onOpenDetail: () -> Unit,
     onDownload: () -> Unit,
 ) {
@@ -513,35 +504,29 @@ private fun WorkshopItemCard(
     }
 }
 
-private enum class DownloadActionUiState {
-    Idle,
-    Loading,
-    Downloading,
-}
-
 @Composable
 private fun WorkshopDownloadActionButton(
-    actionState: DownloadActionUiState,
+    actionState: WorkshopDownloadActionState,
     isDownloaded: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val idleImageVector = if (isDownloaded) Icons.Default.Refresh else Icons.Default.Download
     val contentDescription = when (actionState) {
-        DownloadActionUiState.Idle -> if (isDownloaded) "重新下载" else "下载"
-        DownloadActionUiState.Loading -> "准备下载"
-        DownloadActionUiState.Downloading -> "下载中"
+        WorkshopDownloadActionState.Idle -> if (isDownloaded) "重新下载" else "下载"
+        WorkshopDownloadActionState.Loading -> "准备下载"
+        WorkshopDownloadActionState.Downloading -> "下载中"
     }
 
     WorkshopGlassIconButton(
         onClick = onClick,
-        imageVector = if (actionState == DownloadActionUiState.Idle) idleImageVector else Icons.Default.Sync,
+        imageVector = if (actionState == WorkshopDownloadActionState.Idle) idleImageVector else Icons.Default.Sync,
         contentDescription = contentDescription,
         modifier = modifier,
-        enabled = actionState == DownloadActionUiState.Idle,
+        enabled = actionState == WorkshopDownloadActionState.Idle,
         content = when (actionState) {
-            DownloadActionUiState.Idle -> null
-            DownloadActionUiState.Loading -> {
+            WorkshopDownloadActionState.Idle -> null
+            WorkshopDownloadActionState.Loading -> {
                 {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
@@ -551,34 +536,11 @@ private fun WorkshopDownloadActionButton(
                 }
             }
 
-            DownloadActionUiState.Downloading -> {
+            WorkshopDownloadActionState.Downloading -> {
                 {
                     DownloadingAnimatedIcon()
                 }
             }
         },
-    )
-}
-
-@Composable
-private fun DownloadingAnimatedIcon(
-    modifier: Modifier = Modifier,
-) {
-    val infiniteTransition = rememberInfiniteTransition()
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = LinearEasing),
-        ),
-    )
-
-    Icon(
-        imageVector = Icons.Default.Sync,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier
-            .size(18.dp)
-            .graphicsLayer { rotationZ = rotation },
     )
 }

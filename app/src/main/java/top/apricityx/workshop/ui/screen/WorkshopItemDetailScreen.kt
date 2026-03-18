@@ -48,9 +48,10 @@ import top.apricityx.workshop.ui.component.WorkshopPanelCard
 import top.apricityx.workshop.ui.theme.workshopChromePadding
 
 @Composable
-fun WorkshopItemDetailScreen(
+internal fun WorkshopItemDetailScreen(
     state: WorkshopItemDetailUiState,
-    downloadedRequiredItemIds: Set<ULong>,
+    downloadedItemIds: Set<ULong>,
+    downloadActionState: WorkshopDownloadActionState,
     onRetry: () -> Unit,
     onTranslateDescription: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
@@ -160,14 +161,46 @@ fun WorkshopItemDetailScreen(
                 }
 
                 WorkshopButton(
-                    onClick = { onDownload(state.item) },
+                    onClick = {
+                        if (downloadActionState == WorkshopDownloadActionState.Idle) {
+                            onDownload(state.item)
+                        }
+                    },
+                    enabled = downloadActionState == WorkshopDownloadActionState.Idle,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = null,
-                    )
-                    Text(" 开始下载")
+                    when (downloadActionState) {
+                        WorkshopDownloadActionState.Idle -> {
+                            Icon(
+                                imageVector = if (state.item.publishedFileId in downloadedItemIds) {
+                                    Icons.Default.Refresh
+                                } else {
+                                    Icons.Default.Download
+                                },
+                                contentDescription = null,
+                            )
+                            Text(
+                                if (state.item.publishedFileId in downloadedItemIds) {
+                                    " 重新下载"
+                                } else {
+                                    " 下载"
+                                },
+                            )
+                        }
+
+                        WorkshopDownloadActionState.Loading -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text(" 下载中")
+                        }
+
+                        WorkshopDownloadActionState.Downloading -> {
+                            DownloadingAnimatedIcon()
+                            Text(" 下载中")
+                        }
+                    }
                 }
 
                 if (state.message != null) {
@@ -210,7 +243,7 @@ fun WorkshopItemDetailScreen(
                     requiredItems.forEach { requiredItem ->
                         RequiredItemLine(
                             item = requiredItem,
-                            isDownloaded = requiredItem.publishedFileId in downloadedRequiredItemIds,
+                            isDownloaded = requiredItem.publishedFileId in downloadedItemIds,
                             onClick = { onOpenRequiredItem(requiredItem.toBrowseItem()) },
                         )
                     }

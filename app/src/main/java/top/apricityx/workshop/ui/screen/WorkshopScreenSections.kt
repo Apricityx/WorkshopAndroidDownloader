@@ -421,11 +421,21 @@ private fun WorkshopScreenScene(
                 }
 
                 WorkshopScreenDestination.WorkshopItemDetail -> state.workshopItemDetailState?.let { detailState ->
-                    val downloadedRequiredItemIds = state.modLibraryState.items
+                    val downloadedItemIds = state.modLibraryState.items
                         .downloadedPublishedFileIds(detailState.item.appId)
+                    val activeDownloadItemIds = state.downloadCenterState.activeTasks
+                        .asSequence()
+                        .filter { it.appId == detailState.item.appId }
+                        .map { it.publishedFileId }
+                        .toSet()
                     WorkshopItemDetailScreen(
                         state = detailState,
-                        downloadedRequiredItemIds = downloadedRequiredItemIds,
+                        downloadedItemIds = downloadedItemIds,
+                        downloadActionState = resolveWorkshopDownloadActionState(
+                            publishedFileId = detailState.item.publishedFileId,
+                            pendingDownloadItemIds = pendingDownloadPublishedFileIds,
+                            activeDownloadItemIds = activeDownloadItemIds,
+                        ),
                         onRetry = actions.onRetryWorkshopItemDetail,
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onDownload = actions.onDownloadSingleItem,
