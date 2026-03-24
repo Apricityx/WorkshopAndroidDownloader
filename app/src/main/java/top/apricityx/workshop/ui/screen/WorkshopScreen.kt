@@ -32,7 +32,6 @@ import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ExportedDownloadFile
 import top.apricityx.workshop.SteamLanguagePreference
 import top.apricityx.workshop.SteamLoginInputMode
-import top.apricityx.workshop.TranslationProvider
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
 import top.apricityx.workshop.WorkshopUiState
@@ -92,6 +91,8 @@ data class WorkshopScreenActions(
     val onUpdateSteamGuardCode: (String) -> Unit,
     val onSwitchSteamLoginInputMode: (SteamLoginInputMode) -> Unit,
     val onSubmitSteamLogin: () -> Unit,
+    val onOpenSteamLoginDebugLog: () -> Unit,
+    val onShareSteamLoginDebugLog: () -> Unit,
     val onSwitchToAnonymousSteamAccount: () -> Unit,
     val onSetActiveSteamAccount: (String) -> Unit,
     val onReauthenticateSteamAccount: (String) -> Unit,
@@ -99,7 +100,6 @@ data class WorkshopScreenActions(
     val onUpdateThemeMode: (AppThemeMode) -> Unit,
     val onUpdateFrontendMode: (AppFrontendMode) -> Unit,
     val onUpdateSteamLanguagePreference: (SteamLanguagePreference) -> Unit,
-    val onUpdateTranslationProvider: (TranslationProvider) -> Unit,
     val onOpenBaiduTranslationApiKeyScreen: () -> Unit,
     val onUpdateBaiduTranslationAppIdInput: (String) -> Unit,
     val onUpdateBaiduTranslationApiKeyInput: (String) -> Unit,

@@ -13,7 +13,6 @@ import okhttp3.Cookie
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
-import top.apricityx.workshop.steam.protocol.OkHttpSteamCmSession
 import top.apricityx.workshop.steam.protocol.SteamAccountSession
 import top.apricityx.workshop.steam.protocol.SteamAuthPollResult
 import top.apricityx.workshop.steam.protocol.SteamAuthSessionDetails
@@ -69,6 +68,7 @@ sealed interface SteamSignInStep {
 
 class SteamAuthRepository(context: Context) {
     private val appContext = context.applicationContext
+    private val steamClientIdentity = SteamClientIdentity(appContext)
     private val json = Json { ignoreUnknownKeys = true }
     private val authMutex = Mutex()
     private val tokenMutex = Mutex()
@@ -89,13 +89,13 @@ class SteamAuthRepository(context: Context) {
     private val authenticationClient by lazy {
         SteamAuthenticationClient(
             directoryClient = directoryClient,
-            sessionFactory = { OkHttpSteamCmSession(httpClient) },
+            sessionFactory = { steamClientIdentity.createSession(httpClient) },
         )
     }
     private val publishedFileClient by lazy {
         SteamPublishedFileClient(
             directoryClient = directoryClient,
-            sessionFactory = { OkHttpSteamCmSession(httpClient) },
+            sessionFactory = { steamClientIdentity.createSession(httpClient) },
         )
     }
 
@@ -141,7 +141,7 @@ class SteamAuthRepository(context: Context) {
         accountId
             ?.let { id -> loadState().accounts.firstOrNull { it.accountId == id } }
             ?.takeUnless(StoredSteamAccount::requiresReauthentication)
-            ?.toProtocolSession()
+            ?.toProtocolSession(machineName = steamClientIdentity.machineName)
 
     fun activeAccountRequiresReauthentication(): Boolean =
         loadSnapshot().activeAccount?.requiresReauthentication == true
@@ -150,31 +150,55 @@ class SteamAuthRepository(context: Context) {
         username: String,
         password: String,
         replaceAccountId: String? = null,
+        debugLogger: ((String) -> Unit)? = null,
     ): SteamSignInStep = authMutex.withLock {
+        debugLogger.log(
+            "Repository: beginSignIn username=${username.maskForLog()} passwordLength=${password.length} replaceAccount=${replaceAccountId != null}.",
+        )
+        if (pendingAuthSession != null) {
+            debugLogger.log("Repository: closing previous pending auth session before starting a new one.")
+        }
         pendingAuthSession?.close()
         pendingAuthSession = null
         pendingReplaceAccountId = replaceAccountId
 
+        val guardData = storedGuardDataFor(username, replaceAccountId)
+        debugLogger.log(
+            "Repository: stored guard data present=${!guardData.isNullOrBlank()} deviceName=${steamClientIdentity.machineName}.",
+        )
         val authSession = authenticationClient.beginAuthSession(
             SteamAuthSessionDetails(
                 username = username,
                 password = password,
-                guardData = storedGuardDataFor(username, replaceAccountId),
+                guardData = guardData,
                 isPersistentSession = true,
+                deviceFriendlyName = steamClientIdentity.machineName,
             ),
+            debugLogger = debugLogger,
         )
         pendingAuthSession = authSession
 
         val primaryChallenge = authSession.challenges.firstOrNull()
+        debugLogger.log(
+            "Repository: credential auth session steamId=${authSession.steamId} challenges=${authSession.challenges.summaryForLog()}.",
+        )
         when {
-            primaryChallenge == null || primaryChallenge.type == SteamGuardChallengeType.None -> finalizePendingAuth()
+            primaryChallenge == null || primaryChallenge.type == SteamGuardChallengeType.None -> {
+                debugLogger.log("Repository: Steam did not require extra verification; finalizing auth immediately.")
+                finalizePendingAuth(debugLogger)
+            }
+
             primaryChallenge.type == SteamGuardChallengeType.DeviceConfirmation ||
-                primaryChallenge.type == SteamGuardChallengeType.EmailConfirmation ->
+                primaryChallenge.type == SteamGuardChallengeType.EmailConfirmation -> {
+                debugLogger.log("Repository: awaiting confirmation type=${primaryChallenge.type.name}.")
                 SteamSignInStep.AwaitingConfirmation(primaryChallenge)
+            }
 
             primaryChallenge.type == SteamGuardChallengeType.EmailCode ||
-                primaryChallenge.type == SteamGuardChallengeType.DeviceCode ->
+                primaryChallenge.type == SteamGuardChallengeType.DeviceCode -> {
+                debugLogger.log("Repository: guard code required type=${primaryChallenge.type.name}.")
                 SteamSignInStep.RequiresGuardCode(primaryChallenge)
+            }
 
             else -> throw IOException("Unsupported Steam Guard challenge: ${primaryChallenge.type}")
         }
@@ -184,13 +208,21 @@ class SteamAuthRepository(context: Context) {
         refreshToken: String,
         accountNameHint: String? = null,
         replaceAccountId: String? = null,
+        debugLogger: ((String) -> Unit)? = null,
     ): SteamSignInStep = authMutex.withLock {
+        debugLogger.log(
+            "Repository: signInWithRefreshToken refreshLength=${refreshToken.length} accountHint=${accountNameHint.maskForLog()} replaceAccount=${replaceAccountId != null}.",
+        )
+        if (pendingAuthSession != null) {
+            debugLogger.log("Repository: closing previous pending auth session before refresh-token login.")
+        }
         pendingAuthSession?.close()
         pendingAuthSession = null
         pendingReplaceAccountId = null
 
         val steamId = parseSteamJwtInfo(refreshToken).steamId
             ?: throw IOException("无法解析 Steam Refresh Token，请确认粘贴的是完整令牌。")
+        debugLogger.log("Repository: parsed Steam refresh token steamId=$steamId.")
         val state = loadState()
         val existing = state.accounts.firstOrNull {
             it.accountId == replaceAccountId || it.steamId == steamId
@@ -200,13 +232,21 @@ class SteamAuthRepository(context: Context) {
             ?.takeIf(String::isNotBlank)
             ?: existing?.accountName
             ?: "Steam $steamId"
+        debugLogger.log(
+            "Repository: resolved accountName=${accountName.maskForLog()} existingAccount=${existing != null}.",
+        )
         val tokens = authenticationClient.generateAccessTokenForApp(
             account = SteamAccountSession(
                 accountName = accountName,
                 steamId = steamId,
                 refreshToken = refreshToken,
+                machineName = steamClientIdentity.machineName,
             ),
             allowRenewal = true,
+            debugLogger = debugLogger,
+        )
+        debugLogger.log(
+            "Repository: refresh-token login received accessLength=${tokens.accessToken.length} refreshUpdated=${!tokens.refreshToken.isNullOrBlank()}.",
         )
         val account = persistAccount(
             state = state,
@@ -217,19 +257,31 @@ class SteamAuthRepository(context: Context) {
             replaceAccountId = replaceAccountId,
         )
         val snapshot = loadSnapshot()
+        debugLogger.log(
+            "Repository: refresh-token login persisted accountId=${account.accountId} account=${account.accountName.maskForLog()}.",
+        )
         return SteamSignInStep.Success(account = account, snapshot = snapshot)
     }
 
-    suspend fun submitPendingGuardCode(code: String): SteamSignInStep = authMutex.withLock {
+    suspend fun submitPendingGuardCode(
+        code: String,
+        debugLogger: ((String) -> Unit)? = null,
+    ): SteamSignInStep = authMutex.withLock {
         val session = pendingAuthSession ?: throw IOException("No pending Steam sign-in session")
         val challenge = session.challenges.firstOrNull()
             ?: throw IOException("Steam did not provide a guard challenge")
+        debugLogger.log(
+            "Repository: submitting pending guard code type=${challenge.type.name} codeLength=${code.length}.",
+        )
         session.submitGuardCode(challenge.type, code)
-        finalizePendingAuth()
+        finalizePendingAuth(debugLogger)
     }
 
-    suspend fun waitForPendingConfirmation(): SteamSignInStep = authMutex.withLock {
-        finalizePendingAuth()
+    suspend fun waitForPendingConfirmation(
+        debugLogger: ((String) -> Unit)? = null,
+    ): SteamSignInStep = authMutex.withLock {
+        debugLogger.log("Repository: waiting for pending Steam confirmation result.")
+        finalizePendingAuth(debugLogger)
     }
 
     fun cancelPendingSignIn() {
@@ -250,7 +302,10 @@ class SteamAuthRepository(context: Context) {
         runCatching {
             parseSteamJwtInfo(account.refreshToken).tokenId?.let { tokenId ->
                 runBlocking {
-                    authenticationClient.revokeRefreshToken(account.toProtocolSession(), tokenId)
+                    authenticationClient.revokeRefreshToken(
+                        account.toProtocolSession(machineName = steamClientIdentity.machineName),
+                        tokenId,
+                    )
                 }
             }
         }
@@ -344,15 +399,25 @@ class SteamAuthRepository(context: Context) {
         )
     }
 
-    private suspend fun finalizePendingAuth(): SteamSignInStep {
+    private suspend fun finalizePendingAuth(
+        debugLogger: ((String) -> Unit)? = null,
+    ): SteamSignInStep {
         val session = pendingAuthSession ?: throw IOException("No pending Steam sign-in session")
         val replaceAccountId = pendingReplaceAccountId
         return try {
+            debugLogger.log("Repository: finalizing pending auth session.")
             val result = session.awaitResult()
+            debugLogger.log(
+                "Repository: pending auth completed steamId=${result.steamId} account=${result.accountName.maskForLog()} guardDataUpdated=${!result.newGuardData.isNullOrBlank()}.",
+            )
             val account = persistAccount(result = result, replaceAccountId = replaceAccountId)
             val snapshot = loadSnapshot()
+            debugLogger.log(
+                "Repository: pending auth persisted accountId=${account.accountId} account=${account.accountName.maskForLog()}.",
+            )
             SteamSignInStep.Success(account = account, snapshot = snapshot)
         } finally {
+            debugLogger.log("Repository: closing pending auth session.")
             session.close()
             pendingAuthSession = null
             pendingReplaceAccountId = null
@@ -375,7 +440,7 @@ class SteamAuthRepository(context: Context) {
 
         return runCatching {
             authenticationClient.generateAccessTokenForApp(
-                account = account.toProtocolSession(),
+                account = account.toProtocolSession(machineName = steamClientIdentity.machineName),
                 allowRenewal = true,
             )
         }.onSuccess { tokens ->
@@ -595,11 +660,12 @@ private data class StoredSteamAccount(
     val requiresReauthentication: Boolean = false,
 )
 
-private fun StoredSteamAccount.toProtocolSession(): SteamAccountSession =
+private fun StoredSteamAccount.toProtocolSession(machineName: String): SteamAccountSession =
     SteamAccountSession(
         accountName = accountName,
         steamId = steamId,
         refreshToken = refreshToken,
+        machineName = machineName,
     )
 
 internal fun String.isSteamDomain(): Boolean {
@@ -628,3 +694,35 @@ private val HEX_CHARS = charArrayOf(
     '0', '1', '2', '3', '4', '5', '6', '7',
     '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
 )
+
+private fun List<SteamGuardChallenge>.summaryForLog(): String =
+    if (isEmpty()) {
+        "none"
+    } else {
+        joinToString(separator = ",") { challenge ->
+            buildString {
+                append(challenge.type.name)
+                challenge.message
+                    ?.takeIf(String::isNotBlank)
+                    ?.let {
+                        append("(message)")
+                    }
+            }
+        }
+    }
+
+private fun String?.maskForLog(): String =
+    this
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+        ?.let { value ->
+            when {
+                value.length <= 2 -> "*".repeat(value.length)
+                else -> "${value.first()}***${value.last()}"
+            }
+        }
+        ?: "-"
+
+private fun ((String) -> Unit)?.log(line: String) {
+    this?.invoke(line)
+}

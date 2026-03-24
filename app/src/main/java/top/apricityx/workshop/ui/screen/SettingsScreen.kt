@@ -40,7 +40,6 @@ import top.apricityx.workshop.SettingsUiState
 import top.apricityx.workshop.SteamLoginDialogMode
 import top.apricityx.workshop.SteamLoginInputMode
 import top.apricityx.workshop.SteamLanguagePreference
-import top.apricityx.workshop.TranslationProvider
 import top.apricityx.workshop.canSwitchSteamLoginInputMode
 import top.apricityx.workshop.displayName
 import top.apricityx.workshop.isSteamConfirmationChallenge
@@ -72,6 +71,8 @@ fun SettingsScreen(
     onUpdateSteamGuardCode: (String) -> Unit,
     onSwitchSteamLoginInputMode: (SteamLoginInputMode) -> Unit,
     onSubmitSteamLogin: () -> Unit,
+    onOpenSteamLoginDebugLog: () -> Unit,
+    onShareSteamLoginDebugLog: () -> Unit,
     onSwitchToAnonymousSteamAccount: () -> Unit,
     onSetActiveSteamAccount: (String) -> Unit,
     onReauthenticateSteamAccount: (String) -> Unit,
@@ -79,7 +80,6 @@ fun SettingsScreen(
     onFrontendModeSelected: (AppFrontendMode) -> Unit,
     onThemeModeSelected: (AppThemeMode) -> Unit,
     onSteamLanguagePreferenceSelected: (SteamLanguagePreference) -> Unit,
-    onTranslationProviderSelected: (TranslationProvider) -> Unit,
     onOpenBaiduTranslationApiKeyScreen: () -> Unit,
     onAutoCheckUpdatesChanged: (Boolean) -> Unit,
     onPreferredUpdateSourceSelected: (UpdateSource) -> Unit,
@@ -121,6 +121,33 @@ fun SettingsScreen(
                 }
                 WorkshopOutlinedButton(onClick = onSwitchToAnonymousSteamAccount) {
                     Text("切回匿名")
+                }
+            }
+
+            state.steamAuthState.latestLoginDebugLogPath?.takeIf(String::isNotBlank)?.let { logPath ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "最近一次登录日志",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = logPath,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        WorkshopOutlinedButton(onClick = onOpenSteamLoginDebugLog) {
+                            Text("查看登录日志")
+                        }
+                        WorkshopOutlinedButton(onClick = onShareSteamLoginDebugLog) {
+                            Text("分享登录日志")
+                        }
+                    }
                 }
             }
 
@@ -186,62 +213,30 @@ fun SettingsScreen(
         WorkshopPanelCard {
             Text("翻译设置", style = MaterialTheme.typography.titleLarge)
             Text(
-                "描述翻译支持本地模型和百度大模型文本翻译两种方式；切到百度后可单独配置 AppID 和 API Key。",
+                "描述翻译现在只走百度大模型文本翻译；如果没有配置 AppID 和 API Key，点击翻译时会直接弹出提示。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            Column(
-                modifier = Modifier.selectableGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Text(
+                text = if (state.baiduTranslationApiKeyConfigured) {
+                    "当前已配置 AppID 和 API Key，描述翻译会直接调用百度大模型文本翻译。"
+                } else {
+                    "当前尚未配置 AppID 和 API Key，未配置时翻译按钮会弹出 Toast 提示。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            WorkshopOutlinedButton(
+                onClick = onOpenBaiduTranslationApiKeyScreen,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                TranslationProvider.entries.forEach { provider ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = state.selectedTranslationProvider == provider,
-                                onClick = { onTranslationProviderSelected(provider) },
-                            )
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        WorkshopRadioButton(
-                            selected = state.selectedTranslationProvider == provider,
-                            onClick = null,
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = provider.displayName(),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                text = translationProviderDescription(
-                                    provider = provider,
-                                    baiduApiKeyConfigured = state.baiduTranslationApiKeyConfigured,
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (state.selectedTranslationProvider == TranslationProvider.BaiduGeneralText) {
-                WorkshopOutlinedButton(
-                    onClick = onOpenBaiduTranslationApiKeyScreen,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (state.baiduTranslationApiKeyConfigured) {
-                            "配置百度大模型文本翻译凭据"
-                        } else {
-                            "添加百度大模型文本翻译凭据"
-                        },
-                    )
-                }
+                Text(
+                    if (state.baiduTranslationApiKeyConfigured) {
+                        "配置百度大模型文本翻译凭据"
+                    } else {
+                        "添加百度大模型文本翻译凭据"
+                    },
+                )
             }
         }
 
@@ -639,6 +634,9 @@ fun SettingsScreen(
             onGuardCodeChange = onUpdateSteamGuardCode,
             onSwitchInputMode = onSwitchSteamLoginInputMode,
             onSubmit = onSubmitSteamLogin,
+            latestLoginDebugLogPath = state.steamAuthState.latestLoginDebugLogPath,
+            onOpenSteamLoginDebugLog = onOpenSteamLoginDebugLog,
+            onShareSteamLoginDebugLog = onShareSteamLoginDebugLog,
         )
     }
 }
@@ -790,6 +788,9 @@ private fun SteamLoginDialog(
     onGuardCodeChange: (String) -> Unit,
     onSwitchInputMode: (SteamLoginInputMode) -> Unit,
     onSubmit: () -> Unit,
+    latestLoginDebugLogPath: String?,
+    onOpenSteamLoginDebugLog: () -> Unit,
+    onShareSteamLoginDebugLog: () -> Unit,
 ) {
     val isTokenMode = state.inputMode == SteamLoginInputMode.RefreshToken
     val isConfirmationChallenge = state.challengeType.isSteamConfirmationChallenge()
@@ -972,6 +973,29 @@ private fun SteamLoginDialog(
                 tone = MessageTone.Error,
             )
         }
+
+        latestLoginDebugLogPath
+            ?.takeIf(String::isNotBlank)
+            ?.let { logPath ->
+                Text(
+                    text = "最近一次登录日志：$logPath",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    WorkshopOutlinedButton(onClick = onOpenSteamLoginDebugLog) {
+                        Text("查看登录日志")
+                    }
+                    WorkshopOutlinedButton(onClick = onShareSteamLoginDebugLog) {
+                        Text("分享登录日志")
+                    }
+                }
+            }
     }
 }
 
@@ -982,19 +1006,6 @@ private fun sourceDescription(source: UpdateSource): String =
         UpdateSource.GH_LLKK -> "支持元数据和下载代理，可作为另一条回退线路。"
         UpdateSource.GH_PROXY_NET -> "自动回退源，不在设置里手动选择。"
         UpdateSource.OFFICIAL -> "官方 GitHub 直连地址。"
-    }
-
-private fun translationProviderDescription(
-    provider: TranslationProvider,
-    baiduApiKeyConfigured: Boolean,
-): String =
-    when (provider) {
-        TranslationProvider.OnDevice -> "直接使用设备本地翻译模型，不依赖第三方翻译接口。但是翻译质量低，可能会非常生草"
-        TranslationProvider.BaiduGeneralText -> if (baiduApiKeyConfigured) {
-            "当前已配置 AppID 和 API Key，描述翻译会优先走百度大模型文本翻译。"
-        } else {
-            "需要先配置 AppID 和 API Key，内置有教程，配置免费但需要折腾一下，但是效果非常好。"
-        }
     }
 
 private fun steamLanguagePreferenceDescription(

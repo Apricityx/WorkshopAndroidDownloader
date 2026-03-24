@@ -61,18 +61,6 @@ enum class AppFrontendMode(
     }
 }
 
-enum class TranslationProvider(
-    val storageValue: String,
-) {
-    OnDevice("on_device"),
-    BaiduGeneralText("baidu_general_text");
-
-    companion object {
-        fun fromStorageValue(value: String): TranslationProvider =
-            entries.firstOrNull { it.storageValue == value } ?: OnDevice
-    }
-}
-
 enum class SteamLanguagePreference(
     val storageValue: String,
     val requestValue: String,
@@ -226,7 +214,6 @@ data class SettingsUiState(
     val selectedFrontendMode: AppFrontendMode = DownloadSettingsRepository.DEFAULT_FRONTEND_MODE,
     val selectedSteamLanguagePreference: SteamLanguagePreference =
         DownloadSettingsRepository.DEFAULT_STEAM_LANGUAGE_PREFERENCE,
-    val selectedTranslationProvider: TranslationProvider = DownloadSettingsRepository.DEFAULT_TRANSLATION_PROVIDER,
     val allowSteamAuthenticatedCleartextHttp: Boolean =
         DownloadSettingsRepository.DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP,
     val baiduTranslationApiKeyConfigured: Boolean = false,
@@ -258,6 +245,7 @@ data class SteamAuthUiState(
     val statusSummary: String =
         "当前浏览账号：匿名。未登录时只能保证公开可见内容，部分成人内容或需要年龄确认的条目可能不会出现。",
     val loginDialogState: SteamLoginDialogUiState? = null,
+    val latestLoginDebugLogPath: String? = null,
 )
 
 enum class SteamLoginInputMode {
@@ -320,12 +308,6 @@ fun SteamLanguagePreference.toSteamPublishedFileLanguage(): Int =
         SteamLanguagePreference.English -> STEAM_LANGUAGE_ENGLISH
     }
 
-fun TranslationProvider.displayName(): String =
-    when (this) {
-        TranslationProvider.OnDevice -> "本地翻译"
-        TranslationProvider.BaiduGeneralText -> "百度大模型文本翻译"
-    }
-
 fun ModLibraryDisplayMode.screenSubtitle(): String =
     when (this) {
         ModLibraryDisplayMode.LargePreview ->
@@ -364,7 +346,10 @@ fun ModLibraryFilterState.hasActiveFilters(): Boolean =
     searchQuery.isNotBlank() ||
         !selectedGameTitle.isNullOrBlank()
 
-fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? = null): SteamAuthUiState =
+fun SteamAccountsSnapshot.toUiState(
+    loginDialogState: SteamLoginDialogUiState? = null,
+    latestLoginDebugLogPath: String? = null,
+): SteamAuthUiState =
     activeAccount.let { currentActiveAccount ->
         SteamAuthUiState(
             accounts = accounts,
@@ -379,6 +364,7 @@ fun SteamAccountsSnapshot.toUiState(loginDialogState: SteamLoginDialogUiState? =
                 "当前浏览账号：匿名。未登录时只能保证公开可见内容，部分成人内容或需要年龄确认的条目可能不会出现。"
             },
             loginDialogState = loginDialogState,
+            latestLoginDebugLogPath = latestLoginDebugLogPath,
         )
     }
 

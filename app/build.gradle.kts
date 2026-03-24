@@ -129,8 +129,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
     implementation(libs.androidx.security.crypto)
-    implementation(libs.mlkit.translate)
-    implementation(libs.mlkit.language.id)
     implementation(libs.xlog)
 
     implementation(platform(libs.androidx.compose.bom))

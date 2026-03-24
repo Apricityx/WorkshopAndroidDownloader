@@ -21,7 +21,6 @@ import top.apricityx.workshop.workshop.DownloadState
 import top.apricityx.workshop.workshop.WorkshopDownloadEngine
 import top.apricityx.workshop.workshop.WorkshopDownloadRequest
 import top.apricityx.workshop.steam.protocol.CmServer
-import top.apricityx.workshop.steam.protocol.OkHttpSteamCmSession
 import top.apricityx.workshop.steam.protocol.SessionContext
 import top.apricityx.workshop.steam.protocol.SteamAccountSession
 import top.apricityx.workshop.steam.protocol.SteamCmSession
@@ -34,6 +33,7 @@ class DownloadCenterManager private constructor(
     private val taskFinalizer = DownloadCenterTaskFinalizer(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val steamAuthRepository = SteamAuthRepository(application)
+    private val steamClientIdentity = SteamClientIdentity(application)
     private val store = DownloadCenterStore(File(application.filesDir, "download-center/tasks.json"))
     private val _uiState = MutableStateFlow(
         DownloadCenterUiState(tasks = recoverPersistedTasks(store.loadTasks())),
@@ -342,7 +342,7 @@ class DownloadCenterManager private constructor(
             .build()
         val engine = WorkshopDownloadEngine.createDefault(
             client = taskClient,
-            sessionFactory = { OkHttpSteamCmSession(taskClient) },
+            sessionFactory = { steamClientIdentity.createSession(taskClient) },
             sessionConnector = buildSessionConnector(accountSession),
             maxConcurrentChunks = settingsRepository.getDownloadThreadCount(),
             allowPublicCdnFallbackOnSessionFailure = accountSession == null,

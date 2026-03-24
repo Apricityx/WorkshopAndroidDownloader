@@ -19,8 +19,6 @@ xz = "1.10"
 zstd = "1.5.6-9"
 coil = "2.7.0"
 securityCrypto = "1.1.0-alpha06"
-mlKitTranslate = "17.0.3"
-mlKitLanguageId = "17.0.6"
 xlog = "1.11.0"
 backdrop = "1.0.6"
 kyantShapes = "1.2.0"
@@ -60,8 +58,6 @@ xz = { module = "org.tukaani:xz", version.ref = "xz" }
 zstd = { module = "com.github.luben:zstd-jni", version.ref = "zstd" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
-mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlKitTranslate" }
-mlkit-language-id = { module = "com.google.mlkit:language-id", version.ref = "mlKitLanguageId" }
 xlog = { module = "com.elvishew:xlog", version.ref = "xlog" }
 kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 kyant-shapes = { module = "io.github.kyant0:shapes", version.ref = "kyantShapes" }

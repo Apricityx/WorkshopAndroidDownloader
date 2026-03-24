@@ -139,6 +139,44 @@ class SteamAuthenticationException(
     cause: Throwable? = null,
 ) : SteamProtocolException(message, cause)
 
+internal fun buildSteamAuthenticationErrorMessage(
+    prefix: String,
+    resultCode: Int,
+    detail: String? = null,
+): String =
+    buildString {
+        append(prefix)
+        append(": ")
+        append(steamAuthenticationResultDescription(resultCode) ?: "Steam authentication failed")
+        append(" (EResult=")
+        append(resultCode)
+        append(")")
+        detail
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?.let { extra ->
+                append(": ")
+                append(extra)
+            }
+    }
+
+internal fun steamAuthenticationResultDescription(resultCode: Int): String? =
+    when (resultCode) {
+        5 -> "账号名或密码错误"
+        8 -> "Steam 拒绝了当前认证请求参数"
+        15 -> "Steam 拒绝了这次认证请求"
+        20 -> "Steam 认证服务暂时不可用"
+        63 -> "需要邮箱中的 Steam Guard 验证码"
+        65 -> "Steam Guard 验证码错误"
+        66 -> "该账号当前无法使用邮箱验证码登录"
+        74 -> "需要先完成邮箱验证后才能登录"
+        84 -> "请求过于频繁，请稍后再试"
+        85 -> "需要 Steam 手机令牌确认或动态码"
+        87 -> "登录尝试过于频繁，请稍后再试"
+        88 -> "Steam 手机令牌动态码错误"
+        else -> null
+    }
+
 interface SteamCmSession : Closeable {
     suspend fun connect(servers: List<CmServer>)
     suspend fun connectAnonymous(servers: List<CmServer>): SessionContext

@@ -62,6 +62,7 @@ class WorkshopViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val steamAuthRepository = SteamAuthRepository(application)
+    private val steamLoginDebugLogManager = SteamLoginDebugLogManager(application)
     private val baiduTranslationCredentialsRepository = BaiduTranslationCredentialsRepository(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val steamWebCookieJar = SteamWebSessionCookieJar(
@@ -104,7 +105,6 @@ class WorkshopViewModel(
         ModLibraryUpdateStateStore(File(application.filesDir, "mod-library/update-state.json"))
     private val downloadCenterManager = DownloadCenterManager.getInstance(application)
     private val updateService = WorkshopUpdateService(httpClient)
-    private val descriptionTranslator = OnDeviceDescriptionTranslator(application)
     private val baiduAiTextTranslationClient = BaiduAiTextTranslationClient()
 
     private val _uiState = MutableStateFlow(createInitialUiState())
@@ -114,6 +114,7 @@ class WorkshopViewModel(
 
     private var lastDownloadCenterModSignature: String? = null
     private var steamConfirmationWaitJob: Job? = null
+    private var activeSteamLoginAttemptId: String? = null
     @Volatile
     private var isSteamWebSessionPrimed = false
     @Volatile
@@ -210,10 +211,10 @@ class WorkshopViewModel(
         val currentThemeMode = settingsRepository.getThemeMode()
         val currentFrontendMode = settingsRepository.getFrontendMode()
         val currentSteamLanguagePreference = settingsRepository.getSteamLanguagePreference()
-        val currentTranslationProvider = settingsRepository.getTranslationProvider()
         val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
         val currentSteamAuthState = steamAuthRepository.loadSnapshot().toUiState(
             loginDialogState = _uiState.value.settingsState.steamAuthState.loginDialogState,
+            latestLoginDebugLogPath = currentSteamLoginDebugLogPath(),
         )
         _uiState.update { state ->
             state.copy(
@@ -229,7 +230,6 @@ class WorkshopViewModel(
                     selectedThemeMode = currentThemeMode,
                     selectedFrontendMode = currentFrontendMode,
                     selectedSteamLanguagePreference = currentSteamLanguagePreference,
-                    selectedTranslationProvider = currentTranslationProvider,
                     allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
                     baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
                     steamAuthState = currentSteamAuthState,
@@ -536,19 +536,6 @@ class WorkshopViewModel(
         }
     }
 
-    fun updateTranslationProvider(provider: TranslationProvider) {
-        settingsRepository.setTranslationProvider(provider)
-        _uiState.update { state ->
-            state.copy(
-                settingsState = state.settingsState.copy(
-                    selectedTranslationProvider = provider,
-                    baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
-                    message = null,
-                ),
-            )
-        }
-    }
-
     fun openBaiduTranslationApiKeyScreen() {
         val savedCredentials = baiduTranslationCredentialsRepository.getCredentials()
         _uiState.update { state ->
@@ -644,9 +631,19 @@ class WorkshopViewModel(
         }
 
         viewModelScope.launch {
-            val fallbackReason = validateBaiduTranslationCredentials(credentials)
-            if (fallbackReason != null) {
-                runBaiduTestFallback(fallbackReason)
+            val validationMessage = validateBaiduTranslationCredentials(credentials)
+            if (validationMessage != null) {
+                _uiState.update { state ->
+                    state.copy(
+                        baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                            isTesting = false,
+                            testResultText = null,
+                            testFailureReason = validationMessage,
+                            message = null,
+                        ),
+                    )
+                }
+                _toastMessages.emit(validationMessage)
                 return@launch
             }
 
@@ -668,7 +665,16 @@ class WorkshopViewModel(
                     )
                 }
             }.onFailure { error ->
-                runBaiduTestFallback(error.message ?: "百度大模型文本翻译测试失败，请稍后重试。")
+                _uiState.update { state ->
+                    state.copy(
+                        baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
+                            isTesting = false,
+                            testResultText = null,
+                            testFailureReason = error.message ?: "百度大模型文本翻译测试失败，请稍后重试。",
+                            message = null,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -706,7 +712,7 @@ class WorkshopViewModel(
     }
 
     fun openSteamLoginDialog() {
-        cancelPendingSteamLoginFlow()
+        cancelPendingSteamLoginFlow("UI: reset previous login flow before opening Steam login dialog.")
         _uiState.update { state ->
             state.copy(
                 settingsState = state.settingsState.copy(
@@ -720,7 +726,7 @@ class WorkshopViewModel(
     }
 
     fun dismissSteamLoginDialog() {
-        cancelPendingSteamLoginFlow()
+        cancelPendingSteamLoginFlow("UI: Steam login dialog dismissed by user.")
         syncSteamAuthState(
             message = null,
             loginDialogState = null,
@@ -796,7 +802,7 @@ class WorkshopViewModel(
     }
 
     fun switchSteamLoginInputMode(inputMode: SteamLoginInputMode) {
-        cancelPendingSteamLoginFlow()
+        cancelPendingSteamLoginFlow("UI: switched Steam login input mode to ${inputMode.name}.")
         _uiState.update { state ->
             val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
             if (dialog.inputMode == inputMode && dialog.challengeType == null) {
@@ -824,7 +830,26 @@ class WorkshopViewModel(
 
     fun submitSteamLogin() {
         val dialog = _uiState.value.settingsState.steamAuthState.loginDialogState ?: return
+        ensureSteamLoginAttempt(dialog)
         viewModelScope.launch {
+            appendSteamLoginDebugLine(
+                when {
+                    dialog.inputMode == SteamLoginInputMode.RefreshToken &&
+                        dialog.challengeType == null ->
+                        "UI: submitting refresh-token login accountHint=${dialog.username.maskSteamLoginValue()} refreshLength=${dialog.refreshToken.trim().length} replaceAccount=${dialog.targetAccountId != null}."
+
+                    dialog.challengeType == SteamGuardChallengeType.EmailCode ||
+                        dialog.challengeType == SteamGuardChallengeType.DeviceCode ->
+                        "UI: submitting Steam Guard code type=${dialog.challengeType.name} codeLength=${dialog.guardCode.trim().length}."
+
+                    dialog.challengeType == SteamGuardChallengeType.DeviceConfirmation ||
+                        dialog.challengeType == SteamGuardChallengeType.EmailConfirmation ->
+                        "UI: user requested to continue waiting for Steam confirmation."
+
+                    else ->
+                        "UI: submitting credential login username=${dialog.username.maskSteamLoginValue()} passwordLength=${dialog.password.length} replaceAccount=${dialog.targetAccountId != null}."
+                },
+            )
             setSteamLoginSubmitting(true)
             val result = runCatching {
                 when {
@@ -834,27 +859,35 @@ class WorkshopViewModel(
                             refreshToken = dialog.refreshToken.trim(),
                             accountNameHint = dialog.username.trim(),
                             replaceAccountId = dialog.targetAccountId,
+                            debugLogger = ::appendSteamLoginDebugLine,
                         )
 
                     else -> when (dialog.challengeType) {
                     SteamGuardChallengeType.EmailCode,
                     SteamGuardChallengeType.DeviceCode,
-                    -> steamAuthRepository.submitPendingGuardCode(dialog.guardCode.trim())
+                    -> steamAuthRepository.submitPendingGuardCode(
+                        code = dialog.guardCode.trim(),
+                        debugLogger = ::appendSteamLoginDebugLine,
+                    )
 
                     SteamGuardChallengeType.DeviceConfirmation,
                     SteamGuardChallengeType.EmailConfirmation,
-                    -> steamAuthRepository.waitForPendingConfirmation()
+                    -> steamAuthRepository.waitForPendingConfirmation(
+                        debugLogger = ::appendSteamLoginDebugLine,
+                    )
 
                     else -> steamAuthRepository.beginSignIn(
                         username = dialog.username.trim(),
                         password = dialog.password,
                         replaceAccountId = dialog.targetAccountId,
+                        debugLogger = ::appendSteamLoginDebugLine,
                     )
                     }
                 }
             }
             result.onSuccess(::applySteamSignInStep)
                 .onFailure { error ->
+                    appendSteamLoginFailure("UI: Steam login step failed.", error)
                     setSteamLoginSubmitting(false, error.message ?: "Steam 登录失败。")
                 }
         }
@@ -874,7 +907,7 @@ class WorkshopViewModel(
 
     fun reauthenticateSteamAccount(accountId: String) {
         val account = steamAuthRepository.loadSnapshot().accounts.firstOrNull { it.accountId == accountId } ?: return
-        cancelPendingSteamLoginFlow()
+        cancelPendingSteamLoginFlow("UI: reset previous login flow before starting reauthentication.")
         _uiState.update { state ->
             state.copy(
                 settingsState = state.settingsState.copy(
@@ -1326,6 +1359,7 @@ class WorkshopViewModel(
             }
             return
         }
+        val credentials = configuredBaiduCredentialsOrToast() ?: return
 
         val targetAppId = detailState.item.appId
         val targetPublishedFileId = detailState.item.publishedFileId
@@ -1340,19 +1374,19 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                translateDescriptionWithSelectedProvider(description)
-            }.onSuccess { result ->
+                translateWithBaiduCredentials(
+                    text = description,
+                    credentials = credentials,
+                )
+            }.onSuccess { translatedText ->
                 _uiState.update { state ->
                     state.updateWorkshopItemDetailState(targetAppId, targetPublishedFileId) { current ->
                         current.copy(
                             isTranslatingDescription = false,
-                            translatedDescription = result.translatedText,
+                            translatedDescription = translatedText,
                             translationErrorMessage = null,
                         )
                     }
-                }
-                result.fallbackToastMessage?.let { fallbackToastMessage ->
-                    _toastMessages.emit(fallbackToastMessage)
                 }
             }.onFailure { error ->
                 _uiState.update { state ->
@@ -1381,6 +1415,7 @@ class WorkshopViewModel(
             }
             return
         }
+        val credentials = configuredBaiduCredentialsOrToast() ?: return
 
         val targetModGroupKey = selectedEntry.modGroupKey()
         _uiState.update { state ->
@@ -1400,8 +1435,11 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                translateDescriptionWithSelectedProvider(description)
-            }.onSuccess { result ->
+                translateWithBaiduCredentials(
+                    text = description,
+                    credentials = credentials,
+                )
+            }.onSuccess { translatedText ->
                 _uiState.update { state ->
                     val current = state.modLibraryState.selectedEntry ?: return@update state
                     if (current.modGroupKey() != targetModGroupKey) {
@@ -1411,14 +1449,11 @@ class WorkshopViewModel(
                         modLibraryState = state.modLibraryState.copy(
                             detailDescriptionTranslation = state.modLibraryState.detailDescriptionTranslation.copy(
                                 isTranslatingDescription = false,
-                                translatedDescription = result.translatedText,
+                                translatedDescription = translatedText,
                                 translationErrorMessage = null,
                             ),
                         ),
                     )
-                }
-                result.fallbackToastMessage?.let { fallbackToastMessage ->
-                    _toastMessages.emit(fallbackToastMessage)
                 }
             }.onFailure { error ->
                 _uiState.update { state ->
@@ -1439,49 +1474,6 @@ class WorkshopViewModel(
         }
     }
 
-    private suspend fun translateDescriptionWithSelectedProvider(
-        description: String,
-    ): DescriptionTranslationResult {
-        val provider = settingsRepository.getTranslationProvider()
-        return when (provider) {
-            TranslationProvider.OnDevice -> DescriptionTranslationResult(
-                translatedText = descriptionTranslator.translateDescription(description),
-            )
-
-            TranslationProvider.BaiduGeneralText -> translateDescriptionWithBaiduFallback(description)
-        }
-    }
-
-    private suspend fun translateDescriptionWithBaiduFallback(
-        description: String,
-    ): DescriptionTranslationResult {
-        val credentials = baiduTranslationCredentialsRepository.getCredentials()
-        val validationMessage = validateBaiduTranslationCredentials(credentials)
-        if (validationMessage != null) {
-            return DescriptionTranslationResult(
-                translatedText = descriptionTranslator.translateDescription(description),
-                fallbackToastMessage = "百度大模型文本翻译不可用，已自动回退到本地翻译。",
-            )
-        }
-
-        return runCatching {
-            translateWithBaiduCredentials(
-                text = description,
-                credentials = credentials,
-            )
-        }.fold(
-            onSuccess = { translatedText ->
-                DescriptionTranslationResult(translatedText = translatedText)
-            },
-            onFailure = {
-                DescriptionTranslationResult(
-                    translatedText = descriptionTranslator.translateDescription(description),
-                    fallbackToastMessage = "百度大模型文本翻译不可用，已自动回退到本地翻译。",
-                )
-            },
-        )
-    }
-
     private suspend fun translateWithBaiduCredentials(
         text: String,
         credentials: BaiduTranslationCredentials,
@@ -1496,19 +1488,11 @@ class WorkshopViewModel(
             throw IllegalStateException(validationMessage)
         }
 
-        val sourceLanguage = mapMlKitLanguageToBaiduLanguage(
-            descriptionTranslator.detectSourceLanguage(normalizedText),
-        ) ?: throw IllegalStateException("暂时无法把这段描述的语言映射到百度大模型文本翻译支持的语种。")
-        val targetLanguage = mapMlKitLanguageToBaiduLanguage(
-            OnDeviceDescriptionTranslator.resolveTargetLanguage(targetLocale),
-        ) ?: "zh"
-        if (sourceLanguage == targetLanguage) {
-            return normalizedText
-        }
+        val targetLanguage = mapLocaleLanguageToBaiduLanguage(targetLocale) ?: BAIDU_DEFAULT_TARGET_LANGUAGE
 
         return baiduAiTextTranslationClient.translate(
             text = normalizedText,
-            sourceLanguage = sourceLanguage,
+            sourceLanguage = BAIDU_AUTO_DETECT_LANGUAGE,
             targetLanguage = targetLanguage,
             credentials = credentials,
         )
@@ -1530,41 +1514,13 @@ class WorkshopViewModel(
             else -> null
         }
 
-    private suspend fun runBaiduTestFallback(reason: String) {
-        runCatching {
-            descriptionTranslator.translateDescription(
-                text = BAIDU_TRANSLATION_SAMPLE_TEXT,
-                targetLocale = Locale.CHINESE,
-            )
-        }.onSuccess { translatedText ->
-            _uiState.update { state ->
-                state.copy(
-                    baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
-                        isTesting = false,
-                        testResultText = translatedText,
-                        testFailureReason = reason,
-                        message = null,
-                    ),
-                )
-            }
-            _toastMessages.emit("百度大模型文本翻译不可用，已自动回退到本地翻译。")
-        }.onFailure { fallbackError ->
-            val combinedReason = buildString {
-                append(reason)
-                append(" 本地翻译回退也失败了：")
-                append(fallbackError.message ?: "请稍后重试。")
-            }
-            _uiState.update { state ->
-                state.copy(
-                    baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
-                        isTesting = false,
-                        testResultText = null,
-                        testFailureReason = combinedReason,
-                        message = null,
-                    ),
-                )
-            }
+    private fun configuredBaiduCredentialsOrToast(): BaiduTranslationCredentials? {
+        val credentials = baiduTranslationCredentialsRepository.getCredentials()
+        val validationMessage = validateBaiduTranslationCredentials(credentials) ?: return credentials
+        viewModelScope.launch {
+            _toastMessages.emit(validationMessage)
         }
+        return null
     }
 
     fun updateWorkshopSearchQuery(value: String) {
@@ -1645,8 +1601,60 @@ class WorkshopViewModel(
             items = listOf(item),
         )
 
+    fun downloadItems(items: List<WorkshopBrowseItem>): Boolean {
+        val distinctItems = items.distinctBy(WorkshopBrowseItem::downloadKey)
+        if (distinctItems.isEmpty()) {
+            return false
+        }
+        if (steamAuthRepository.activeAccountRequiresReauthentication()) {
+            viewModelScope.launch {
+                _toastMessages.emit("当前 Steam 账号需要重新认证，新的下载任务暂时不能开始。")
+            }
+            return false
+        }
+
+        val downloadBinding = steamAuthRepository.currentDownloadBinding()
+        val enqueuedCount = distinctItems
+            .groupBy(WorkshopBrowseItem::appId)
+            .entries
+            .sumOf { (appId, groupedItems) ->
+                downloadCenterManager.enqueueDownloads(
+                    appId = appId,
+                    gameTitle = resolveGameTitleForDownload(appId),
+                    targets = groupedItems.map { groupedItem ->
+                        DownloadCenterManager.QueueTarget(
+                            publishedFileId = groupedItem.publishedFileId,
+                            itemTitle = groupedItem.title,
+                            boundAccountId = downloadBinding.accountId,
+                            boundAccountName = downloadBinding.accountName,
+                        )
+                    },
+                )
+            }
+
+        if (enqueuedCount <= 0) {
+            return false
+        }
+
+        viewModelScope.launch {
+            _toastMessages.emit(
+                if (enqueuedCount == 1) {
+                    "已开始下载，可在下载中心查看进度。"
+                } else {
+                    "已开始 $enqueuedCount 个下载任务，可在下载中心查看进度。"
+                },
+            )
+        }
+        return true
+    }
+
     suspend fun loadRequiredItemsForDownload(item: WorkshopBrowseItem): List<WorkshopRequiredItem> {
-        val downloadedItemIds = _uiState.value.modLibraryState.items.downloadedPublishedFileIds(item.appId)
+        val downloadedItemKeys = _uiState.value.modLibraryState.items
+            .map { group -> group.appId to group.publishedFileId }
+            .toSet()
+        val activeDownloadItemKeys = _uiState.value.downloadCenterState.activeTasks
+            .map(DownloadCenterTaskUiState::downloadKey)
+            .toSet()
         val currentDetail = _uiState.value.workshopItemDetailState
             ?.takeIf { detailState ->
                 detailState.item.appId == item.appId &&
@@ -1654,16 +1662,18 @@ class WorkshopViewModel(
             }
             ?.detail
         if (currentDetail != null) {
-            return currentDetail.requiredItems.filterNot { requiredItem ->
-                requiredItem.publishedFileId in downloadedItemIds
-            }
+            return currentDetail.requiredItems.filterPendingRequiredItems(
+                downloadedItemKeys = downloadedItemKeys,
+                activeDownloadItemKeys = activeDownloadItemKeys,
+            )
         }
 
         return runCatching {
             withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
-                detailRepository.loadWorkshopItemDetail(item).requiredItems.filterNot { requiredItem ->
-                    requiredItem.publishedFileId in downloadedItemIds
-                }
+                detailRepository.loadWorkshopItemDetail(item).requiredItems.filterPendingRequiredItems(
+                    downloadedItemKeys = downloadedItemKeys,
+                    activeDownloadItemKeys = activeDownloadItemKeys,
+                )
             }
         }.getOrElse {
             emptyList()
@@ -2094,6 +2104,15 @@ class WorkshopViewModel(
         return true
     }
 
+    private fun resolveGameTitleForDownload(appId: UInt): String =
+        _uiState.value.gameWorkshopState
+            ?.game
+            ?.takeIf { game -> game.appId == appId }
+            ?.name
+            ?: _uiState.value.libraryGames.firstOrNull { game -> game.appId == appId }?.name
+            ?: _uiState.value.modLibraryState.items.firstOrNull { group -> group.appId == appId }?.gameTitle
+            ?: "Workshop"
+
     private fun showAddGameMessage(message: String) {
         _uiState.update { state ->
             state.copy(
@@ -2255,14 +2274,76 @@ class WorkshopViewModel(
         }
     }
 
+    private fun ensureSteamLoginAttempt(dialog: SteamLoginDialogUiState): String {
+        activeSteamLoginAttemptId?.let { return it }
+        val attemptId = steamLoginDebugLogManager.startAttempt(
+            mode = dialog.inputMode,
+            dialogMode = dialog.mode,
+            accountNameHint = dialog.username,
+            targetAccountId = dialog.targetAccountId,
+        )
+        activeSteamLoginAttemptId = attemptId
+        val logPath = steamLoginDebugLogManager.logFilePath(attemptId)
+        steamLoginDebugLogManager.append(
+            attemptId,
+            "UI: started Steam login attempt mode=${dialog.mode.name} inputMode=${dialog.inputMode.name} challenge=${dialog.challengeType?.name ?: "None"}.",
+        )
+        updateSteamLoginDebugLogPath(logPath)
+        return attemptId
+    }
+
+    private fun appendSteamLoginDebugLine(line: String) {
+        val attemptId = activeSteamLoginAttemptId ?: return
+        steamLoginDebugLogManager.append(attemptId, line)
+    }
+
+    private fun appendSteamLoginFailure(
+        summary: String,
+        error: Throwable,
+    ) {
+        val attemptId = activeSteamLoginAttemptId ?: return
+        steamLoginDebugLogManager.appendError(attemptId, summary, error)
+        activeSteamLoginAttemptId = null
+        updateSteamLoginDebugLogPath(steamLoginDebugLogManager.logFilePath(attemptId))
+    }
+
+    private fun finishSteamLoginAttempt(summary: String? = null) {
+        val attemptId = activeSteamLoginAttemptId ?: return
+        summary?.let { steamLoginDebugLogManager.append(attemptId, it) }
+        activeSteamLoginAttemptId = null
+        updateSteamLoginDebugLogPath(steamLoginDebugLogManager.logFilePath(attemptId))
+    }
+
+    private fun updateSteamLoginDebugLogPath(path: String? = currentSteamLoginDebugLogPath()) {
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    steamAuthState = state.settingsState.steamAuthState.copy(
+                        latestLoginDebugLogPath = path,
+                    ),
+                ),
+            )
+        }
+    }
+
+    private fun currentSteamLoginDebugLogPath(): String? =
+        activeSteamLoginAttemptId
+            ?.let(steamLoginDebugLogManager::logFilePath)
+            ?: _uiState.value.settingsState.steamAuthState.latestLoginDebugLogPath
+            ?: steamLoginDebugLogManager.latestLogPath()
+
     private fun syncSteamAuthState(
         message: String? = _uiState.value.settingsState.message,
         loginDialogState: SteamLoginDialogUiState? = _uiState.value.settingsState.steamAuthState.loginDialogState,
+        latestLoginDebugLogPath: String? = currentSteamLoginDebugLogPath(),
     ) {
         _uiState.update { state ->
             state.copy(
                 settingsState = state.settingsState.copy(
-                    steamAuthState = steamAuthRepository.loadSnapshot().toUiState(loginDialogState = loginDialogState),
+                    steamAuthState = steamAuthRepository.loadSnapshot().toUiState(
+                        loginDialogState = loginDialogState,
+                        latestLoginDebugLogPath = latestLoginDebugLogPath,
+                    ),
                     message = message,
                 ),
             )
@@ -2293,6 +2374,9 @@ class WorkshopViewModel(
         when (step) {
             is SteamSignInStep.RequiresGuardCode -> {
                 cancelSteamConfirmationWaitJob()
+                appendSteamLoginDebugLine(
+                    "UI: Steam requires guard code type=${step.challenge.type.name} messagePresent=${!step.challenge.message.isNullOrBlank()}.",
+                )
                 _uiState.update { state ->
                     val dialog = state.settingsState.steamAuthState.loginDialogState ?: SteamLoginDialogUiState()
                     state.copy(
@@ -2315,6 +2399,9 @@ class WorkshopViewModel(
 
             is SteamSignInStep.AwaitingConfirmation -> {
                 cancelSteamConfirmationWaitJob()
+                appendSteamLoginDebugLine(
+                    "UI: Steam requires confirmation type=${step.challenge.type.name} messagePresent=${!step.challenge.message.isNullOrBlank()}.",
+                )
                 _uiState.update { state ->
                     val dialog = state.settingsState.steamAuthState.loginDialogState ?: SteamLoginDialogUiState()
                     state.copy(
@@ -2338,6 +2425,10 @@ class WorkshopViewModel(
 
             is SteamSignInStep.Success -> {
                 cancelSteamConfirmationWaitJob()
+                appendSteamLoginDebugLine(
+                    "UI: Steam login succeeded account=${step.account.accountName.maskSteamLoginValue()} steamId=${step.account.steamId}.",
+                )
+                finishSteamLoginAttempt("UI: Steam login flow finished successfully.")
                 syncSteamAuthState(
                     message = "已登录 ${step.account.accountName}。",
                     loginDialogState = null,
@@ -2637,13 +2728,19 @@ class WorkshopViewModel(
 
     private fun startSteamConfirmationWait() {
         cancelSteamConfirmationWaitJob()
+        appendSteamLoginDebugLine("UI: starting background wait for Steam confirmation.")
         steamConfirmationWaitJob = viewModelScope.launch {
-            runCatching { steamAuthRepository.waitForPendingConfirmation() }
+            runCatching {
+                steamAuthRepository.waitForPendingConfirmation(
+                    debugLogger = ::appendSteamLoginDebugLine,
+                )
+            }
                 .onSuccess(::applySteamSignInStep)
                 .onFailure { error ->
                     if (error is CancellationException) {
                         return@onFailure
                     }
+                    appendSteamLoginFailure("UI: Steam confirmation wait failed.", error)
                     _uiState.update { state ->
                         val dialog = state.settingsState.steamAuthState.loginDialogState ?: return@update state
                         state.copy(
@@ -2667,8 +2764,16 @@ class WorkshopViewModel(
     }
 
     private fun cancelPendingSteamLoginFlow() {
+        cancelPendingSteamLoginFlow(reason = null)
+    }
+
+    private fun cancelPendingSteamLoginFlow(reason: String? = null) {
+        reason?.let(::appendSteamLoginDebugLine)
         cancelSteamConfirmationWaitJob()
         steamAuthRepository.cancelPendingSignIn()
+        if (activeSteamLoginAttemptId != null) {
+            finishSteamLoginAttempt()
+        }
     }
 
     private fun buildUpdateStatusSummary(): String {
@@ -2844,11 +2949,6 @@ class WorkshopViewModel(
                 }
             }
 
-    override fun onCleared() {
-        descriptionTranslator.close()
-        super.onCleared()
-    }
-
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
         private const val WORKSHOP_ITEMS_PER_PAGE = 30
@@ -2868,7 +2968,6 @@ class WorkshopViewModel(
         val themeMode = settingsRepository.getThemeMode()
         val frontendMode = settingsRepository.getFrontendMode()
         val steamLanguagePreference = settingsRepository.getSteamLanguagePreference()
-        val translationProvider = settingsRepository.getTranslationProvider()
         val threadCount = settingsRepository.getDownloadThreadCount()
         val concurrentTaskCount = settingsRepository.getConcurrentDownloadTaskCount()
         val modUpdateConcurrentChecks = settingsRepository.getModUpdateConcurrentCheckCount()
@@ -2894,10 +2993,11 @@ class WorkshopViewModel(
                 selectedThemeMode = themeMode,
                 selectedFrontendMode = frontendMode,
                 selectedSteamLanguagePreference = steamLanguagePreference,
-                selectedTranslationProvider = translationProvider,
                 allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
                 baiduTranslationApiKeyConfigured = hasSavedBaiduCredentials,
-                steamAuthState = steamAuthRepository.loadSnapshot().toUiState(),
+                steamAuthState = steamAuthRepository.loadSnapshot().toUiState(
+                    latestLoginDebugLogPath = steamLoginDebugLogManager.latestLogPath(),
+                ),
                 autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
                 preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
                 availableUpdateSources = UpdateSource.userSelectableSources(),
@@ -2922,11 +3022,6 @@ class WorkshopViewModel(
     }
 }
 
-private data class DescriptionTranslationResult(
-    val translatedText: String,
-    val fallbackToastMessage: String? = null,
-)
-
 internal fun shouldPreserveModLibraryDescriptionTranslation(
     previous: DownloadedModGroup?,
     next: DownloadedModGroup?,
@@ -2942,6 +3037,18 @@ private fun Throwable.isTimeoutRequestFailure(): Boolean =
 private fun Throwable.isWorkshopConnectionFailure(): Boolean =
     this is IOException || this is TimeoutCancellationException
 
+private fun String?.maskSteamLoginValue(): String =
+    this
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+        ?.let { value ->
+            when {
+                value.length <= 2 -> "*".repeat(value.length)
+                else -> "${value.first()}***${value.last()}"
+            }
+        }
+        ?: "-"
+
 private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
     WorkshopBrowseItem(
         appId = appId,
@@ -2951,6 +3058,24 @@ private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
         previewImageUrl = "",
         descriptionSnippet = description,
     )
+
+private val WorkshopBrowseItem.downloadKey: Pair<UInt, ULong>
+    get() = appId to publishedFileId
+
+private val DownloadCenterTaskUiState.downloadKey: Pair<UInt, ULong>
+    get() = appId to publishedFileId
+
+private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
+    downloadedItemKeys: Set<Pair<UInt, ULong>>,
+    activeDownloadItemKeys: Set<Pair<UInt, ULong>>,
+): List<WorkshopRequiredItem> =
+    filterNot { requiredItem ->
+        (requiredItem.appId to requiredItem.publishedFileId) in downloadedItemKeys ||
+            (requiredItem.appId to requiredItem.publishedFileId) in activeDownloadItemKeys
+    }
+
+private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
+private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
 
 
 

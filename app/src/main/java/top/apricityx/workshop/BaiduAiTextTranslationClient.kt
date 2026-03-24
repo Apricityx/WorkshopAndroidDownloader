@@ -1,5 +1,6 @@
 package top.apricityx.workshop
 
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -156,8 +157,8 @@ class BaiduAiTextTranslationClient(
     }
 }
 
-fun mapMlKitLanguageToBaiduLanguage(language: String): String? =
-    when (language) {
+fun mapLocaleLanguageToBaiduLanguage(locale: Locale): String? =
+    when (locale.language.lowercase(Locale.ROOT)) {
         "zh" -> "zh"
         "en" -> "en"
         "ja" -> "jp"

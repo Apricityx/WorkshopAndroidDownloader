@@ -15,11 +15,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -32,20 +36,22 @@ import top.apricityx.workshop.ui.screen.WorkshopScreenActions
 import top.apricityx.workshop.ui.component.WorkshopButton
 import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
+import top.apricityx.workshop.ui.component.WorkshopTextButton
 import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val workshopViewModel: WorkshopViewModel by viewModels { WorkshopViewModel.Factory }
     private val downloadDebugLogManager by lazy { DownloadDebugLogManager(application) }
-    private var pendingDownloadItem: WorkshopBrowseItem? = null
+    private val steamLoginDebugLogManager by lazy { SteamLoginDebugLogManager(application) }
+    private var pendingDownloadItems: List<WorkshopBrowseItem> = emptyList()
     private var pendingDownloadPublishedFileIds by mutableStateOf<Set<ULong>>(emptySet())
     private var downloadDependencyWarningDialogState: DownloadDependencyWarningDialogState? by mutableStateOf(null)
     private var isCheckingDownloadDependencies by mutableStateOf(false)
     private val legacyStoragePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            val item = pendingDownloadItem ?: return@registerForActivityResult
-            pendingDownloadItem = null
+            val items = pendingDownloadItems.takeIf { it.isNotEmpty() } ?: return@registerForActivityResult
+            pendingDownloadItems = emptyList()
             if (!granted) {
                 Toast.makeText(
                     this,
@@ -53,8 +59,8 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_LONG,
                 ).show()
             }
-            if (!workshopViewModel.downloadSingleItem(item)) {
-                clearPendingDownload(item)
+            if (!workshopViewModel.downloadItems(items)) {
+                clearPendingDownloads(items)
             }
         }
 
@@ -100,23 +106,47 @@ class MainActivity : ComponentActivity() {
                         onDismissRequest = { downloadDependencyWarningDialogState = null },
                         title = { Text("还有前置未下载") },
                         buttons = {
-                            WorkshopOutlinedButton(onClick = { downloadDependencyWarningDialogState = null }) {
-                                Text("取消")
-                            }
-                            WorkshopButton(
-                                onClick = {
-                                    val item = dialogState.item
-                                    downloadDependencyWarningDialogState = null
-                                    markDownloadPending(item)
-                                    startDownloadSingleItemWithCompatibilityGuard(item)
-                                },
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalAlignment = Alignment.End,
                             ) {
-                                Text("仍然下载")
+                                WorkshopButton(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = {
+                                        val items = dialogState.requiredItems
+                                            .map(WorkshopRequiredItem::toBrowseItem) + dialogState.item
+                                        downloadDependencyWarningDialogState = null
+                                        markDownloadPending(items)
+                                        startDownloadItemsWithCompatibilityGuard(items)
+                                    },
+                                ) {
+                                    Text("下载所有前置并下载模组")
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                                ) {
+                                    WorkshopTextButton(onClick = { downloadDependencyWarningDialogState = null }) {
+                                        Text("取消")
+                                    }
+                                    WorkshopOutlinedButton(
+                                        onClick = {
+                                            val item = dialogState.item
+                                            downloadDependencyWarningDialogState = null
+                                            markDownloadPending(item)
+                                            startDownloadItemsWithCompatibilityGuard(listOf(item))
+                                        },
+                                    ) {
+                                        Text("只下载模组")
+                                    }
+                                }
                             }
                         },
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("「${dialogState.item.title}」还有 ${dialogState.requiredItems.size} 个前置工坊物品未下载，未准备完整时可能无法正常使用。")
+                            Text("「${dialogState.item.title}」还有 ${dialogState.requiredItems.size} 个前置工坊物品未下载。")
+                            Text("你可以选择下载所有前置后再下载模组，或者只下载当前模组。")
                             Text(
                                 text = dialogState.requiredItems.joinToString(separator = "\n") { "• ${it.title}" },
                             )
@@ -145,38 +175,49 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             isCheckingDownloadDependencies = true
-            val requiredItems = workshopViewModel.loadRequiredItemsForDownload(item)
-            isCheckingDownloadDependencies = false
+            val requiredItems = try {
+                workshopViewModel.loadRequiredItemsForDownload(item)
+            } finally {
+                isCheckingDownloadDependencies = false
+            }
             if (requiredItems.isNotEmpty()) {
-                clearPendingDownload(item)
+                clearPendingDownloads(listOf(item))
                 downloadDependencyWarningDialogState = DownloadDependencyWarningDialogState(
                     item = item,
                     requiredItems = requiredItems,
                 )
             } else {
-                startDownloadSingleItemWithCompatibilityGuard(item)
+                startDownloadItemsWithCompatibilityGuard(listOf(item))
             }
         }
     }
 
-    private fun startDownloadSingleItemWithCompatibilityGuard(item: WorkshopBrowseItem) {
+    private fun startDownloadItemsWithCompatibilityGuard(items: List<WorkshopBrowseItem>) {
+        val distinctItems = items.distinctBy { workshopItem -> workshopItem.appId to workshopItem.publishedFileId }
+        if (distinctItems.isEmpty()) {
+            return
+        }
         if (!shouldRequestLegacyStoragePermission()) {
-            if (!workshopViewModel.downloadSingleItem(item)) {
-                clearPendingDownload(item)
+            if (!workshopViewModel.downloadItems(distinctItems)) {
+                clearPendingDownloads(distinctItems)
             }
             return
         }
 
-        pendingDownloadItem = item
+        pendingDownloadItems = distinctItems
         legacyStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
     }
 
     private fun markDownloadPending(item: WorkshopBrowseItem) {
-        pendingDownloadPublishedFileIds += item.publishedFileId
+        markDownloadPending(listOf(item))
     }
 
-    private fun clearPendingDownload(item: WorkshopBrowseItem) {
-        pendingDownloadPublishedFileIds -= item.publishedFileId
+    private fun markDownloadPending(items: List<WorkshopBrowseItem>) {
+        pendingDownloadPublishedFileIds += items.map(WorkshopBrowseItem::publishedFileId)
+    }
+
+    private fun clearPendingDownloads(items: List<WorkshopBrowseItem>) {
+        pendingDownloadPublishedFileIds -= items.map(WorkshopBrowseItem::publishedFileId).toSet()
     }
 
     private fun openExportedFile(file: ExportedDownloadFile) {
@@ -224,6 +265,46 @@ class MainActivity : ComponentActivity() {
             intent = intent,
             notFoundMessage = "没有找到可分享调试日志的应用",
             failureMessage = "分享调试日志失败",
+        )
+    }
+
+    private fun openSteamLoginDebugLog() {
+        val file = steamLoginDebugLogManager.latestShareableFile()
+        if (file == null) {
+            Toast.makeText(this, "登录日志还没有生成", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = WorkshopFileOpenManager.createOpenFileIntent(file)
+        if (intent == null) {
+            Toast.makeText(this, "暂无可打开登录日志", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        launchIntent(
+            intent = intent,
+            notFoundMessage = "没有找到可打开这个登录日志的应用",
+            failureMessage = "打开登录日志失败",
+        )
+    }
+
+    private fun shareSteamLoginDebugLog() {
+        val file = steamLoginDebugLogManager.latestShareableFile()
+        if (file == null) {
+            Toast.makeText(this, "登录日志还没有生成", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = WorkshopFileShareManager.createShareFileIntent(file)
+        if (intent == null) {
+            Toast.makeText(this, "暂无可分享登录日志", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        launchIntent(
+            intent = intent,
+            notFoundMessage = "没有找到可分享登录日志的应用",
+            failureMessage = "分享登录日志失败",
         )
     }
 
@@ -323,6 +404,8 @@ class MainActivity : ComponentActivity() {
             onUpdateSteamGuardCode = workshopViewModel::updateSteamGuardCode,
             onSwitchSteamLoginInputMode = workshopViewModel::switchSteamLoginInputMode,
             onSubmitSteamLogin = workshopViewModel::submitSteamLogin,
+            onOpenSteamLoginDebugLog = ::openSteamLoginDebugLog,
+            onShareSteamLoginDebugLog = ::shareSteamLoginDebugLog,
             onSwitchToAnonymousSteamAccount = workshopViewModel::switchToAnonymousSteamAccount,
             onSetActiveSteamAccount = workshopViewModel::setActiveSteamAccount,
             onReauthenticateSteamAccount = workshopViewModel::reauthenticateSteamAccount,
@@ -330,7 +413,6 @@ class MainActivity : ComponentActivity() {
             onUpdateThemeMode = workshopViewModel::updateThemeMode,
             onUpdateFrontendMode = workshopViewModel::updateFrontendMode,
             onUpdateSteamLanguagePreference = workshopViewModel::updateSteamLanguagePreference,
-            onUpdateTranslationProvider = workshopViewModel::updateTranslationProvider,
             onOpenBaiduTranslationApiKeyScreen = workshopViewModel::openBaiduTranslationApiKeyScreen,
             onUpdateBaiduTranslationAppIdInput = workshopViewModel::updateBaiduTranslationAppIdInput,
             onUpdateBaiduTranslationApiKeyInput = workshopViewModel::updateBaiduTranslationApiKeyInput,

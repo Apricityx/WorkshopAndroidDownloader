@@ -22,7 +22,6 @@ import kotlinx.coroutines.delay
 import java.io.Closeable
 import java.math.BigInteger
 import java.security.KeyFactory
-import java.security.MessageDigest
 import java.security.spec.RSAPublicKeySpec
 import java.util.Base64
 import javax.crypto.Cipher
@@ -31,11 +30,17 @@ class SteamAuthenticationClient(
     private val directoryClient: SteamDirectoryClient,
     private val sessionFactory: () -> SteamCmSession,
 ) {
-    suspend fun beginAuthSession(details: SteamAuthSessionDetails): SteamCredentialAuthSession {
+    suspend fun beginAuthSession(
+        details: SteamAuthSessionDetails,
+        debugLogger: ((String) -> Unit)? = null,
+    ): SteamCredentialAuthSession {
         val cmServers = directoryClient.loadServers()
         val session = sessionFactory()
         try {
+            debugLogger.log("Protocol: loaded ${cmServers.size} CM server candidate(s) for credential auth.")
             session.connect(cmServers)
+            debugLogger.log("Protocol: connected to Steam CM for credential auth.")
+            debugLogger.log("Protocol: requesting RSA public key account=${details.username.maskForLog()}.")
             val publicKey = session.callServiceMethod(
                 methodName = "Authentication.GetPasswordRSAPublicKey#1",
                 request = CAuthentication_GetPasswordRSAPublicKey_Request.newBuilder()
@@ -43,36 +48,30 @@ class SteamAuthenticationClient(
                     .build(),
                 parser = CAuthentication_GetPasswordRSAPublicKey_Response.parser(),
             )
+            debugLogger.log(
+                "Protocol: received RSA public key timestamp=${publicKey.timestamp} modulusBytes=${publicKey.publickeyMod.length / 2}.",
+            )
+            val encryptedPassword = encryptPassword(details.password, publicKey)
+            debugLogger.log("Protocol: encrypted password length=${encryptedPassword.length}.")
 
+            debugLogger.log(
+                "Protocol: beginning auth session websiteId=${details.websiteId} guardDataPresent=${!details.guardData.isNullOrBlank()} deviceName=${details.deviceFriendlyName}.",
+            )
             val beginResponse = session.callServiceMethod(
                 methodName = "Authentication.BeginAuthSessionViaCredentials#1",
-                request = CAuthentication_BeginAuthSessionViaCredentials_Request.newBuilder()
-                    .setDeviceFriendlyName(details.deviceFriendlyName)
-                    .setAccountName(details.username)
-                    .setEncryptedPassword(encryptPassword(details.password, publicKey))
-                    .setEncryptionTimestamp(publicKey.timestamp)
-                    .setRememberLogin(details.isPersistentSession)
-                    .setPlatformType(EAuthTokenPlatformType.k_EAuthTokenPlatformType_SteamClient)
-                    .setPersistence(
-                        if (details.isPersistentSession) {
-                            ESessionPersistence.k_ESessionPersistence_Persistent
-                        } else {
-                            ESessionPersistence.k_ESessionPersistence_Ephemeral
-                        },
-                    )
-                    .setWebsiteId(details.websiteId)
-                    .setGuardData(details.guardData.orEmpty())
-                    .setQosLevel(2)
-                    .setDeviceDetails(
-                        CAuthentication_DeviceDetails.newBuilder()
-                            .setDeviceFriendlyName(details.deviceFriendlyName)
-                            .setPlatformType(EAuthTokenPlatformType.k_EAuthTokenPlatformType_SteamClient)
-                            .setOsType(details.clientOsType)
-                            .setMachineId(machineId())
-                            .build(),
-                    )
-                    .build(),
+                request = buildBeginAuthSessionRequest(
+                    details = details,
+                    encryptedPassword = encryptedPassword,
+                    encryptionTimestamp = publicKey.timestamp,
+                ),
                 parser = CAuthentication_BeginAuthSessionViaCredentials_Response.parser(),
+            )
+
+            val challenges = beginResponse.allowedConfirmationsList
+                .map(::mapChallenge)
+                .sortedBy(SteamGuardChallenge::sortOrder)
+            debugLogger.log(
+                "Protocol: auth session started steamId=${beginResponse.steamid} clientId=${beginResponse.clientId} intervalSeconds=${beginResponse.interval} challenges=${challenges.summaryForLog()}.",
             )
 
             return SteamCredentialAuthSession(
@@ -81,22 +80,29 @@ class SteamAuthenticationClient(
                 clientId = beginResponse.clientId,
                 requestId = beginResponse.requestId.toByteArray(),
                 pollingIntervalMillis = (beginResponse.interval * 1_000f).toLong().coerceAtLeast(1_000L),
-                challenges = beginResponse.allowedConfirmationsList.map(::mapChallenge).sortedBy(SteamGuardChallenge::sortOrder),
+                challenges = challenges,
+                debugLogger = debugLogger,
             )
         } catch (error: Throwable) {
+            debugLogger.log("Protocol: credential auth failed ${error::class.java.simpleName}: ${error.message.orEmpty()}")
             session.close()
-            throw error.asAuthenticationException("Failed to begin Steam authentication")
+            throw error.asAuthenticationException("Steam 登录失败")
         }
     }
 
     suspend fun generateAccessTokenForApp(
         account: SteamAccountSession,
         allowRenewal: Boolean,
+        debugLogger: ((String) -> Unit)? = null,
     ): SteamWebAccessTokens {
         val cmServers = directoryClient.loadServers()
         return sessionFactory().use { session ->
             try {
+                debugLogger.log(
+                    "Protocol: generating access token steamId=${account.steamId} account=${account.accountName.maskForLog()} allowRenewal=$allowRenewal cmServers=${cmServers.size}.",
+                )
                 session.connectWithRefreshToken(cmServers, account)
+                debugLogger.log("Protocol: connected to Steam CM with refresh token.")
                 val response = session.callServiceMethod(
                     methodName = "Authentication.GenerateAccessTokenForApp#1",
                     request = CAuthentication_AccessToken_GenerateForApp_Request.newBuilder()
@@ -112,12 +118,16 @@ class SteamAuthenticationClient(
                         .build(),
                     parser = CAuthentication_AccessToken_GenerateForApp_Response.parser(),
                 )
+                debugLogger.log(
+                    "Protocol: generated access token accessLength=${response.accessToken.length} refreshUpdated=${response.refreshToken.isNotBlank()}.",
+                )
                 SteamWebAccessTokens(
                     accessToken = response.accessToken,
                     refreshToken = response.refreshToken.takeIf(String::isNotBlank),
                 )
             } catch (error: Throwable) {
-                throw error.asAuthenticationException("Failed to generate Steam web access token")
+                debugLogger.log("Protocol: GenerateAccessTokenForApp failed ${error::class.java.simpleName}: ${error.message.orEmpty()}")
+                throw error.asAuthenticationException("生成 Steam Web Token 失败")
             }
         }
     }
@@ -125,11 +135,16 @@ class SteamAuthenticationClient(
     suspend fun revokeRefreshToken(
         account: SteamAccountSession,
         tokenId: ULong,
+        debugLogger: ((String) -> Unit)? = null,
     ) {
         val cmServers = directoryClient.loadServers()
         sessionFactory().use { session ->
             try {
+                debugLogger.log(
+                    "Protocol: revoking refresh token tokenId=$tokenId steamId=${account.steamId} cmServers=${cmServers.size}.",
+                )
                 session.connectWithRefreshToken(cmServers, account)
+                debugLogger.log("Protocol: connected to Steam CM for refresh-token revocation.")
                 session.callServiceMethod(
                     methodName = "Authentication.RevokeRefreshToken#1",
                     request = CAuthentication_RefreshToken_Revoke_Request.newBuilder()
@@ -138,8 +153,10 @@ class SteamAuthenticationClient(
                         .build(),
                     parser = CAuthentication_RefreshToken_Revoke_Response.parser(),
                 )
+                debugLogger.log("Protocol: refresh token revoked successfully.")
             } catch (error: Throwable) {
-                throw error.asAuthenticationException("Failed to revoke Steam refresh token")
+                debugLogger.log("Protocol: RevokeRefreshToken failed ${error::class.java.simpleName}: ${error.message.orEmpty()}")
+                throw error.asAuthenticationException("撤销 Steam Refresh Token 失败")
             }
         }
     }
@@ -152,12 +169,14 @@ class SteamCredentialAuthSession internal constructor(
     private val requestId: ByteArray,
     val pollingIntervalMillis: Long,
     val challenges: List<SteamGuardChallenge>,
+    private val debugLogger: ((String) -> Unit)? = null,
 ) : Closeable {
     suspend fun submitGuardCode(
         type: SteamGuardChallengeType,
         code: String,
     ) {
         try {
+            debugLogger.log("Protocol: submitting Steam Guard code type=${type.name} codeLength=${code.length}.")
             session.callServiceMethod(
                 methodName = "Authentication.UpdateAuthSessionWithSteamGuardCode#1",
                 request = CAuthentication_UpdateAuthSessionWithSteamGuardCode_Request.newBuilder()
@@ -168,13 +187,16 @@ class SteamCredentialAuthSession internal constructor(
                     .build(),
                 parser = CAuthentication_UpdateAuthSessionWithSteamGuardCode_Response.parser(),
             )
+            debugLogger.log("Protocol: Steam Guard code accepted by service.")
         } catch (error: Throwable) {
-            throw error.asAuthenticationException("Failed to submit Steam Guard code")
+            debugLogger.log("Protocol: UpdateAuthSessionWithSteamGuardCode failed ${error::class.java.simpleName}: ${error.message.orEmpty()}")
+            throw error.asAuthenticationException("提交 Steam Guard 验证码失败")
         }
     }
 
     suspend fun pollStatus(): SteamAuthPollResult? {
         try {
+            debugLogger.log("Protocol: polling auth session status clientId=$clientId.")
             val response = session.callServiceMethod(
                 methodName = "Authentication.PollAuthSessionStatus#1",
                 request = CAuthentication_PollAuthSessionStatus_Request.newBuilder()
@@ -184,8 +206,12 @@ class SteamCredentialAuthSession internal constructor(
                 parser = CAuthentication_PollAuthSessionStatus_Response.parser(),
             )
             if (response.refreshToken.isBlank()) {
+                debugLogger.log("Protocol: auth session still pending.")
                 return null
             }
+            debugLogger.log(
+                "Protocol: auth session completed account=${response.accountName.maskForLog()} refreshLength=${response.refreshToken.length} accessLength=${response.accessToken.length} guardDataUpdated=${response.newGuardData.isNotBlank()}.",
+            )
             return SteamAuthPollResult(
                 steamId = steamId,
                 accountName = response.accountName,
@@ -194,13 +220,21 @@ class SteamCredentialAuthSession internal constructor(
                 newGuardData = response.newGuardData.takeIf(String::isNotBlank),
             )
         } catch (error: Throwable) {
-            throw error.asAuthenticationException("Failed to poll Steam authentication status")
+            debugLogger.log("Protocol: PollAuthSessionStatus failed ${error::class.java.simpleName}: ${error.message.orEmpty()}")
+            throw error.asAuthenticationException("轮询 Steam 登录状态失败")
         }
     }
 
     suspend fun awaitResult(): SteamAuthPollResult {
+        debugLogger.log("Protocol: waiting for auth result pollIntervalMs=$pollingIntervalMillis.")
+        var attempts = 0
         while (true) {
-            pollStatus()?.let { return it }
+            attempts += 1
+            debugLogger.log("Protocol: auth poll attempt=$attempts.")
+            pollStatus()?.let { result ->
+                debugLogger.log("Protocol: auth result received after $attempts poll attempt(s).")
+                return result
+            }
             delay(pollingIntervalMillis)
         }
     }
@@ -269,9 +303,68 @@ private fun decodeHex(value: String): ByteArray {
     }
 }
 
-private fun machineId(): com.google.protobuf.ByteString {
-    val digest = MessageDigest.getInstance("SHA-1")
-    return com.google.protobuf.ByteString.copyFrom(digest.digest("android-workshop-demo".toByteArray()))
+private fun List<SteamGuardChallenge>.summaryForLog(): String =
+    if (isEmpty()) {
+        "none"
+    } else {
+        joinToString(separator = ",") { challenge ->
+            buildString {
+                append(challenge.type.name)
+                challenge.message
+                    ?.takeIf(String::isNotBlank)
+                    ?.let {
+                        append("(message)")
+                    }
+            }
+        }
+    }
+
+private fun String?.maskForLog(): String =
+    this
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+        ?.let { value ->
+            when {
+                value.length <= 2 -> "*".repeat(value.length)
+                else -> "${value.first()}***${value.last()}"
+            }
+        }
+        ?: "-"
+
+private fun ((String) -> Unit)?.log(line: String) {
+    this?.invoke(line)
+}
+
+internal fun buildBeginAuthSessionRequest(
+    details: SteamAuthSessionDetails,
+    encryptedPassword: String,
+    encryptionTimestamp: Long,
+): CAuthentication_BeginAuthSessionViaCredentials_Request {
+    val builder = CAuthentication_BeginAuthSessionViaCredentials_Request.newBuilder()
+        .setAccountName(details.username)
+        .setEncryptedPassword(encryptedPassword)
+        .setEncryptionTimestamp(encryptionTimestamp)
+        .setPersistence(
+            if (details.isPersistentSession) {
+                ESessionPersistence.k_ESessionPersistence_Persistent
+            } else {
+                ESessionPersistence.k_ESessionPersistence_Ephemeral
+            },
+        )
+        .setWebsiteId(details.websiteId)
+        .setDeviceDetails(
+            CAuthentication_DeviceDetails.newBuilder()
+                .setDeviceFriendlyName(details.deviceFriendlyName)
+                .setPlatformType(EAuthTokenPlatformType.k_EAuthTokenPlatformType_SteamClient)
+                .setOsType(details.clientOsType)
+                .build(),
+        )
+
+    details.guardData
+        ?.takeIf(String::isNotBlank)
+        ?.let(builder::setGuardData)
+
+    return builder.build()
 }
 
 private fun Throwable.asAuthenticationException(prefix: String): SteamAuthenticationException =
@@ -279,7 +372,11 @@ private fun Throwable.asAuthenticationException(prefix: String): SteamAuthentica
         is SteamAuthenticationException -> this
         is SteamServiceMethodException -> SteamAuthenticationException(
             resultCode = resultCode,
-            message = listOfNotNull(prefix, steamMessage ?: message).joinToString(": "),
+            message = buildSteamAuthenticationErrorMessage(
+                prefix = prefix,
+                resultCode = resultCode,
+                detail = steamMessage,
+            ),
             cause = this,
         )
 

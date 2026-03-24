@@ -67,15 +67,6 @@ class DownloadSettingsRepository(context: Context) {
         prefs.edit().putString(KEY_STEAM_LANGUAGE_PREFERENCE, value.storageValue).apply()
     }
 
-    fun getTranslationProvider(): TranslationProvider =
-        prefs.getString(KEY_TRANSLATION_PROVIDER, null)
-            ?.let(TranslationProvider::fromStorageValue)
-            ?: DEFAULT_TRANSLATION_PROVIDER
-
-    fun setTranslationProvider(value: TranslationProvider) {
-        prefs.edit().putString(KEY_TRANSLATION_PROVIDER, value.storageValue).apply()
-    }
-
     fun getModLibraryDisplayMode(): ModLibraryDisplayMode =
         prefs.getString(KEY_MOD_LIBRARY_DISPLAY_MODE, null)
             ?.let(ModLibraryDisplayMode::fromStorageValue)
@@ -153,7 +144,6 @@ class DownloadSettingsRepository(context: Context) {
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_FRONTEND_MODE = "frontend_mode"
         private const val KEY_STEAM_LANGUAGE_PREFERENCE = "steam_language_preference"
-        private const val KEY_TRANSLATION_PROVIDER = "translation_provider"
         private const val KEY_MOD_LIBRARY_DISPLAY_MODE = "mod_library_display_mode"
         private const val KEY_AUTO_CHECK_UPDATES_ENABLED = "auto_check_updates_enabled"
         private const val KEY_PREFERRED_UPDATE_SOURCE_ID = "preferred_update_source_id"
@@ -178,7 +168,6 @@ class DownloadSettingsRepository(context: Context) {
         val DEFAULT_THEME_MODE: AppThemeMode = AppThemeMode.FollowSystem
         val DEFAULT_FRONTEND_MODE: AppFrontendMode = AppFrontendMode.LiquidGlass
         val DEFAULT_STEAM_LANGUAGE_PREFERENCE: SteamLanguagePreference = SteamLanguagePreference.SimplifiedChinese
-        val DEFAULT_TRANSLATION_PROVIDER: TranslationProvider = TranslationProvider.OnDevice
         val DEFAULT_MOD_LIBRARY_DISPLAY_MODE: ModLibraryDisplayMode = ModLibraryDisplayMode.CompactList
     }
 }

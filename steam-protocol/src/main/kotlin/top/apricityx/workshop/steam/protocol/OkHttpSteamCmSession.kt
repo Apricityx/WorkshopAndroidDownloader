@@ -36,12 +36,13 @@ import okio.ByteString.Companion.toByteString
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.NetworkInterface
-import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 class OkHttpSteamCmSession(
     private val client: OkHttpClient = OkHttpClient(),
+    private val machineName: String = DEFAULT_MACHINE_NAME,
+    private val machineId: ByteArray = defaultSteamMachineId(),
 ) : SteamCmSession {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingRequests = ConcurrentHashMap<Long, PendingRequest<out MessageLite>>()
@@ -85,8 +86,8 @@ class OkHttpSteamCmSession(
                     .setClientPackageVersion(1771)
                     .setObfuscatedPrivateIp(defaultObfuscatedPrivateIp())
                     .setDeprecatedObfustucatedPrivateIp(defaultObfuscatedPrivateIp().v4)
-                    .setMachineName(DEFAULT_MACHINE_NAME)
-                    .setMachineId(ByteString.copyFrom(machineId()))
+                    .setMachineName(machineName)
+                    .setMachineId(ByteString.copyFrom(machineId))
                     .setSupportsRateLimitResponse(true)
                     .build()
             },
@@ -115,8 +116,8 @@ class OkHttpSteamCmSession(
                     .setClientPackageVersion(1771)
                     .setObfuscatedPrivateIp(defaultObfuscatedPrivateIp())
                     .setDeprecatedObfustucatedPrivateIp(defaultObfuscatedPrivateIp().v4)
-                    .setMachineName(account.machineName)
-                    .setMachineId(ByteString.copyFrom(machineId()))
+                    .setMachineName(account.machineName.ifBlank { machineName })
+                    .setMachineId(ByteString.copyFrom(machineId))
                     .setSupportsRateLimitResponse(true)
                     .setAccountName(account.accountName)
                     .setShouldRememberPassword(account.shouldRememberPassword)
@@ -248,7 +249,10 @@ class OkHttpSteamCmSession(
                     pendingLogon.completeExceptionallyIfNeeded(
                         SteamAuthenticationException(
                             resultCode = response.eresult,
-                            message = "Steam logon failed with EResult=${response.eresult}",
+                            message = buildSteamAuthenticationErrorMessage(
+                                prefix = "Steam 会话登录失败",
+                                resultCode = response.eresult,
+                            ),
                         ),
                     )
                     return
@@ -437,11 +441,6 @@ class OkHttpSteamCmSession(
         val universe = 1L
         val accountType = 10L
         return (universe shl 56) or (accountType shl 52)
-    }
-
-    private fun machineId(): ByteArray {
-        val digest = MessageDigest.getInstance("SHA-1")
-        return digest.digest("android-workshop-demo".toByteArray())
     }
 
     private fun defaultObfuscatedPrivateIp(): CMsgIPAddress {
