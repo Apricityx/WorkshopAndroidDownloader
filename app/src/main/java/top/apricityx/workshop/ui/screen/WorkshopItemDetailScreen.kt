@@ -30,8 +30,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
+import top.apricityx.workshop.WorkshopModStatus
 import top.apricityx.workshop.WorkshopItemDetailUiState
 import top.apricityx.workshop.formatBinaryFileSize
 import top.apricityx.workshop.data.WorkshopBrowseItem
@@ -52,7 +52,7 @@ import top.apricityx.workshop.ui.theme.workshopChromePadding
 internal fun WorkshopItemDetailScreen(
     state: WorkshopItemDetailUiState,
     downloadedItemIds: Set<ULong>,
-    downloadActionState: WorkshopDownloadActionState,
+    modStatus: WorkshopModStatus,
     onRetry: () -> Unit,
     onTranslateDescription: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
@@ -167,45 +167,22 @@ internal fun WorkshopItemDetailScreen(
 
                 WorkshopButton(
                     onClick = {
-                        if (downloadActionState == WorkshopDownloadActionState.Idle) {
+                        if (modStatus.isDownloadActionEnabled()) {
                             onDownload(state.item)
                         }
                     },
-                    enabled = downloadActionState == WorkshopDownloadActionState.Idle,
+                    enabled = modStatus.isDownloadActionEnabled(),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    when (downloadActionState) {
-                        WorkshopDownloadActionState.Idle -> {
-                            Icon(
-                                imageVector = if (state.item.publishedFileId in downloadedItemIds) {
-                                    Icons.Default.Refresh
-                                } else {
-                                    Icons.Default.Download
-                                },
-                                contentDescription = null,
-                            )
-                            Text(
-                                if (state.item.publishedFileId in downloadedItemIds) {
-                                    " 重新下载"
-                                } else {
-                                    " 下载"
-                                },
-                            )
-                        }
-
-                        WorkshopDownloadActionState.Loading -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Text(" 下载中")
-                        }
-
-                        WorkshopDownloadActionState.Downloading -> {
-                            DownloadingAnimatedIcon()
-                            Text(" 下载中")
-                        }
+                    if (modStatus == WorkshopModStatus.Downloading) {
+                        DownloadingAnimatedIcon()
+                    } else {
+                        Icon(
+                            imageVector = modStatus.actionIcon(),
+                            contentDescription = null,
+                        )
                     }
+                    Text(" ${modStatus.actionLabel()}")
                 }
 
                 if (state.message != null) {

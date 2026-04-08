@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -44,6 +45,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import top.apricityx.workshop.GameWorkshopUiState
+import top.apricityx.workshop.WorkshopModStatus
+import top.apricityx.workshop.WorkshopModStatusResolver
+import top.apricityx.workshop.WorkshopPublishedFileIdParser
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
 import top.apricityx.workshop.displayName
@@ -58,6 +62,7 @@ import top.apricityx.workshop.ui.component.WorkshopGlassIconButton
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
@@ -66,9 +71,7 @@ import top.apricityx.workshop.ui.theme.workshopListContentPadding
 @Composable
 fun GameWorkshopScreen(
     state: GameWorkshopUiState,
-    downloadedItemIds: Set<ULong>,
-    pendingDownloadItemIds: Set<ULong>,
-    activeDownloadItemIds: Set<ULong>,
+    modStatusResolver: WorkshopModStatusResolver,
     onSearchQueryChange: (String) -> Unit,
     onSortOptionSelected: (WorkshopBrowseSortOption) -> Unit,
     onTimeWindowSelected: (WorkshopBrowseTimeWindow) -> Unit,
@@ -76,6 +79,7 @@ fun GameWorkshopScreen(
     onLoadMore: () -> Unit,
     onOpenItemDetail: (WorkshopBrowseItem) -> Unit,
     onDownloadSingleItem: (WorkshopBrowseItem) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberSaveable(
@@ -87,18 +91,39 @@ fun GameWorkshopScreen(
     var directPublishedFileIdText by rememberSaveable(state.game.appId.toString()) {
         mutableStateOf("")
     }
+    var showDirectPublishedIdDialog by rememberSaveable(state.game.appId.toString()) {
+        mutableStateOf(false)
+    }
     val showingRefreshState = state.isLoading && state.items.isNotEmpty()
-    val directPublishedFileId = directPublishedFileIdText.toULongOrNull()
-    val canDirectDownload =
-        directPublishedFileIdText.isNotBlank() &&
-            directPublishedFileIdText != "0" &&
-            directPublishedFileId != null
-    val directDownloadState = resolveWorkshopDownloadActionState(
-        publishedFileId = directPublishedFileId,
-        pendingDownloadItemIds = pendingDownloadItemIds,
-        activeDownloadItemIds = activeDownloadItemIds,
-    )
-    val shouldShowDirectDownloadCard = !state.showConnectionErrorState
+    val directPublishedFileId = WorkshopPublishedFileIdParser.parse(directPublishedFileIdText)
+    val canDirectDownload = directPublishedFileId != null
+    val directModStatus = directPublishedFileId?.let { publishedFileId ->
+        modStatusResolver.resolve(appId = state.game.appId, publishedFileId = publishedFileId)
+    } ?: WorkshopModStatus.NotDownloaded
+
+    if (showDirectPublishedIdDialog) {
+        DirectPublishedIdDownloadDialog(
+            directPublishedFileIdText = directPublishedFileIdText,
+            modStatus = directModStatus,
+            canDirectDownload = canDirectDownload,
+            onPublishedFileIdChange = { value -> directPublishedFileIdText = value },
+            onDismiss = { showDirectPublishedIdDialog = false },
+            onDownload = {
+                val publishedFileId = directPublishedFileId ?: return@DirectPublishedIdDownloadDialog
+                onDownloadSingleItem(
+                    WorkshopBrowseItem(
+                        appId = state.game.appId,
+                        publishedFileId = publishedFileId,
+                        title = "Workshop $publishedFileId",
+                        authorName = "",
+                        previewImageUrl = "",
+                        descriptionSnippet = "",
+                    ),
+                )
+                showDirectPublishedIdDialog = false
+            },
+        )
+    }
 
     LazyColumn(
         state = listState,
@@ -157,40 +182,14 @@ fun GameWorkshopScreen(
             }
         }
 
-        if (shouldShowDirectDownloadCard) {
+        if (state.isMoreActionsExpanded) {
             item {
-                DirectPublishedIdDownloadCard(
-                    directPublishedFileIdText = directPublishedFileIdText,
-                    downloadActionState = directDownloadState,
-                    canDirectDownload = canDirectDownload,
-                    onPublishedFileIdChange = { value ->
-                        directPublishedFileIdText = value.filter(Char::isDigit)
-                    },
-                    onDownload = {
-                        val publishedFileId = directPublishedFileId ?: return@DirectPublishedIdDownloadCard
-                        onDownloadSingleItem(
-                            WorkshopBrowseItem(
-                                appId = state.game.appId,
-                                publishedFileId = publishedFileId,
-                                title = "Workshop $publishedFileId",
-                                authorName = "",
-                                previewImageUrl = "",
-                                descriptionSnippet = "",
-                            ),
-                        )
-                    },
+                GameWorkshopMoreActionsPanel(
+                    isRefreshing = state.isLoading || state.isLoadingMore,
+                    onRefresh = onSearch,
+                    onOpenDirectDownload = { showDirectPublishedIdDialog = true },
+                    onOpenSettings = onOpenSettings,
                 )
-            }
-        }
-
-        item {
-            WorkshopPanelCard {
-                WorkshopOutlinedButton(
-                    onClick = onSearch,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("刷新列表")
-                }
             }
         }
 
@@ -251,15 +250,10 @@ fun GameWorkshopScreen(
                 }
 
                 items(state.items, key = { it.publishedFileId.toString() }) { item ->
-                    val downloadActionState = resolveWorkshopDownloadActionState(
-                        publishedFileId = item.publishedFileId,
-                        pendingDownloadItemIds = pendingDownloadItemIds,
-                        activeDownloadItemIds = activeDownloadItemIds,
-                    )
+                    val modStatus = modStatusResolver.resolve(item)
                     WorkshopItemCard(
                         item = item,
-                        isDownloaded = item.publishedFileId in downloadedItemIds,
-                        downloadActionState = downloadActionState,
+                        modStatus = modStatus,
                         onOpenDetail = { onOpenItemDetail(item) },
                         onDownload = { onDownloadSingleItem(item) },
                     )
@@ -285,61 +279,128 @@ fun GameWorkshopScreen(
 }
 
 @Composable
-private fun DirectPublishedIdDownloadCard(
+private fun DirectPublishedIdDownloadDialog(
     directPublishedFileIdText: String,
-    downloadActionState: WorkshopDownloadActionState,
+    modStatus: WorkshopModStatus,
     canDirectDownload: Boolean,
     onPublishedFileIdChange: (String) -> Unit,
+    onDismiss: () -> Unit,
     onDownload: () -> Unit,
+) {
+    WorkshopDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("直接填写 publishedID 或创意工坊链接") },
+        buttons = {
+            WorkshopOutlinedButton(onClick = onDismiss) {
+                Text("取消")
+            }
+            WorkshopButton(
+                onClick = {
+                    if (canDirectDownload && modStatus.isDownloadActionEnabled()) {
+                        onDownload()
+                    }
+                },
+                enabled = canDirectDownload && modStatus.isDownloadActionEnabled(),
+            ) {
+                Text(modStatus.actionLabel())
+            }
+        },
+    ) {
+        Text(
+            text = "支持直接粘贴 publishedID，或 Steam 创意工坊详情页链接。",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        WorkshopOutlinedTextField(
+            value = directPublishedFileIdText,
+            onValueChange = onPublishedFileIdChange,
+            label = { Text("填写 publishedID 或链接") },
+            supportingText = {
+                Text("示例：https://steamcommunity.com/sharedfiles/filedetails/?id=3657277146")
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (directPublishedFileIdText.isNotBlank() && !canDirectDownload) {
+            Text(
+                text = "没有识别到有效的 publishedID。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        when {
+            !canDirectDownload -> Unit
+            modStatus == WorkshopModStatus.NotDownloaded -> Unit
+            modStatus == WorkshopModStatus.Downloading -> {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    DownloadingAnimatedIcon()
+                    Text("这个模组已经在下载中。")
+                }
+            }
+            else -> {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = modStatus.actionIcon(),
+                        contentDescription = null,
+                    )
+                    Text(
+                        when (modStatus) {
+                            WorkshopModStatus.LatestDownloaded -> "这个模组的最新版已经在本地。"
+                            WorkshopModStatus.UpdateAvailable -> "本地已有旧版本，可直接更新到最新版本。"
+                            WorkshopModStatus.NotDownloaded,
+                            WorkshopModStatus.Downloading,
+                            -> ""
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GameWorkshopMoreActionsPanel(
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onOpenDirectDownload: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     WorkshopPanelCard {
         Text(
-            text = "直接填写 publishedID",
+            text = "更多操作",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = "如果你已经知道这个工坊物品的 publishedID，可以直接发起下载。",
+            text = "把不常用的浏览辅助功能收在这里，避免干扰列表浏览。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            WorkshopOutlinedTextField(
-                value = directPublishedFileIdText,
-                onValueChange = onPublishedFileIdChange,
-                label = { Text("直接填写 publishedID") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            WorkshopButton(
-                onClick = {
-                    if (downloadActionState == WorkshopDownloadActionState.Idle) {
-                        onDownload()
-                    }
-                },
-                enabled = downloadActionState != WorkshopDownloadActionState.Idle || canDirectDownload,
-                modifier = Modifier.padding(top = 8.dp),
+            WorkshopOutlinedButton(
+                onClick = onRefresh,
+                enabled = !isRefreshing,
             ) {
-                when (downloadActionState) {
-                    WorkshopDownloadActionState.Idle -> Text("下载")
-                    WorkshopDownloadActionState.Loading -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                        Text(" 准备下载…")
-                    }
-
-                    WorkshopDownloadActionState.Downloading -> {
-                        DownloadingAnimatedIcon()
-                        Text(" 下载中…")
-                    }
-                }
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Text(if (isRefreshing) "正在刷新" else "刷新列表")
+            }
+            WorkshopOutlinedButton(onClick = onOpenDirectDownload) {
+                Text("填写 publishedID")
+            }
+            WorkshopOutlinedButton(onClick = onOpenSettings) {
+                Icon(Icons.Default.Settings, contentDescription = null)
+                Text("设置")
             }
         }
     }
@@ -439,8 +500,7 @@ private fun WorkshopBrowseSelectionChip(
 @Composable
 private fun WorkshopItemCard(
     item: WorkshopBrowseItem,
-    isDownloaded: Boolean,
-    downloadActionState: WorkshopDownloadActionState,
+    modStatus: WorkshopModStatus,
     onOpenDetail: () -> Unit,
     onDownload: () -> Unit,
 ) {
@@ -495,8 +555,7 @@ private fun WorkshopItemCard(
             }
 
             WorkshopDownloadActionButton(
-                actionState = downloadActionState,
-                isDownloaded = isDownloaded,
+                modStatus = modStatus,
                 onClick = onDownload,
                 modifier = Modifier.align(Alignment.Top),
             )
@@ -506,41 +565,27 @@ private fun WorkshopItemCard(
 
 @Composable
 private fun WorkshopDownloadActionButton(
-    actionState: WorkshopDownloadActionState,
-    isDownloaded: Boolean,
+    modStatus: WorkshopModStatus,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val idleImageVector = if (isDownloaded) Icons.Default.Refresh else Icons.Default.Download
-    val contentDescription = when (actionState) {
-        WorkshopDownloadActionState.Idle -> if (isDownloaded) "重新下载" else "下载"
-        WorkshopDownloadActionState.Loading -> "准备下载"
-        WorkshopDownloadActionState.Downloading -> "下载中"
-    }
-
     WorkshopGlassIconButton(
         onClick = onClick,
-        imageVector = if (actionState == WorkshopDownloadActionState.Idle) idleImageVector else Icons.Default.Sync,
-        contentDescription = contentDescription,
+        imageVector = modStatus.actionIcon(),
+        contentDescription = modStatus.actionLabel(),
         modifier = modifier,
-        enabled = actionState == WorkshopDownloadActionState.Idle,
-        content = when (actionState) {
-            WorkshopDownloadActionState.Idle -> null
-            WorkshopDownloadActionState.Loading -> {
-                {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-
-            WorkshopDownloadActionState.Downloading -> {
+        enabled = modStatus.isDownloadActionEnabled(),
+        content = when (modStatus) {
+            WorkshopModStatus.Downloading -> {
                 {
                     DownloadingAnimatedIcon()
                 }
             }
+
+            WorkshopModStatus.LatestDownloaded,
+            WorkshopModStatus.UpdateAvailable,
+            WorkshopModStatus.NotDownloaded,
+            -> null
         },
     )
 }

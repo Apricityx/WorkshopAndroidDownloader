@@ -7,6 +7,9 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -14,27 +17,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import top.apricityx.workshop.WorkshopModStatus
 
-internal enum class WorkshopDownloadActionState {
-    Idle,
-    Loading,
-    Downloading,
-}
+internal fun WorkshopModStatus.actionLabel(): String =
+    when (this) {
+        WorkshopModStatus.LatestDownloaded -> "最新版已下载"
+        WorkshopModStatus.UpdateAvailable -> "更新到最新版本"
+        WorkshopModStatus.NotDownloaded -> "下载"
+        WorkshopModStatus.Downloading -> "下载中"
+    }
 
-internal fun resolveWorkshopDownloadActionState(
-    publishedFileId: ULong?,
-    pendingDownloadItemIds: Set<ULong>,
-    activeDownloadItemIds: Set<ULong>,
-): WorkshopDownloadActionState = when {
-    publishedFileId != null && publishedFileId in activeDownloadItemIds ->
-        WorkshopDownloadActionState.Downloading
+internal fun WorkshopModStatus.actionIcon(): ImageVector =
+    when (this) {
+        WorkshopModStatus.LatestDownloaded -> Icons.Default.Done
+        WorkshopModStatus.UpdateAvailable -> Icons.Default.Refresh
+        WorkshopModStatus.NotDownloaded -> Icons.Default.Download
+        WorkshopModStatus.Downloading -> Icons.Default.Sync
+    }
 
-    publishedFileId != null && publishedFileId in pendingDownloadItemIds ->
-        WorkshopDownloadActionState.Loading
-
-    else -> WorkshopDownloadActionState.Idle
-}
+internal fun WorkshopModStatus.isDownloadActionEnabled(): Boolean =
+    this == WorkshopModStatus.UpdateAvailable || this == WorkshopModStatus.NotDownloaded
 
 @Composable
 internal fun DownloadingAnimatedIcon(

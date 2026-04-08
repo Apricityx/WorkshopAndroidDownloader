@@ -30,10 +30,14 @@ fun WorkshopScreenDestination.showsDownloadCenterShortcut(): Boolean =
         this != WorkshopScreenDestination.BaiduTranslationApiKey
 
 fun WorkshopScreenDestination.showsSettingsShortcut(): Boolean =
-    this != WorkshopScreenDestination.DownloadCenter &&
+    this != WorkshopScreenDestination.GameWorkshop &&
+        this != WorkshopScreenDestination.DownloadCenter &&
         this != WorkshopScreenDestination.DownloadTaskDetail &&
         this != WorkshopScreenDestination.Settings &&
         this != WorkshopScreenDestination.BaiduTranslationApiKey
+
+fun WorkshopScreenDestination.showsGameWorkshopMoreShortcut(): Boolean =
+    this == WorkshopScreenDestination.GameWorkshop
 
 enum class AppThemeMode(
     val storageValue: String,
@@ -139,6 +143,7 @@ data class GameWorkshopUiState(
     val message: String? = null,
     val showConnectionErrorState: Boolean = false,
     val retryLoadMoreOnError: Boolean = false,
+    val isMoreActionsExpanded: Boolean = false,
 )
 
 data class WorkshopItemDetailUiState(

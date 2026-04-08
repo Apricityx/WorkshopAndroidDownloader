@@ -21,6 +21,7 @@ class WorkshopScreenDestinationTest {
 
     @Test
     fun showsSettingsShortcut_isFalseOnDownloadAndSettingsScreens() {
+        assertThat(WorkshopScreenDestination.GameWorkshop.showsSettingsShortcut()).isFalse()
         assertThat(WorkshopScreenDestination.DownloadCenter.showsSettingsShortcut()).isFalse()
         assertThat(WorkshopScreenDestination.DownloadTaskDetail.showsSettingsShortcut()).isFalse()
         assertThat(WorkshopScreenDestination.Settings.showsSettingsShortcut()).isFalse()
@@ -28,9 +29,16 @@ class WorkshopScreenDestinationTest {
     }
 
     @Test
-    fun showsSettingsShortcut_isTrueOutsideDownloadAndSettingsScreens() {
+    fun showsSettingsShortcut_isTrueOnLibraryScreens() {
         assertThat(WorkshopScreenDestination.GameLibrary.showsSettingsShortcut()).isTrue()
         assertThat(WorkshopScreenDestination.ModLibrary.showsSettingsShortcut()).isTrue()
-        assertThat(WorkshopScreenDestination.GameWorkshop.showsSettingsShortcut()).isTrue()
+    }
+
+    @Test
+    fun showsGameWorkshopMoreShortcut_isOnlyTrueOnGameWorkshop() {
+        assertThat(WorkshopScreenDestination.GameLibrary.showsGameWorkshopMoreShortcut()).isFalse()
+        assertThat(WorkshopScreenDestination.ModLibrary.showsGameWorkshopMoreShortcut()).isFalse()
+        assertThat(WorkshopScreenDestination.GameWorkshop.showsGameWorkshopMoreShortcut()).isTrue()
+        assertThat(WorkshopScreenDestination.Settings.showsGameWorkshopMoreShortcut()).isFalse()
     }
 }

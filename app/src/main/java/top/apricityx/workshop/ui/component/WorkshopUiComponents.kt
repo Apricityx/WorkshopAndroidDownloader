@@ -31,9 +31,10 @@ enum class MessageTone {
 @Composable
 fun WorkshopPanelCard(
     modifier: Modifier = Modifier,
+    preferSolidStyle: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (isLiquidGlassFrontendEnabled()) {
+    if (isLiquidGlassFrontendEnabled() && !preferSolidStyle) {
         WorkshopGlassSurface(
             modifier = modifier.fillMaxWidth(),
         ) {

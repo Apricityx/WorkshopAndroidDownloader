@@ -1284,6 +1284,17 @@ class WorkshopViewModel(
         )
     }
 
+    fun toggleGameWorkshopMoreActions() {
+        _uiState.update { state ->
+            val currentWorkshopState = state.gameWorkshopState ?: return@update state
+            state.copy(
+                gameWorkshopState = currentWorkshopState.copy(
+                    isMoreActionsExpanded = currentWorkshopState.isMoreActionsExpanded.not(),
+                ),
+            )
+        }
+    }
+
     fun openWorkshopItemDetail(item: WorkshopBrowseItem) {
         val targetAppId = item.appId
         val targetPublishedFileId = item.publishedFileId
@@ -1704,7 +1715,9 @@ class WorkshopViewModel(
         }
 
         val appId = command.appIdText.toUInt()
-        val publishedFileId = command.publishedFileIdText.toULong()
+        val publishedFileId = requireNotNull(
+            WorkshopPublishedFileIdParser.parse(command.publishedFileIdText),
+        )
         val downloadBinding = steamAuthRepository.currentDownloadBinding()
         val enqueued = downloadCenterManager.enqueueDownloads(
             appId = appId,

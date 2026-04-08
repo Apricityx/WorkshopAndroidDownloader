@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
     private val downloadDebugLogManager by lazy { DownloadDebugLogManager(application) }
     private val steamLoginDebugLogManager by lazy { SteamLoginDebugLogManager(application) }
     private var pendingDownloadItems: List<WorkshopBrowseItem> = emptyList()
-    private var pendingDownloadPublishedFileIds by mutableStateOf<Set<ULong>>(emptySet())
+    private var pendingDownloadItemKeys by mutableStateOf<Set<WorkshopModKey>>(emptySet())
     private var downloadDependencyWarningDialogState: DownloadDependencyWarningDialogState? by mutableStateOf(null)
     private var isCheckingDownloadDependencies by mutableStateOf(false)
     private val legacyStoragePermissionLauncher =
@@ -73,8 +73,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val uiState = workshopViewModel.uiState.collectAsStateWithLifecycle().value
-            val activeDownloadPublishedFileIds = uiState.downloadCenterState.activeTasks
-                .map(DownloadCenterTaskUiState::publishedFileId)
+            val activeDownloadItemKeys = uiState.downloadCenterState.activeTasks
+                .map(DownloadCenterTaskUiState::workshopModKey)
                 .toSet()
 
             SteamWorkshopDemoTheme(
@@ -89,16 +89,16 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
                     }
                 }
-                LaunchedEffect(activeDownloadPublishedFileIds) {
-                    if (activeDownloadPublishedFileIds.isNotEmpty()) {
-                        pendingDownloadPublishedFileIds -= activeDownloadPublishedFileIds
+                LaunchedEffect(activeDownloadItemKeys) {
+                    if (activeDownloadItemKeys.isNotEmpty()) {
+                        pendingDownloadItemKeys -= activeDownloadItemKeys
                     }
                 }
 
                 WorkshopScreen(
                     state = uiState,
                     actions = buildWorkshopScreenActions(),
-                    pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
+                    pendingDownloadItemKeys = pendingDownloadItemKeys,
                 )
 
                 downloadDependencyWarningDialogState?.let { dialogState ->
@@ -213,11 +213,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun markDownloadPending(items: List<WorkshopBrowseItem>) {
-        pendingDownloadPublishedFileIds += items.map(WorkshopBrowseItem::publishedFileId)
+        pendingDownloadItemKeys += items.map(WorkshopBrowseItem::workshopModKey)
     }
 
     private fun clearPendingDownloads(items: List<WorkshopBrowseItem>) {
-        pendingDownloadPublishedFileIds -= items.map(WorkshopBrowseItem::publishedFileId).toSet()
+        pendingDownloadItemKeys -= items.map(WorkshopBrowseItem::workshopModKey).toSet()
     }
 
     private fun openExportedFile(file: ExportedDownloadFile) {
@@ -395,6 +395,7 @@ class MainActivity : ComponentActivity() {
             onRequestRemoveMod = workshopViewModel::requestRemoveMod,
             onConfirmRemoveMod = workshopViewModel::confirmRemoveMod,
             onDismissRemoveMod = workshopViewModel::dismissRemoveModDialog,
+            onToggleGameWorkshopMoreActions = workshopViewModel::toggleGameWorkshopMoreActions,
             onNavigateToSettings = workshopViewModel::navigateToSettings,
             onOpenSteamLoginDialog = workshopViewModel::openSteamLoginDialog,
             onDismissSteamLoginDialog = workshopViewModel::dismissSteamLoginDialog,

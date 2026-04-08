@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.ViewModule
@@ -57,14 +58,18 @@ import top.apricityx.workshop.DownloadCenterTaskUiState
 import top.apricityx.workshop.DownloadedModEntry
 import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ModLibraryDisplayMode
+import top.apricityx.workshop.WorkshopModKey
 import top.apricityx.workshop.WorkshopScreenDestination
 import top.apricityx.workshop.WorkshopUiState
+import top.apricityx.workshop.buildWorkshopModStatusResolver
 import top.apricityx.workshop.downloadedPublishedFileIds
 import top.apricityx.workshop.isLibraryRoot
+import top.apricityx.workshop.showsGameWorkshopMoreShortcut
 import top.apricityx.workshop.showsDownloadCenterShortcut
 import top.apricityx.workshop.showsSettingsShortcut
 import top.apricityx.workshop.toggleContentDescription
 import top.apricityx.workshop.versionLabel
+import top.apricityx.workshop.workshopModKey
 import top.apricityx.workshop.ui.component.WorkshopButton
 import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
@@ -131,7 +136,7 @@ internal fun WorkshopBody(
     selectedTask: DownloadCenterTaskUiState?,
     selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
-    pendingDownloadPublishedFileIds: Set<ULong>,
+    pendingDownloadItemKeys: Set<WorkshopModKey>,
     saveableStateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
 ) {
@@ -147,7 +152,7 @@ internal fun WorkshopBody(
             selectedTask = selectedTask,
             selectedMod = selectedMod,
             actions = actions,
-            pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
+            pendingDownloadItemKeys = pendingDownloadItemKeys,
             saveableStateHolder = saveableStateHolder,
             modifier = Modifier.fillMaxSize(),
         )
@@ -290,7 +295,7 @@ private fun WorkshopScreenContent(
     selectedTask: DownloadCenterTaskUiState?,
     selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
-    pendingDownloadPublishedFileIds: Set<ULong>,
+    pendingDownloadItemKeys: Set<WorkshopModKey>,
     saveableStateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
 ) {
@@ -318,7 +323,7 @@ private fun WorkshopScreenContent(
             selectedTask = selectedTask,
             selectedMod = selectedMod,
             actions = actions,
-            pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
+            pendingDownloadItemKeys = pendingDownloadItemKeys,
             saveableStateHolder = saveableStateHolder,
             modifier = modifier.graphicsLayer {
                 this.alpha = alpha
@@ -352,10 +357,25 @@ private fun WorkshopScreenScene(
     selectedTask: DownloadCenterTaskUiState?,
     selectedMod: DownloadedModGroup?,
     actions: WorkshopScreenActions,
-    pendingDownloadPublishedFileIds: Set<ULong>,
+    pendingDownloadItemKeys: Set<WorkshopModKey>,
     saveableStateHolder: SaveableStateHolder,
     modifier: Modifier = Modifier,
 ) {
+    val modStatusResolver = remember(
+        state.modLibraryState.items,
+        state.modLibraryState.updateCheckState.results,
+        pendingDownloadItemKeys,
+        state.downloadCenterState.activeTasks,
+    ) {
+        buildWorkshopModStatusResolver(
+            downloadedGroups = state.modLibraryState.items,
+            updateResults = state.modLibraryState.updateCheckState.results,
+            pendingDownloadItemKeys = pendingDownloadItemKeys,
+            activeDownloadItemKeys = state.downloadCenterState.activeTasks
+                .map(DownloadCenterTaskUiState::workshopModKey)
+                .toSet(),
+        )
+    }
     Box(modifier = modifier) {
         saveableStateHolder.SaveableStateProvider(key = screen.name) {
             when (screen) {
@@ -398,17 +418,9 @@ private fun WorkshopScreenScene(
                 )
 
                 WorkshopScreenDestination.GameWorkshop -> state.gameWorkshopState?.let { workshopState ->
-                    val downloadedItemIds = state.modLibraryState.items.downloadedPublishedFileIds(workshopState.game.appId)
-                    val activeDownloadItemIds = state.downloadCenterState.activeTasks
-                        .asSequence()
-                        .filter { it.appId == workshopState.game.appId }
-                        .map { it.publishedFileId }
-                        .toSet()
                     GameWorkshopScreen(
                         state = workshopState,
-                        downloadedItemIds = downloadedItemIds,
-                        pendingDownloadItemIds = pendingDownloadPublishedFileIds,
-                        activeDownloadItemIds = activeDownloadItemIds,
+                        modStatusResolver = modStatusResolver,
                         onSearchQueryChange = actions.onUpdateWorkshopSearchQuery,
                         onSortOptionSelected = actions.onUpdateWorkshopSort,
                         onTimeWindowSelected = actions.onUpdateWorkshopTimeWindow,
@@ -416,6 +428,7 @@ private fun WorkshopScreenScene(
                         onLoadMore = actions.onLoadMoreWorkshopItems,
                         onOpenItemDetail = actions.onOpenWorkshopItemDetail,
                         onDownloadSingleItem = actions.onDownloadSingleItem,
+                        onOpenSettings = actions.onNavigateToSettings,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -423,19 +436,10 @@ private fun WorkshopScreenScene(
                 WorkshopScreenDestination.WorkshopItemDetail -> state.workshopItemDetailState?.let { detailState ->
                     val downloadedItemIds = state.modLibraryState.items
                         .downloadedPublishedFileIds(detailState.item.appId)
-                    val activeDownloadItemIds = state.downloadCenterState.activeTasks
-                        .asSequence()
-                        .filter { it.appId == detailState.item.appId }
-                        .map { it.publishedFileId }
-                        .toSet()
                     WorkshopItemDetailScreen(
                         state = detailState,
                         downloadedItemIds = downloadedItemIds,
-                        downloadActionState = resolveWorkshopDownloadActionState(
-                            publishedFileId = detailState.item.publishedFileId,
-                            pendingDownloadItemIds = pendingDownloadPublishedFileIds,
-                            activeDownloadItemIds = activeDownloadItemIds,
-                        ),
+                        modStatus = modStatusResolver.resolve(detailState.item),
                         onRetry = actions.onRetryWorkshopItemDetail,
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onDownload = actions.onDownloadSingleItem,
@@ -658,6 +662,19 @@ private fun LegacyWorkshopTopBar(
                     }
                 }
 
+                if (state.currentScreen.showsGameWorkshopMoreShortcut()) {
+                    IconButton(onClick = actions.onToggleGameWorkshopMoreActions) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = if (state.gameWorkshopState?.isMoreActionsExpanded == true) {
+                                "收起更多"
+                            } else {
+                                "更多"
+                            },
+                        )
+                    }
+                }
+
                 if (state.currentScreen.showsSettingsShortcut()) {
                     IconButton(onClick = actions.onNavigateToSettings) {
                         Icon(
@@ -766,6 +783,19 @@ private fun WorkshopLiquidTopBar(
                         imageVector = toggleIcon,
                         contentDescription = toggleContentDescription,
                         modifier = Modifier.testTag("modLibraryDisplayModeToggle"),
+                    )
+                }
+
+                if (state.currentScreen.showsGameWorkshopMoreShortcut()) {
+                    WorkshopLiquidTopBarActionButton(
+                        onClick = actions.onToggleGameWorkshopMoreActions,
+                        backdrop = backdrop,
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = if (state.gameWorkshopState?.isMoreActionsExpanded == true) {
+                            "收起更多"
+                        } else {
+                            "更多"
+                        },
                     )
                 }
 

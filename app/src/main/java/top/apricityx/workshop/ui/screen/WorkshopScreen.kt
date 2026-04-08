@@ -32,6 +32,7 @@ import top.apricityx.workshop.DownloadedModGroup
 import top.apricityx.workshop.ExportedDownloadFile
 import top.apricityx.workshop.SteamLanguagePreference
 import top.apricityx.workshop.SteamLoginInputMode
+import top.apricityx.workshop.WorkshopModKey
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
 import top.apricityx.workshop.WorkshopUiState
@@ -82,6 +83,7 @@ data class WorkshopScreenActions(
     val onRequestRemoveMod: (DownloadedModEntry) -> Unit,
     val onConfirmRemoveMod: () -> Unit,
     val onDismissRemoveMod: () -> Unit,
+    val onToggleGameWorkshopMoreActions: () -> Unit,
     val onNavigateToSettings: () -> Unit,
     val onOpenSteamLoginDialog: () -> Unit,
     val onDismissSteamLoginDialog: () -> Unit,
@@ -138,7 +140,7 @@ data class WorkshopScreenActions(
 fun WorkshopScreen(
     state: WorkshopUiState,
     actions: WorkshopScreenActions,
-    pendingDownloadPublishedFileIds: Set<ULong> = emptySet(),
+    pendingDownloadItemKeys: Set<WorkshopModKey> = emptySet(),
 ) {
     val selectedTask = state.downloadCenterState.tasks.firstOrNull { it.id == state.selectedDownloadTaskId }
     val selectedMod = state.modLibraryState.selectedEntry
@@ -199,7 +201,7 @@ fun WorkshopScreen(
                             selectedTask = selectedTask,
                             selectedMod = selectedMod,
                             actions = actions,
-                            pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
+                            pendingDownloadItemKeys = pendingDownloadItemKeys,
                             saveableStateHolder = saveableStateHolder,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -265,7 +267,7 @@ fun WorkshopScreen(
                     selectedTask = selectedTask,
                     selectedMod = selectedMod,
                     actions = actions,
-                    pendingDownloadPublishedFileIds = pendingDownloadPublishedFileIds,
+                    pendingDownloadItemKeys = pendingDownloadItemKeys,
                     saveableStateHolder = saveableStateHolder,
                 )
             }
