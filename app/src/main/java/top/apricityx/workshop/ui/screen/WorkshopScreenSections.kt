@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.ViewModule
@@ -443,6 +444,8 @@ private fun WorkshopScreenScene(
                         downloadedItemIds = downloadedItemIds,
                         modStatus = modStatusResolver.resolve(detailState.item),
                         onRetry = actions.onRetryWorkshopItemDetail,
+                        onLoadPreviousCommentsPage = actions.onLoadPreviousWorkshopCommentsPage,
+                        onLoadNextCommentsPage = actions.onLoadNextWorkshopCommentsPage,
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onDownload = actions.onDownloadSingleItem,
                         onOpenRequiredItem = actions.onOpenWorkshopItemDetail,
@@ -854,19 +857,37 @@ private fun GameWorkshopMoreDropdownMenu(
     ) {
         DropdownMenuItem(
             text = { Text("刷新列表") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                )
+            },
             onClick = {
                 actions.onDismissGameWorkshopMoreActions()
                 actions.onSearchCurrentWorkshop()
             },
         )
         DropdownMenuItem(
-            text = { Text("填写 publishedID") },
+            text = { Text("ID 下载") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                )
+            },
             onClick = {
                 actions.onOpenGameWorkshopDirectDownloadDialog()
             },
         )
         DropdownMenuItem(
             text = { Text("设置") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                )
+            },
             onClick = {
                 actions.onDismissGameWorkshopMoreActions()
                 actions.onNavigateToSettings()

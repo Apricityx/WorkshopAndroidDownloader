@@ -1,5 +1,6 @@
 package top.apricityx.workshop.ui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,27 +32,29 @@ enum class MessageTone {
 @Composable
 fun WorkshopPanelCard(
     modifier: Modifier = Modifier,
-    preferSolidStyle: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (isLiquidGlassFrontendEnabled() && !preferSolidStyle) {
-        WorkshopGlassSurface(
-            modifier = modifier.fillMaxWidth(),
-        ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                content = content,
-            )
-        }
-        return
-    }
+    val isLiquidFrontend = isLiquidGlassFrontendEnabled()
 
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            containerColor = if (isLiquidFrontend) {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.22f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            },
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ),
+        border = if (isLiquidFrontend) {
+            BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+            )
+        } else {
+            null
+        },
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -119,6 +122,7 @@ fun WorkshopMessageBanner(
     tone: MessageTone,
     modifier: Modifier = Modifier,
 ) {
+    val isLiquidFrontend = isLiquidGlassFrontendEnabled()
     val containerColor = when (tone) {
         MessageTone.Info -> MaterialTheme.colorScheme.surfaceVariant
         MessageTone.Success -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -130,30 +134,28 @@ fun WorkshopMessageBanner(
         MessageTone.Error -> MaterialTheme.colorScheme.error
     }
 
-    if (isLiquidGlassFrontendEnabled()) {
-        WorkshopGlassSurface(
-            modifier = modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-            blurRadius = 14.dp,
-            lensHeight = 8.dp,
-            lensAmount = 8.dp,
-            surfaceColor = containerColor.copy(alpha = 0.78f),
-            borderColor = contentColor.copy(alpha = 0.18f),
-        ) {
-            Text(
-                text = message,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-            )
-        }
-        return
-    }
-
-    Surface(
+    Card(
         modifier = modifier.fillMaxWidth(),
-        color = containerColor,
         shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isLiquidFrontend) {
+                containerColor.copy(
+                    alpha = when (tone) {
+                        MessageTone.Info -> 0.22f
+                        MessageTone.Success -> 0.16f
+                        MessageTone.Error -> 0.18f
+                    },
+                )
+            } else {
+                containerColor
+            },
+        ),
+        border = if (isLiquidFrontend) {
+            BorderStroke(1.dp, contentColor.copy(alpha = 0.18f))
+        } else {
+            null
+        },
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Text(
             text = message,

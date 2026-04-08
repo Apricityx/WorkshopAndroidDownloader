@@ -31,9 +31,6 @@ class WorkshopDetailRepository(
         val localizedDetail = runCatching {
             loadLocalizedDetailPage(item, languagePreference.requestValue)
         }.getOrNull()
-        val commentsPage = runCatching {
-            loadCommentsPage(item, languagePreference.requestValue)
-        }.getOrNull()
         val apiTitle = detail.stringValue("title")
         val apiDescription = SteamHtmlDecoder.decodeWorkshopApiDescription(detail.stringValue("description")).ifBlank {
             item.descriptionSnippet.ifBlank { "暂无描述。" }
@@ -71,9 +68,22 @@ class WorkshopDetailRepository(
             tags = detail["tags"].tagNames(),
             requiredItems = requiredItems,
             workshopUrl = buildWorkshopUrl(item.publishedFileId, languagePreference.requestValue),
-            commentsUrl = buildWorkshopCommentsUrl(item.publishedFileId, languagePreference.requestValue),
-            commentCount = commentsPage?.totalCount,
-            comments = commentsPage?.comments.orEmpty(),
+            commentThreadContext = localizedDetail?.commentThreadContext,
+            commentsUrl = buildWorkshopCommentsUrl(item.publishedFileId, languagePreference.requestValue, page = 1),
+            commentCount = localizedDetail?.commentCount,
+            commentTotalPages = localizedDetail?.commentCount?.let(::resolveAppCommentTotalPages),
+            hasNextCommentPage = localizedDetail?.commentCount?.let { count -> count > COMMENT_PAGE_SIZE } == true,
+        )
+    }
+
+    suspend fun loadWorkshopCommentPage(
+        detail: WorkshopItemDetail,
+        page: Int,
+    ): WorkshopCommentPage = withContext(Dispatchers.IO) {
+        loadWorkshopCommentPage(
+            detail = detail,
+            page = page,
+            languageRequestValue = languagePreferenceProvider().requestValue,
         )
     }
 
@@ -141,31 +151,72 @@ class WorkshopDetailRepository(
                     openingTag = """<div class="workshopItemDescription" id="highlightContent">""",
                 )?.let(SteamHtmlDecoder::decodeWorkshopHtmlDescription).orEmpty(),
                 requiredItems = extractRequiredItems(payload),
+                commentThreadContext = extractCommentThreadContext(payload),
+                commentCount = extractCommentCount(payload),
             )
         }
     }
 
-    private fun loadCommentsPage(
-        item: WorkshopBrowseItem,
+    private fun loadWorkshopCommentPage(
+        detail: WorkshopItemDetail,
+        page: Int,
         languageRequestValue: String,
-    ): WorkshopCommentsPage {
+    ): WorkshopCommentPage {
+        val commentThreadContext = detail.commentThreadContext ?: error("Workshop comment thread context was missing")
+        val safePage = page.coerceAtLeast(1)
+        val start = (safePage - 1) * COMMENT_PAGE_SIZE
+        val formBody = FormBody.Builder()
+            .add("start", start.toString())
+            .add("count", COMMENT_PAGE_SIZE.toString())
+            .apply {
+                commentThreadContext.sessionId?.takeIf(String::isNotBlank)?.let { add("sessionid", it) }
+                commentThreadContext.extendedData?.takeIf(String::isNotBlank)?.let { add("extended_data", it) }
+                commentThreadContext.feature2?.takeIf { it.isNotBlank() && it != "-1" }?.let { add("feature2", it) }
+            }
+            .build()
         val request = Request.Builder()
             .url(
                 communityBaseUrl.newBuilder()
-                    .addPathSegments("sharedfiles/filedetails/comments/${item.publishedFileId}")
+                    .addPathSegments(
+                        "comment/PublishedFile_Public/render/${commentThreadContext.ownerId}/${commentThreadContext.featureId}/",
+                    )
                     .addQueryParameter("l", languageRequestValue)
                     .build(),
             )
+            .post(formBody)
+            .header("X-Requested-With", "XMLHttpRequest")
             .build()
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 error("Workshop comments request failed: ${response.code}")
             }
-            val payload = response.body?.string().orEmpty()
-            return WorkshopCommentsPage(
-                totalCount = extractCommentCount(payload),
-                comments = extractComments(payload),
+            val payload = json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+            val commentCount = payload.longValue("total_count")
+            val pageSize = payload.intValue("pagesize") ?: COMMENT_PAGE_SIZE
+            val responseStart = payload.intValue("start")
+            val commentsHtml = payload.stringValue("comments_html")
+            val comments = extractComments(commentsHtml)
+            val resolvedPage = if (responseStart != null && pageSize > 0) {
+                (responseStart / pageSize) + 1
+            } else {
+                safePage
+            }
+            val totalPages = resolveCommentTotalPages(
+                commentCount = commentCount,
+                pageSize = pageSize,
+            )
+            return WorkshopCommentPage(
+                commentsUrl = buildWorkshopCommentsUrl(detail.publishedFileId, languageRequestValue, resolveSteamCommentsPage(resolvedPage)),
+                commentCount = commentCount,
+                page = resolvedPage,
+                totalPages = totalPages,
+                hasPreviousPage = resolvedPage > 1,
+                hasNextPage = when {
+                    totalPages != null -> resolvedPage < totalPages
+                    else -> comments.size >= pageSize
+                },
+                comments = comments,
             )
         }
     }
@@ -174,11 +225,8 @@ class WorkshopDetailRepository(
         val title: String,
         val description: String,
         val requiredItems: List<ParsedRequiredItem>,
-    )
-
-    private data class WorkshopCommentsPage(
-        val totalCount: Long?,
-        val comments: List<WorkshopComment>,
+        val commentThreadContext: WorkshopCommentThreadContext? = null,
+        val commentCount: Long? = null,
     )
 
     private fun extractRequiredItems(payload: String): List<ParsedRequiredItem> {
@@ -209,6 +257,49 @@ class WorkshopDetailRepository(
                 ?.replace(",", "")
                 ?.trim()
                 ?.toLongOrNull()
+
+    private fun extractCommentThreadContext(payload: String): WorkshopCommentThreadContext? {
+        val commentInit = commentInitDataRegex.find(payload)?.groupValues?.getOrNull(1) ?: return null
+        val commentInitObject = runCatching { json.parseToJsonElement(commentInit).jsonObject }.getOrNull() ?: return null
+        val ownerId = commentInitObject.stringValue("owner").ifBlank { return null }
+        val featureId = commentInitObject.stringValue("feature").ifBlank { return null }
+        val feature2 = commentInitObject.stringValue("feature2").ifBlank { null }
+        val extendedData = commentInitObject.stringValue("extended_data").ifBlank { null }
+        val sessionId = sessionIdRegex.find(payload)?.groupValues?.getOrNull(1).orEmpty().ifBlank { null }
+        return WorkshopCommentThreadContext(
+            ownerId = ownerId,
+            featureId = featureId,
+            feature2 = feature2,
+            extendedData = extendedData,
+            sessionId = sessionId,
+        )
+    }
+
+    private fun resolveCommentTotalPages(
+        commentCount: Long?,
+        pageSize: Int,
+    ): Int? {
+        if (pageSize <= 0) {
+            return null
+        }
+        return commentCount?.let { count ->
+            if (count <= 0L) {
+                1
+            } else {
+                ((count + pageSize - 1) / pageSize).toInt()
+            }
+        }
+    }
+
+    private fun resolveAppCommentTotalPages(commentCount: Long): Int =
+        if (commentCount <= 0L) {
+            1
+        } else {
+            ((commentCount + COMMENT_PAGE_SIZE - 1) / COMMENT_PAGE_SIZE).toInt()
+        }
+
+    private fun resolveSteamCommentsPage(appCommentPage: Int): Int =
+        (((appCommentPage - 1) * COMMENT_PAGE_SIZE) / STEAM_COMMENTS_PAGE_SIZE) + 1
 
     private fun extractComments(payload: String): List<WorkshopComment> =
         commentBlockOpeningRegex.findAll(payload)
@@ -305,12 +396,32 @@ class WorkshopDetailRepository(
     private fun buildWorkshopCommentsUrl(
         publishedFileId: ULong,
         languageRequestValue: String,
-    ): String = "https://steamcommunity.com/sharedfiles/filedetails/comments/$publishedFileId?l=$languageRequestValue"
+        page: Int,
+    ): String = buildString {
+        append("https://steamcommunity.com/sharedfiles/filedetails/comments/")
+        append(publishedFileId)
+        append("?l=")
+        append(languageRequestValue)
+        if (page > 1) {
+            append("&ctp=")
+            append(page)
+        }
+    }
 
     private companion object {
+        const val COMMENT_PAGE_SIZE = 5
+        const val STEAM_COMMENTS_PAGE_SIZE = 50
         val workshopTitleRegex = Regex(
             """<div class="workshopItemTitle">(.*?)</div>""",
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
+        val commentInitDataRegex = Regex(
+            """InitializeCommentThread\(\s*"PublishedFile_Public"\s*,\s*"[^"]+"\s*,\s*(\{.*?\})\s*,\s*'https://steamcommunity\.com/comment/PublishedFile_Public/'""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
+        val sessionIdRegex = Regex(
+            """g_sessionID\s*=\s*"([^"]+)"""",
+            RegexOption.IGNORE_CASE,
         )
         val totalCommentCountRegex = Regex(
             """"total_count"\s*:\s*(\d+)""",
@@ -417,6 +528,9 @@ private fun JsonObject.stringValue(key: String): String =
 
 private fun JsonObject.longValue(key: String): Long? =
     this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+
+private fun JsonObject.intValue(key: String): Int? =
+    this[key]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
 
 private fun JsonObject.uintValue(key: String): UInt? =
     this[key]?.jsonPrimitive?.contentOrNull?.toUIntOrNull()

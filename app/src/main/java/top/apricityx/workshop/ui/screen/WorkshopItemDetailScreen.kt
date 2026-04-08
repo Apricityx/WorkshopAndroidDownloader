@@ -55,6 +55,8 @@ internal fun WorkshopItemDetailScreen(
     downloadedItemIds: Set<ULong>,
     modStatus: WorkshopModStatus,
     onRetry: () -> Unit,
+    onLoadPreviousCommentsPage: () -> Unit,
+    onLoadNextCommentsPage: () -> Unit,
     onTranslateDescription: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
     onOpenRequiredItem: (WorkshopBrowseItem) -> Unit,
@@ -236,7 +238,6 @@ internal fun WorkshopItemDetailScreen(
             }
 
             detail?.let {
-                val previewComments = it.comments.take(COMMENT_PREVIEW_LIMIT)
                 WorkshopPanelCard {
                     Text(
                         text = "评论区",
@@ -245,31 +246,76 @@ internal fun WorkshopItemDetailScreen(
                     )
                     Text(
                         text = when {
-                            it.commentCount != null && previewComments.isNotEmpty() ->
-                                "已加载最近 ${previewComments.size} 条评论，Steam 共 ${formatCount(it.commentCount)} 条。"
+                            state.isLoadingComments && it.comments.isEmpty() ->
+                                "评论区加载中…"
+                            it.commentCount == 0L ->
+                                "这件模组目前没有公开评论。"
+                            it.commentCount != null && it.commentTotalPages != null ->
+                                "当前第 ${it.commentPage} / ${it.commentTotalPages} 页，Steam 共 ${formatCount(it.commentCount)} 条评论。"
                             it.commentCount != null ->
-                                "Steam 共 ${formatCount(it.commentCount)} 条评论。"
-                            previewComments.isNotEmpty() ->
-                                "已加载最近 ${previewComments.size} 条公开评论。"
+                                "当前第 ${it.commentPage} 页，Steam 共 ${formatCount(it.commentCount)} 条评论。"
+                            it.comments.isNotEmpty() ->
+                                "当前第 ${it.commentPage} 页，已加载 ${it.comments.size} 条公开评论。"
                             else ->
                                 "暂时没有读取到公开评论，你也可以直接打开 Steam 评论页查看。"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    previewComments.forEach { comment ->
+
+                    state.commentErrorMessage?.let { commentErrorMessage ->
+                        WorkshopMessageBanner(
+                            message = commentErrorMessage,
+                            tone = MessageTone.Error,
+                        )
+                    }
+
+                    if (state.isLoadingComments) {
+                        CommentLoadingBlock(
+                            message = if (it.comments.isEmpty()) {
+                                "加载中"
+                            } else {
+                                "正在加载评论…"
+                            },
+                        )
+                    }
+
+                    if (it.commentTotalPages?.let { totalPages -> totalPages > 1 } == true ||
+                        it.hasPreviousCommentPage ||
+                        it.hasNextCommentPage
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            WorkshopOutlinedButton(
+                                onClick = onLoadPreviousCommentsPage,
+                                enabled = !state.isLoadingComments && it.hasPreviousCommentPage,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("上一页")
+                            }
+                            WorkshopOutlinedButton(
+                                onClick = onLoadNextCommentsPage,
+                                enabled = !state.isLoadingComments && it.hasNextCommentPage,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("下一页")
+                            }
+                        }
+                    }
+
+                    it.comments.forEach { comment ->
                         CommentLine(comment = comment)
                     }
+
                     WorkshopOutlinedButton(
                         onClick = { onOpenExternalUrl(it.commentsUrl) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            if (it.commentCount?.let { count -> count > previewComments.size } == true) {
-                                "查看完整评论区"
-                            } else {
-                                "在 Steam 中打开评论区"
-                            },
+                            "在 Steam 中打开对应评论页",
                         )
                     }
                 }
@@ -304,6 +350,30 @@ internal fun WorkshopItemDetailScreen(
         }
     }
 
+}
+
+@Composable
+private fun CommentLoadingBlock(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+        )
+        Text(
+            text = " $message",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -498,5 +568,3 @@ private fun formatUpdatedTime(epochSeconds: Long): String =
         )
 
 private fun formatCount(value: Long): String = "%,d".format(value)
-
-private const val COMMENT_PREVIEW_LIMIT = 6

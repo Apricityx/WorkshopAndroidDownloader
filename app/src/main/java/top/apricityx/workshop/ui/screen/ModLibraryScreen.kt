@@ -750,6 +750,7 @@ private fun ModLibraryUpdateStatusCard(
     modifier: Modifier = Modifier,
 ) {
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    val useTransparentCardStyle = isLiquidGlassFrontendEnabled()
     val containerColor = when (tone) {
         ModLibraryUpdateCardTone.Normal -> if (isDark) {
             Color(0xFF14314C).copy(alpha = 0.76f)
@@ -813,42 +814,27 @@ private fun ModLibraryUpdateStatusCard(
         }
     }
 
-    if (isLiquidGlassFrontendEnabled()) {
-        WorkshopGlassSurface(
-            modifier = modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            blurRadius = 16.dp,
-            lensHeight = 8.dp,
-            lensAmount = 10.dp,
-            surfaceColor = containerColor.copy(alpha = 0.22f),
-            borderColor = borderColor.copy(alpha = 0.24f),
-        ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = contentColor,
-                )
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor,
-                )
-            }
-        }
-        return
-    }
-
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        color = containerColor.copy(alpha = if (isDark) 0.42f else 0.5f),
-        border = BorderStroke(1.dp, borderColor.copy(alpha = if (isDark) 0.3f else 0.42f)),
-        tonalElevation = 1.dp,
+        color = containerColor.copy(
+            alpha = if (useTransparentCardStyle) {
+                if (isDark) 0.28f else 0.32f
+            } else {
+                if (isDark) 0.42f else 0.5f
+            },
+        ),
+        border = BorderStroke(
+            1.dp,
+            borderColor.copy(
+                alpha = if (useTransparentCardStyle) {
+                    if (isDark) 0.28f else 0.36f
+                } else {
+                    if (isDark) 0.3f else 0.42f
+                },
+            ),
+        ),
+        tonalElevation = if (useTransparentCardStyle) 0.dp else 1.dp,
     ) {
         Column(
             modifier = Modifier.padding(18.dp),

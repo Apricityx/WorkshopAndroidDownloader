@@ -44,7 +44,30 @@ data class WorkshopItemDetail(
     val requiredItems: List<WorkshopRequiredItem> = emptyList(),
     val workshopUrl: String,
     val commentsUrl: String,
+    val commentThreadContext: WorkshopCommentThreadContext? = null,
     val commentCount: Long? = null,
+    val commentPage: Int = 1,
+    val commentTotalPages: Int? = null,
+    val hasPreviousCommentPage: Boolean = false,
+    val hasNextCommentPage: Boolean = false,
+    val comments: List<WorkshopComment> = emptyList(),
+)
+
+data class WorkshopCommentThreadContext(
+    val ownerId: String,
+    val featureId: String,
+    val feature2: String? = null,
+    val extendedData: String? = null,
+    val sessionId: String? = null,
+)
+
+data class WorkshopCommentPage(
+    val commentsUrl: String,
+    val commentCount: Long? = null,
+    val page: Int = 1,
+    val totalPages: Int? = null,
+    val hasPreviousPage: Boolean = false,
+    val hasNextPage: Boolean = false,
     val comments: List<WorkshopComment> = emptyList(),
 )
 

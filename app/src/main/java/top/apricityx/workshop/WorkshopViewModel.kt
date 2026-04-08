@@ -1364,15 +1364,25 @@ class WorkshopViewModel(
                     detailRepository.loadWorkshopItemDetail(item)
                 }
             }.onSuccess { detail ->
+                val shouldLoadComments = detail.shouldLoadWorkshopComments()
                 _uiState.update { state ->
                     state.updateWorkshopItemDetailState(targetAppId, targetPublishedFileId) { current ->
                         current.copy(
                             detail = detail,
                             isLoading = false,
+                            isLoadingComments = shouldLoadComments,
+                            commentErrorMessage = detail.commentUnavailableMessage(),
                             message = null,
                             showConnectionErrorState = false,
                         )
                     }
+                }
+                if (shouldLoadComments) {
+                    loadWorkshopCommentsPage(
+                        appId = item.appId,
+                        publishedFileId = item.publishedFileId,
+                        page = 1,
+                    )
                 }
             }.onFailure { error ->
                 val showConnectionErrorState = error.isWorkshopConnectionFailure()
@@ -1395,6 +1405,116 @@ class WorkshopViewModel(
     fun retryWorkshopItemDetail() {
         val item = _uiState.value.workshopItemDetailState?.item ?: return
         openWorkshopItemDetail(item)
+    }
+
+    fun loadPreviousWorkshopCommentsPage() {
+        shiftWorkshopCommentsPage(delta = -1)
+    }
+
+    fun loadNextWorkshopCommentsPage() {
+        shiftWorkshopCommentsPage(delta = 1)
+    }
+
+    private fun shiftWorkshopCommentsPage(delta: Int) {
+        val detailState = _uiState.value.workshopItemDetailState ?: return
+        val detail = detailState.detail ?: return
+        if (detailState.isLoading || detailState.isLoadingComments) {
+            return
+        }
+
+        val targetPage = (detail.commentPage + delta).coerceAtLeast(1)
+        if (targetPage == detail.commentPage) {
+            return
+        }
+        if (delta < 0 && !detail.hasPreviousCommentPage) {
+            return
+        }
+        if (delta > 0 && !detail.hasNextCommentPage) {
+            return
+        }
+
+        loadWorkshopCommentsPage(
+            appId = detailState.item.appId,
+            publishedFileId = detailState.item.publishedFileId,
+            page = targetPage,
+        )
+    }
+
+    private fun loadWorkshopCommentsPage(
+        appId: UInt,
+        publishedFileId: ULong,
+        page: Int,
+    ) {
+        val detailSnapshot = _uiState.value.workshopItemDetailState?.detail
+            ?.takeIf { detail ->
+                detail.appId == appId && detail.publishedFileId == publishedFileId
+            }
+            ?: return
+        val commentUnavailableMessage = detailSnapshot.commentUnavailableMessage()
+        if (!detailSnapshot.shouldLoadWorkshopComments()) {
+            _uiState.update { state ->
+                state.updateWorkshopItemDetailState(appId, publishedFileId) { current ->
+                    current.copy(
+                        isLoadingComments = false,
+                        commentErrorMessage = commentUnavailableMessage,
+                    )
+                }
+            }
+            return
+        }
+
+        _uiState.update { state ->
+            state.updateWorkshopItemDetailState(appId, publishedFileId) { current ->
+                current.copy(
+                    isLoadingComments = true,
+                    commentErrorMessage = null,
+                )
+            }
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    detailRepository.loadWorkshopCommentPage(
+                        detail = detailSnapshot,
+                        page = page,
+                    )
+                }
+            }.onSuccess { commentPage ->
+                _uiState.update { state ->
+                    state.updateWorkshopItemDetailState(appId, publishedFileId) { current ->
+                        val currentDetail = current.detail ?: return@updateWorkshopItemDetailState current.copy(
+                            isLoadingComments = false,
+                        )
+                        current.copy(
+                            detail = currentDetail.copy(
+                                commentsUrl = commentPage.commentsUrl,
+                                commentCount = commentPage.commentCount,
+                                commentPage = commentPage.page,
+                                commentTotalPages = commentPage.totalPages,
+                                hasPreviousCommentPage = commentPage.hasPreviousPage,
+                                hasNextCommentPage = commentPage.hasNextPage,
+                                comments = commentPage.comments,
+                            ),
+                            isLoadingComments = false,
+                            commentErrorMessage = null,
+                        )
+                    }
+                }
+            }.onFailure { error ->
+                _uiState.update { state ->
+                    state.updateWorkshopItemDetailState(appId, publishedFileId) { current ->
+                        current.copy(
+                            isLoadingComments = false,
+                            commentErrorMessage = workshopRequestFailureMessage(
+                                error = error,
+                                fallbackMessage = error.message ?: "加载评论失败。",
+                            ),
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun translateWorkshopItemDescription() {
@@ -2042,7 +2162,7 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                withTimeout(WORKSHOP_BROWSE_TIMEOUT_MS) {
                     browseWorkshopPage(
                         appId = game.appId,
                         searchQuery = searchQuery,
@@ -3004,6 +3124,7 @@ class WorkshopViewModel(
 
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
+        private const val WORKSHOP_BROWSE_TIMEOUT_MS = 12_000L
         private const val WORKSHOP_ITEMS_PER_PAGE = 30
         private const val STEAM_WEB_SESSION_USER_AGENT = "WorkshopOnAndroid/1.0"
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"
@@ -3114,6 +3235,16 @@ private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
 
 private val WorkshopBrowseItem.downloadKey: Pair<UInt, ULong>
     get() = appId to publishedFileId
+
+private fun top.apricityx.workshop.data.WorkshopItemDetail.shouldLoadWorkshopComments(): Boolean =
+    commentThreadContext != null && commentCount != 0L
+
+private fun top.apricityx.workshop.data.WorkshopItemDetail.commentUnavailableMessage(): String? =
+    when {
+        commentCount == 0L -> null
+        commentThreadContext == null -> "暂时无法读取评论内容，你可以直接在 Steam 中打开对应评论页查看。"
+        else -> null
+    }
 
 private val DownloadCenterTaskUiState.downloadKey: Pair<UInt, ULong>
     get() = appId to publishedFileId

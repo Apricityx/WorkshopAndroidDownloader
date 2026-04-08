@@ -14,6 +14,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,7 +56,6 @@ import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
-import top.apricityx.workshop.ui.component.WorkshopPanelCard
 import top.apricityx.workshop.ui.component.WorkshopRadioButton
 import top.apricityx.workshop.ui.component.WorkshopSlider
 import top.apricityx.workshop.ui.component.WorkshopSwitch
@@ -96,16 +98,20 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     var isSliderInteracting by remember { mutableStateOf(false) }
-    val forceLightSettingsText =
-        isLiquidGlassFrontendEnabled() && MaterialTheme.colorScheme.background.luminance() < 0.35f
-    val settingsColorScheme = if (forceLightSettingsText) {
+    val useLightSettingsText =
+        MaterialTheme.colorScheme.background.luminance() < 0.35f &&
+            MaterialTheme.colorScheme.onSurface.luminance() < 0.45f
+    val settingsColorScheme = if (useLightSettingsText) {
         MaterialTheme.colorScheme.copy(
-            onBackground = Color(0xFFE6F1FF),
-            onSurface = Color(0xFFE6F1FF),
-            onSurfaceVariant = Color(0xFFB4C7DA),
-            onPrimary = Color(0xFFE6F1FF),
-            onSecondary = Color(0xFFE6F1FF),
-            onTertiary = Color(0xFFE6F1FF),
+            primary = Color(0xFFAED6FF),
+            secondary = Color(0xFFFFCCB3),
+            tertiary = Color(0xFF9EE6D7),
+            onBackground = Color(0xFFF1F7FF),
+            onSurface = Color(0xFFF1F7FF),
+            onSurfaceVariant = Color(0xFFBED1E2),
+            onPrimary = Color(0xFFF1F7FF),
+            onSecondary = Color(0xFFF1F7FF),
+            onTertiary = Color(0xFFF1F7FF),
         )
     } else {
         MaterialTheme.colorScheme
@@ -664,10 +670,32 @@ fun SettingsScreen(
 private fun SettingsSectionCard(
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    WorkshopPanelCard(
-        preferSolidStyle = true,
-        content = content,
-    )
+    val isLiquidFrontend = isLiquidGlassFrontendEnabled()
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (isLiquidFrontend) {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.22f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            },
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        border = if (isLiquidFrontend) {
+            BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+            )
+        } else {
+            null
+        },
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+    }
 }
 
 @Composable

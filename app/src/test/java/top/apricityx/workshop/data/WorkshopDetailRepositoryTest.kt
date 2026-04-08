@@ -60,47 +60,22 @@ class WorkshopDetailRepositoryTest {
             mockResponse(
                 """
                 <html>
+                    <script type="text/javascript">
+                        var g_sessionID = "session-1";
+                        InitializeCommentThread(
+                            "PublishedFile_Public",
+                            "PublishedFile_Public_123_3680514339",
+                            {"feature":"3680514339","feature2":-1,"owner":"76561198000000001","total_count":12,"start":0,"pagesize":10,"extended_data":"{\"appid\":646570}"},
+                            'https://steamcommunity.com/comment/PublishedFile_Public/',
+                            40
+                        );
+                    </script>
                     <div class="workshopItemTitle">手柄振动支持</div>
                     <div class="workshopItemDescription" id="highlightContent"><div class="bb_h1">手柄振动支持</div><br>中文说明<ul class="bb_ul"><li>第一项</li><li>第二项</li></ul></div>
                 </html>
                 """.trimIndent(),
             ),
         )
-        server.enqueue(
-            mockResponse(
-                """
-                <html>
-                    <script type="text/javascript">
-                        InitializeCommentThread(
-                            "PublishedFile_Public",
-                            "PublishedFile_Public_123_3680514339",
-                            {"total_count":12,"start":0,"pagesize":50},
-                            "https://steamcommunity.com/comment/PublishedFile_Public/",
-                            40
-                        );
-                    </script>
-                    <div class="commentthread_area" id="commentthread_PublishedFile_Public_123_3680514339_area">
-                        <div class="commentthread_comment responsive_body_text" id="comment_1001">
-                            <div class="commentthread_comment_content">
-                                <div class="commentthread_comment_author">
-                                    <a class="hoverunderline commentthread_author_link" href="https://steamcommunity.com/profiles/76561198000000001">
-                                        <bdi>测试玩家</bdi>
-                                    </a>
-                                    <span class="commentthread_comment_timestamp" data-timestamp="1772901000">
-                                        2026 年 3 月 6 日 12:30
-                                    </span>
-                                </div>
-                                <div class="commentthread_comment_text" id="comment_content_1001">
-                                    真好用<img src="https://community.fastly.steamstatic.com/economy/emoticon/steamthumbsup" alt=":steamthumbsup:" class="emoticon"><br>谢谢作者
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </html>
-                """.trimIndent(),
-            ),
-        )
-
         val result = repository.loadWorkshopItemDetail(
             WorkshopBrowseItem(
                 appId = 646570u,
@@ -119,21 +94,21 @@ class WorkshopDetailRepositoryTest {
         assertThat(result.commentsUrl).contains("/comments/3680514339")
         assertThat(result.commentsUrl).contains("l=schinese")
         assertThat(result.commentCount).isEqualTo(12)
-        assertThat(result.comments).hasSize(1)
-        assertThat(result.comments[0].authorName).isEqualTo("测试玩家")
-        assertThat(result.comments[0].content).contains("真好用")
-        assertThat(result.comments[0].content).contains(":steamthumbsup:")
-        assertThat(result.comments[0].content).contains("谢谢作者")
-        assertThat(result.comments[0].postedEpochSeconds).isEqualTo(1772901000)
+        assertThat(result.commentPage).isEqualTo(1)
+        assertThat(result.commentTotalPages).isEqualTo(3)
+        assertThat(result.hasPreviousCommentPage).isFalse()
+        assertThat(result.hasNextCommentPage).isTrue()
+        assertThat(result.comments).isEmpty()
+        assertThat(result.commentThreadContext).isNotNull()
+        assertThat(result.commentThreadContext?.ownerId).isEqualTo("76561198000000001")
+        assertThat(result.commentThreadContext?.featureId).isEqualTo("3680514339")
+        assertThat(result.commentThreadContext?.sessionId).isEqualTo("session-1")
 
         val apiRequest = server.takeRequest()
         val communityRequest = server.takeRequest()
-        val commentsRequest = server.takeRequest()
         assertThat(apiRequest.url.encodedPath).isEqualTo("/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
         assertThat(communityRequest.url.encodedPath).isEqualTo("/sharedfiles/filedetails/")
         assertThat(communityRequest.url.queryParameter("l")).isEqualTo("schinese")
-        assertThat(commentsRequest.url.encodedPath).isEqualTo("/sharedfiles/filedetails/comments/3680514339")
-        assertThat(commentsRequest.url.queryParameter("l")).isEqualTo("schinese")
     }
 
     @Test
@@ -172,6 +147,16 @@ class WorkshopDetailRepositoryTest {
             mockResponse(
                 """
                 <html>
+                    <script type="text/javascript">
+                        var g_sessionID = "session-2";
+                        InitializeCommentThread(
+                            "PublishedFile_Public",
+                            "PublishedFile_Public_123_519359552",
+                            {"feature":"519359552","feature2":-1,"owner":"76561198000000002","total_count":0,"start":0,"pagesize":10,"extended_data":"{\"appid\":255710}"},
+                            'https://steamcommunity.com/comment/PublishedFile_Public/',
+                            40
+                        );
+                    </script>
                     <div class="workshopItemTitle">World Trade Center - Part 10 of 11</div>
                     <div class="workshopItemDescription" id="highlightContent">Description</div>
                     <div class="requiredItemsContainer" id="RequiredItems">
@@ -181,19 +166,6 @@ class WorkshopDetailRepositoryTest {
                         <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=519354649&amp;searchtext=" target="_blank" data-subscribed="0">
                             <div class="requiredItem">World Trade Center - Part 2 of 11</div>
                         </a>
-                    </div>
-                </html>
-                """.trimIndent(),
-            ),
-        )
-        server.enqueue(
-            mockResponse(
-                """
-                <html>
-                    <div class="commentthread_header">
-                        <span class="ellipsis commentthread_count_label">
-                            <span id="commentthread_PublishedFile_Public_123_519359552_totalcount">0</span> Comments
-                        </span>
                     </div>
                 </html>
                 """.trimIndent(),
@@ -250,7 +222,77 @@ class WorkshopDetailRepositoryTest {
         assertThat(result.requiredItems[1].workshopUrl)
             .isEqualTo("https://steamcommunity.com/sharedfiles/filedetails/?id=519354649&searchtext=")
         assertThat(result.commentCount).isEqualTo(0)
+        assertThat(result.commentPage).isEqualTo(1)
+        assertThat(result.commentTotalPages).isEqualTo(1)
+        assertThat(result.hasPreviousCommentPage).isFalse()
+        assertThat(result.hasNextCommentPage).isFalse()
         assertThat(result.comments).isEmpty()
+    }
+
+    @Test
+    fun loadWorkshopCommentPage_supportsPagination() = runBlocking {
+        val repository = WorkshopDetailRepository(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            communityBaseUrl = server.url("/"),
+            languagePreferenceProvider = { SteamLanguagePreference.English },
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "success": true,
+                  "start": 5,
+                  "pagesize": "5",
+                  "total_count": 1639,
+                  "comments_html": "<div class=\"commentthread_comment responsive_body_text\" id=\"comment_2001\"><div class=\"commentthread_comment_content\"><div class=\"commentthread_comment_author\"><a class=\"hoverunderline commentthread_author_link\" href=\"https://steamcommunity.com/profiles/76561198000000002\"><bdi>Second Page User</bdi></a><span class=\"commentthread_comment_timestamp\" data-timestamp=\"1775238905\">3 Apr, 2026 @ 10:55am</span></div><div class=\"commentthread_comment_text\" id=\"comment_content_2001\">page 2 comment</div></div></div>"
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val result = repository.loadWorkshopCommentPage(
+            detail = WorkshopItemDetail(
+                appId = 4000u,
+                publishedFileId = 973145750uL,
+                title = "Addon Share",
+                authorName = "OriginalAuthor",
+                previewImageUrl = "https://example.com/thumb.png",
+                description = "Description",
+                fileSizeBytes = null,
+                timeUpdatedEpochSeconds = null,
+                subscriptions = null,
+                favorited = null,
+                views = null,
+                tags = emptyList(),
+                workshopUrl = "https://steamcommunity.com/sharedfiles/filedetails/?id=973145750&l=english",
+                commentsUrl = "https://steamcommunity.com/sharedfiles/filedetails/comments/973145750?l=english",
+                commentThreadContext = WorkshopCommentThreadContext(
+                    ownerId = "76561198088859981",
+                    featureId = "973145750",
+                    extendedData = "{\"appid\":4000}",
+                    sessionId = "session-3",
+                ),
+            ),
+            page = 2,
+        )
+
+        assertThat(result.commentCount).isEqualTo(1639)
+        assertThat(result.page).isEqualTo(2)
+        assertThat(result.totalPages).isEqualTo(328)
+        assertThat(result.hasPreviousPage).isTrue()
+        assertThat(result.hasNextPage).isTrue()
+        assertThat(result.commentsUrl).isEqualTo("https://steamcommunity.com/sharedfiles/filedetails/comments/973145750?l=english")
+        assertThat(result.comments).hasSize(1)
+        assertThat(result.comments[0].content).isEqualTo("page 2 comment")
+
+        val request = server.takeRequest()
+        assertThat(request.url.encodedPath).isEqualTo("/comment/PublishedFile_Public/render/76561198088859981/973145750/")
+        assertThat(request.url.queryParameter("l")).isEqualTo("english")
+        val requestBody = requireNotNull(request.body).utf8()
+        assertThat(requestBody).contains("count=5")
+        assertThat(requestBody).contains("start=5")
+        assertThat(requestBody).contains("sessionid=session-3")
     }
 }
 

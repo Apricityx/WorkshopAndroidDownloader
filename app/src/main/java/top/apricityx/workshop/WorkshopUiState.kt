@@ -151,9 +151,11 @@ data class WorkshopItemDetailUiState(
     val item: WorkshopBrowseItem,
     val detail: top.apricityx.workshop.data.WorkshopItemDetail? = null,
     val isLoading: Boolean = false,
+    val isLoadingComments: Boolean = false,
     val isTranslatingDescription: Boolean = false,
     val translatedDescription: String? = null,
     val translationErrorMessage: String? = null,
+    val commentErrorMessage: String? = null,
     val message: String? = null,
     val showConnectionErrorState: Boolean = false,
 )

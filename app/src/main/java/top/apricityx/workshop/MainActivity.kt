@@ -446,6 +446,8 @@ class MainActivity : ComponentActivity() {
             onLoadMoreWorkshopItems = workshopViewModel::loadMoreWorkshopItems,
             onOpenWorkshopItemDetail = workshopViewModel::openWorkshopItemDetail,
             onRetryWorkshopItemDetail = workshopViewModel::retryWorkshopItemDetail,
+            onLoadPreviousWorkshopCommentsPage = workshopViewModel::loadPreviousWorkshopCommentsPage,
+            onLoadNextWorkshopCommentsPage = workshopViewModel::loadNextWorkshopCommentsPage,
             onTranslateWorkshopItemDescription = workshopViewModel::translateWorkshopItemDescription,
             onTranslateModLibraryDescription = workshopViewModel::translateModLibraryDescription,
             onDownloadSingleItem = ::requestDownloadSingleItem,
