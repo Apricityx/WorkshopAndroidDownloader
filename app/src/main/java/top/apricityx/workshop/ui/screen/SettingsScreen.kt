@@ -29,6 +29,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +58,7 @@ import top.apricityx.workshop.ui.component.WorkshopRadioButton
 import top.apricityx.workshop.ui.component.WorkshopSlider
 import top.apricityx.workshop.ui.component.WorkshopSwitch
 import top.apricityx.workshop.ui.component.WorkshopTextButton
+import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.workshopChromePadding
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -93,18 +96,33 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     var isSliderInteracting by remember { mutableStateOf(false) }
+    val forceLightSettingsText =
+        isLiquidGlassFrontendEnabled() && MaterialTheme.colorScheme.background.luminance() < 0.35f
+    val settingsColorScheme = if (forceLightSettingsText) {
+        MaterialTheme.colorScheme.copy(
+            onBackground = Color(0xFFE6F1FF),
+            onSurface = Color(0xFFE6F1FF),
+            onSurfaceVariant = Color(0xFFB4C7DA),
+            onPrimary = Color(0xFFE6F1FF),
+            onSecondary = Color(0xFFE6F1FF),
+            onTertiary = Color(0xFFE6F1FF),
+        )
+    } else {
+        MaterialTheme.colorScheme
+    }
 
-    Column(
-        modifier = modifier
-            .verticalScroll(
-                state = rememberScrollState(),
-                enabled = !isSliderInteracting,
-            )
-            .padding(horizontal = 16.dp)
-            .workshopChromePadding(topExtra = 16.dp, bottomExtra = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        SettingsSectionCard {
+    MaterialTheme(colorScheme = settingsColorScheme) {
+        Column(
+            modifier = modifier
+                .verticalScroll(
+                    state = rememberScrollState(),
+                    enabled = !isSliderInteracting,
+                )
+                .padding(horizontal = 16.dp)
+                .workshopChromePadding(topExtra = 16.dp, bottomExtra = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            SettingsSectionCard {
             Text("Steam 账号", style = MaterialTheme.typography.titleLarge)
             Text(
                 state.steamAuthState.statusSummary,
@@ -208,9 +226,9 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
+            }
 
-        SettingsSectionCard {
+            SettingsSectionCard {
             Text("翻译设置", style = MaterialTheme.typography.titleLarge)
             Text(
                 "描述翻译现在只走百度大模型文本翻译；如果没有配置 AppID 和 API Key，点击翻译时会直接弹出提示。",
@@ -238,9 +256,9 @@ fun SettingsScreen(
                     },
                 )
             }
-        }
+            }
 
-        SettingsSectionCard {
+            SettingsSectionCard {
             Text("外观设置", style = MaterialTheme.typography.titleLarge)
             Text(
                 "新版前端使用 AndroidLiquidGlass 的液态玻璃容器与导航，旧版保留当前经典界面；主题模式切换后会立即生效。",
@@ -334,9 +352,9 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
+            }
 
-        SettingsSectionCard {
+            SettingsSectionCard {
             Text("语言偏好", style = MaterialTheme.typography.titleLarge)
             Text(
                 "影响添加游戏时的 Steam 商店搜索，以及浏览模组时的工坊列表语言偏好。默认使用简体中文。",
@@ -378,9 +396,9 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
+            }
 
-        SettingsSectionCard {
+            SettingsSectionCard {
             Text("应用更新", style = MaterialTheme.typography.titleLarge)
             Text(
                 "参考 SlayTheAmethystModded 的策略，从 GitHub Releases 检查最新发布版，发现新版本后展示更新说明并跳转下载。",
@@ -485,9 +503,9 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
+            }
 
-        SettingsSectionCard {
+            SettingsSectionCard {
             Text("下载与检查设置", style = MaterialTheme.typography.titleLarge)
             Text(
                 "单任务线程数影响模组分块下载；同时下载任务数影响下载中心里并行跑的任务数量；并发检查数影响模组库检查更新时同时发起的工坊详情请求数量。",
@@ -564,16 +582,16 @@ fun SettingsScreen(
                 onValueChangeFinished = onSave,
                 onInteractionActiveChange = { isSliderInteracting = it },
             )
-        }
+            }
 
-        state.message?.let {
-            WorkshopMessageBanner(
-                message = it,
-                tone = MessageTone.Success,
-            )
-        }
+            state.message?.let {
+                WorkshopMessageBanner(
+                    message = it,
+                    tone = MessageTone.Success,
+                )
+            }
 
-        SettingsSectionCard {
+            SettingsSectionCard {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("关于", style = MaterialTheme.typography.titleLarge)
                 Text(
@@ -620,6 +638,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                }
             }
         }
     }

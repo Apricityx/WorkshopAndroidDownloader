@@ -66,6 +66,40 @@ class WorkshopDetailRepositoryTest {
                 """.trimIndent(),
             ),
         )
+        server.enqueue(
+            mockResponse(
+                """
+                <html>
+                    <script type="text/javascript">
+                        InitializeCommentThread(
+                            "PublishedFile_Public",
+                            "PublishedFile_Public_123_3680514339",
+                            {"total_count":12,"start":0,"pagesize":50},
+                            "https://steamcommunity.com/comment/PublishedFile_Public/",
+                            40
+                        );
+                    </script>
+                    <div class="commentthread_area" id="commentthread_PublishedFile_Public_123_3680514339_area">
+                        <div class="commentthread_comment responsive_body_text" id="comment_1001">
+                            <div class="commentthread_comment_content">
+                                <div class="commentthread_comment_author">
+                                    <a class="hoverunderline commentthread_author_link" href="https://steamcommunity.com/profiles/76561198000000001">
+                                        <bdi>测试玩家</bdi>
+                                    </a>
+                                    <span class="commentthread_comment_timestamp" data-timestamp="1772901000">
+                                        2026 年 3 月 6 日 12:30
+                                    </span>
+                                </div>
+                                <div class="commentthread_comment_text" id="comment_content_1001">
+                                    真好用<img src="https://community.fastly.steamstatic.com/economy/emoticon/steamthumbsup" alt=":steamthumbsup:" class="emoticon"><br>谢谢作者
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </html>
+                """.trimIndent(),
+            ),
+        )
 
         val result = repository.loadWorkshopItemDetail(
             WorkshopBrowseItem(
@@ -82,12 +116,24 @@ class WorkshopDetailRepositoryTest {
         assertThat(result.description).contains("中文说明")
         assertThat(result.description).contains("第一项")
         assertThat(result.workshopUrl).contains("l=schinese")
+        assertThat(result.commentsUrl).contains("/comments/3680514339")
+        assertThat(result.commentsUrl).contains("l=schinese")
+        assertThat(result.commentCount).isEqualTo(12)
+        assertThat(result.comments).hasSize(1)
+        assertThat(result.comments[0].authorName).isEqualTo("测试玩家")
+        assertThat(result.comments[0].content).contains("真好用")
+        assertThat(result.comments[0].content).contains(":steamthumbsup:")
+        assertThat(result.comments[0].content).contains("谢谢作者")
+        assertThat(result.comments[0].postedEpochSeconds).isEqualTo(1772901000)
 
         val apiRequest = server.takeRequest()
         val communityRequest = server.takeRequest()
+        val commentsRequest = server.takeRequest()
         assertThat(apiRequest.url.encodedPath).isEqualTo("/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
         assertThat(communityRequest.url.encodedPath).isEqualTo("/sharedfiles/filedetails/")
         assertThat(communityRequest.url.queryParameter("l")).isEqualTo("schinese")
+        assertThat(commentsRequest.url.encodedPath).isEqualTo("/sharedfiles/filedetails/comments/3680514339")
+        assertThat(commentsRequest.url.queryParameter("l")).isEqualTo("schinese")
     }
 
     @Test
@@ -143,6 +189,19 @@ class WorkshopDetailRepositoryTest {
         server.enqueue(
             mockResponse(
                 """
+                <html>
+                    <div class="commentthread_header">
+                        <span class="ellipsis commentthread_count_label">
+                            <span id="commentthread_PublishedFile_Public_123_519359552_totalcount">0</span> Comments
+                        </span>
+                    </div>
+                </html>
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            mockResponse(
+                """
                 {
                   "response": {
                     "publishedfiledetails": [
@@ -190,6 +249,8 @@ class WorkshopDetailRepositoryTest {
         assertThat(result.requiredItems[1].descriptionSnippet).isEqualTo("Connector building")
         assertThat(result.requiredItems[1].workshopUrl)
             .isEqualTo("https://steamcommunity.com/sharedfiles/filedetails/?id=519354649&searchtext=")
+        assertThat(result.commentCount).isEqualTo(0)
+        assertThat(result.comments).isEmpty()
     }
 }
 

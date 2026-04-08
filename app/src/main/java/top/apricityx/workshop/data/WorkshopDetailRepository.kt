@@ -24,11 +24,15 @@ class WorkshopDetailRepository(
     private val languagePreferenceProvider: () -> SteamLanguagePreference = { SteamLanguagePreference.SimplifiedChinese },
 ) {
     suspend fun loadWorkshopItemDetail(item: WorkshopBrowseItem): WorkshopItemDetail = withContext(Dispatchers.IO) {
+        val languagePreference = languagePreferenceProvider()
         val detail = loadPublishedFileDetails(item.appId, listOf(item.publishedFileId))
             .firstOrNull()
             ?: error("Workshop detail payload was empty")
         val localizedDetail = runCatching {
-            loadLocalizedDetailPage(item)
+            loadLocalizedDetailPage(item, languagePreference.requestValue)
+        }.getOrNull()
+        val commentsPage = runCatching {
+            loadCommentsPage(item, languagePreference.requestValue)
         }.getOrNull()
         val apiTitle = detail.stringValue("title")
         val apiDescription = SteamHtmlDecoder.decodeWorkshopApiDescription(detail.stringValue("description")).ifBlank {
@@ -66,7 +70,10 @@ class WorkshopDetailRepository(
             views = detail.longValue("views"),
             tags = detail["tags"].tagNames(),
             requiredItems = requiredItems,
-            workshopUrl = "https://steamcommunity.com/sharedfiles/filedetails/?id=${item.publishedFileId}&l=${languagePreferenceProvider().requestValue}",
+            workshopUrl = buildWorkshopUrl(item.publishedFileId, languagePreference.requestValue),
+            commentsUrl = buildWorkshopCommentsUrl(item.publishedFileId, languagePreference.requestValue),
+            commentCount = commentsPage?.totalCount,
+            comments = commentsPage?.comments.orEmpty(),
         )
     }
 
@@ -108,13 +115,16 @@ class WorkshopDetailRepository(
         }
     }
 
-    private fun loadLocalizedDetailPage(item: WorkshopBrowseItem): LocalizedWorkshopDetail {
+    private fun loadLocalizedDetailPage(
+        item: WorkshopBrowseItem,
+        languageRequestValue: String,
+    ): LocalizedWorkshopDetail {
         val request = Request.Builder()
             .url(
                 communityBaseUrl.newBuilder()
                     .addPathSegments("sharedfiles/filedetails/")
                     .addQueryParameter("id", item.publishedFileId.toString())
-                    .addQueryParameter("l", languagePreferenceProvider().requestValue)
+                    .addQueryParameter("l", languageRequestValue)
                     .build(),
             )
             .build()
@@ -135,10 +145,40 @@ class WorkshopDetailRepository(
         }
     }
 
+    private fun loadCommentsPage(
+        item: WorkshopBrowseItem,
+        languageRequestValue: String,
+    ): WorkshopCommentsPage {
+        val request = Request.Builder()
+            .url(
+                communityBaseUrl.newBuilder()
+                    .addPathSegments("sharedfiles/filedetails/comments/${item.publishedFileId}")
+                    .addQueryParameter("l", languageRequestValue)
+                    .build(),
+            )
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                error("Workshop comments request failed: ${response.code}")
+            }
+            val payload = response.body?.string().orEmpty()
+            return WorkshopCommentsPage(
+                totalCount = extractCommentCount(payload),
+                comments = extractComments(payload),
+            )
+        }
+    }
+
     private data class LocalizedWorkshopDetail(
         val title: String,
         val description: String,
         val requiredItems: List<ParsedRequiredItem>,
+    )
+
+    private data class WorkshopCommentsPage(
+        val totalCount: Long?,
+        val comments: List<WorkshopComment>,
     )
 
     private fun extractRequiredItems(payload: String): List<ParsedRequiredItem> {
@@ -160,6 +200,53 @@ class WorkshopDetailRepository(
             .distinctBy(ParsedRequiredItem::publishedFileId)
             .toList()
     }
+
+    private fun extractCommentCount(payload: String): Long? =
+        totalCommentCountRegex.find(payload)?.groupValues?.getOrNull(1)?.toLongOrNull()
+            ?: totalCommentCountLabelRegex.find(payload)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.replace(",", "")
+                ?.trim()
+                ?.toLongOrNull()
+
+    private fun extractComments(payload: String): List<WorkshopComment> =
+        commentBlockOpeningRegex.findAll(payload)
+            .mapNotNull { openingMatch ->
+                val id = openingMatch.groupValues[1]
+                val block = extractDivBlock(
+                    payload = payload,
+                    openingTagStart = openingMatch.range.first,
+                    openingTagLength = openingMatch.value.length,
+                ) ?: return@mapNotNull null
+                val authorMatch = commentAuthorRegex.find(block)
+                val profileUrl = authorMatch?.groupValues?.getOrNull(1)?.let(SteamHtmlDecoder::decode)?.trim().orEmpty()
+                val authorName = authorMatch?.groupValues?.getOrNull(2)?.let(SteamHtmlDecoder::stripTagsAndDecode).orEmpty()
+                val postedEpochSeconds = commentTimestampDataRegex.find(block)?.groupValues?.getOrNull(1)?.toLongOrNull()
+                val postedDisplayText = commentTimestampTextRegex.find(block)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.let(SteamHtmlDecoder::stripTagsAndDecode)
+                    .orEmpty()
+                val content = commentTextRegex.find(block)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.let(SteamHtmlDecoder::decodeWorkshopComment)
+                    .orEmpty()
+                if (content.isBlank()) {
+                    return@mapNotNull null
+                }
+                WorkshopComment(
+                    id = id,
+                    authorName = authorName.ifBlank { "未知用户" },
+                    profileUrl = profileUrl,
+                    content = content,
+                    postedEpochSeconds = postedEpochSeconds,
+                    postedDisplayText = postedDisplayText,
+                )
+            }
+            .distinctBy(WorkshopComment::id)
+            .toList()
 
     private fun enrichRequiredItems(
         fallbackAppId: UInt,
@@ -210,9 +297,47 @@ class WorkshopDetailRepository(
             )
     }
 
+    private fun buildWorkshopUrl(
+        publishedFileId: ULong,
+        languageRequestValue: String,
+    ): String = "https://steamcommunity.com/sharedfiles/filedetails/?id=$publishedFileId&l=$languageRequestValue"
+
+    private fun buildWorkshopCommentsUrl(
+        publishedFileId: ULong,
+        languageRequestValue: String,
+    ): String = "https://steamcommunity.com/sharedfiles/filedetails/comments/$publishedFileId?l=$languageRequestValue"
+
     private companion object {
         val workshopTitleRegex = Regex(
             """<div class="workshopItemTitle">(.*?)</div>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
+        val totalCommentCountRegex = Regex(
+            """"total_count"\s*:\s*(\d+)""",
+            RegexOption.IGNORE_CASE,
+        )
+        val totalCommentCountLabelRegex = Regex(
+            """id="commentthread_[^"]*_totalcount">([^<]+)<""",
+            RegexOption.IGNORE_CASE,
+        )
+        val commentBlockOpeningRegex = Regex(
+            """<div\b[^>]*class="[^"]*\bcommentthread_comment\b[^"]*"[^>]*id="comment_([^"]+)"[^>]*>""",
+            RegexOption.IGNORE_CASE,
+        )
+        val commentAuthorRegex = Regex(
+            """<a\b[^>]*class="[^"]*\bcommentthread_author_link\b[^"]*"[^>]*href="([^"]*)"[^>]*>(.*?)</a>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
+        val commentTimestampDataRegex = Regex(
+            "<span\\b[^>]*class=\"[^\"]*\\bcommentthread_comment_timestamp\\b[^\"]*\"[^>]*\\bdata-timestamp=\"(\\d+)\"",
+            RegexOption.IGNORE_CASE,
+        )
+        val commentTimestampTextRegex = Regex(
+            """<span\b[^>]*class="[^"]*\bcommentthread_comment_timestamp\b[^"]*"[^>]*>(.*?)</span>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
+        val commentTextRegex = Regex(
+            """<div\b[^>]*class="[^"]*\bcommentthread_comment_text\b[^"]*"[^>]*>(.*?)</div>""",
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
         val requiredItemLinkRegex = Regex(
@@ -244,6 +369,32 @@ private fun extractDivInnerHtml(
         depth -= 1
         if (depth == 0) {
             return payload.substring(start + openingTag.length, nextIndex)
+        }
+        cursor = nextIndex + 5
+    }
+    return null
+}
+
+private fun extractDivBlock(
+    payload: String,
+    openingTagStart: Int,
+    openingTagLength: Int,
+): String? {
+    var cursor = openingTagStart + openingTagLength
+    var depth = 1
+    while (cursor < payload.length) {
+        val nextOpen = payload.indexOf("<div", cursor, ignoreCase = true).takeIf { it >= 0 }
+        val nextClose = payload.indexOf("</div", cursor, ignoreCase = true).takeIf { it >= 0 }
+        val nextIndex = listOfNotNull(nextOpen, nextClose).minOrNull() ?: break
+        if (nextIndex == nextOpen) {
+            depth += 1
+            cursor = nextIndex + 4
+            continue
+        }
+        depth -= 1
+        if (depth == 0) {
+            val closingTagEnd = payload.indexOf('>', nextIndex).takeIf { it >= 0 } ?: return null
+            return payload.substring(openingTagStart, closingTagEnd + 1)
         }
         cursor = nextIndex + 5
     }

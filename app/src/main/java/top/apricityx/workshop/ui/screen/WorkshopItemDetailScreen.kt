@@ -35,6 +35,7 @@ import top.apricityx.workshop.WorkshopModStatus
 import top.apricityx.workshop.WorkshopItemDetailUiState
 import top.apricityx.workshop.formatBinaryFileSize
 import top.apricityx.workshop.data.WorkshopBrowseItem
+import top.apricityx.workshop.data.WorkshopComment
 import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricPill
@@ -57,6 +58,7 @@ internal fun WorkshopItemDetailScreen(
     onTranslateDescription: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
     onOpenRequiredItem: (WorkshopBrowseItem) -> Unit,
+    onOpenExternalUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val detail = state.detail
@@ -70,6 +72,7 @@ internal fun WorkshopItemDetailScreen(
         detail?.requiredItems?.takeIf { requiredItems -> requiredItems.isNotEmpty() }?.let { requiredItems ->
             add("前置 ${requiredItems.size}")
         }
+        detail?.commentCount?.let { add("评论 ${formatCount(it)}") }
     }
 
     if (state.showConnectionErrorState) {
@@ -233,6 +236,44 @@ internal fun WorkshopItemDetailScreen(
             }
 
             detail?.let {
+                val previewComments = it.comments.take(COMMENT_PREVIEW_LIMIT)
+                WorkshopPanelCard {
+                    Text(
+                        text = "评论区",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = when {
+                            it.commentCount != null && previewComments.isNotEmpty() ->
+                                "已加载最近 ${previewComments.size} 条评论，Steam 共 ${formatCount(it.commentCount)} 条。"
+                            it.commentCount != null ->
+                                "Steam 共 ${formatCount(it.commentCount)} 条评论。"
+                            previewComments.isNotEmpty() ->
+                                "已加载最近 ${previewComments.size} 条公开评论。"
+                            else ->
+                                "暂时没有读取到公开评论，你也可以直接打开 Steam 评论页查看。"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    previewComments.forEach { comment ->
+                        CommentLine(comment = comment)
+                    }
+                    WorkshopOutlinedButton(
+                        onClick = { onOpenExternalUrl(it.commentsUrl) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (it.commentCount?.let { count -> count > previewComments.size } == true) {
+                                "查看完整评论区"
+                            } else {
+                                "在 Steam 中打开评论区"
+                            },
+                        )
+                    }
+                }
+
                 WorkshopPanelCard {
                     Text(
                         text = "模组信息",
@@ -263,6 +304,53 @@ internal fun WorkshopItemDetailScreen(
         }
     }
 
+}
+
+@Composable
+private fun CommentLine(
+    comment: WorkshopComment,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = comment.authorName,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                MetricPill(
+                    text = comment.postedEpochSeconds
+                        ?.let(::formatUpdatedTime)
+                        ?: comment.postedDisplayText.ifBlank { "时间未知" },
+                )
+            }
+            SelectionContainer {
+                Text(
+                    text = comment.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -410,3 +498,5 @@ private fun formatUpdatedTime(epochSeconds: Long): String =
         )
 
 private fun formatCount(value: Long): String = "%,d".format(value)
+
+private const val COMMENT_PREVIEW_LIMIT = 6

@@ -144,6 +144,7 @@ data class GameWorkshopUiState(
     val showConnectionErrorState: Boolean = false,
     val retryLoadMoreOnError: Boolean = false,
     val isMoreActionsExpanded: Boolean = false,
+    val showDirectDownloadDialog: Boolean = false,
 )
 
 data class WorkshopItemDetailUiState(

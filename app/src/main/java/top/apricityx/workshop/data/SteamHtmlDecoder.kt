@@ -3,6 +3,7 @@ package top.apricityx.workshop.data
 internal object SteamHtmlDecoder {
     private val numericEntityRegex = Regex("""&#(x?[0-9A-Fa-f]+);""")
     private val htmlTagRegex = Regex("""<[^>]+>""")
+    private val emoticonImageRegex = Regex("""(?is)<img\b[^>]*\balt="([^"]+)"[^>]*\bclass="[^"]*\bemoticon\b[^"]*"[^>]*>""")
     private val bbCodeGenericTagRegex = Regex("""\[(?:/?[A-Za-z][A-Za-z0-9_]*|\*)(?:=[^\]]+)?\]""")
     private val bbCodeMediaTagRegex = Regex(
         """(?is)\[(?:img|previewyoutube|previewyoutubehd)[^\]]*].*?\[/(?:img|previewyoutube|previewyoutubehd)]""",
@@ -56,6 +57,21 @@ internal object SteamHtmlDecoder {
                 .replace(Regex("""(?i)<br\s*/?>"""), "\n")
                 .replace(Regex("""(?i)<li[^>]*>"""), "• ")
                 .replace(Regex("""(?i)</li\s*>"""), "\n")
+                .replace(Regex("""(?i)</p\s*>"""), "\n\n")
+                .replace(Regex("""(?i)</div\s*>"""), "\n")
+                .replace(htmlTagRegex, " "),
+        )
+    }
+
+    fun decodeWorkshopComment(value: String): String {
+        if (value.isBlank()) {
+            return ""
+        }
+
+        return decodePreservingLineBreaks(
+            value
+                .replace(emoticonImageRegex) { match -> " ${match.groupValues[1]} " }
+                .replace(Regex("""(?i)<br\s*/?>"""), "\n")
                 .replace(Regex("""(?i)</p\s*>"""), "\n\n")
                 .replace(Regex("""(?i)</div\s*>"""), "\n")
                 .replace(htmlTagRegex, " "),

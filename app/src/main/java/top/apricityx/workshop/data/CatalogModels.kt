@@ -43,6 +43,18 @@ data class WorkshopItemDetail(
     val tags: List<String>,
     val requiredItems: List<WorkshopRequiredItem> = emptyList(),
     val workshopUrl: String,
+    val commentsUrl: String,
+    val commentCount: Long? = null,
+    val comments: List<WorkshopComment> = emptyList(),
+)
+
+data class WorkshopComment(
+    val id: String,
+    val authorName: String,
+    val profileUrl: String,
+    val content: String,
+    val postedEpochSeconds: Long? = null,
+    val postedDisplayText: String = "",
 )
 
 data class WorkshopRequiredItem(

@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -428,7 +430,7 @@ private fun WorkshopScreenScene(
                         onLoadMore = actions.onLoadMoreWorkshopItems,
                         onOpenItemDetail = actions.onOpenWorkshopItemDetail,
                         onDownloadSingleItem = actions.onDownloadSingleItem,
-                        onOpenSettings = actions.onNavigateToSettings,
+                        onDismissDirectDownloadDialog = actions.onDismissGameWorkshopDirectDownloadDialog,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -444,6 +446,7 @@ private fun WorkshopScreenScene(
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onDownload = actions.onDownloadSingleItem,
                         onOpenRequiredItem = actions.onOpenWorkshopItemDetail,
+                        onOpenExternalUrl = actions.onOpenExternalUrl,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -663,16 +666,10 @@ private fun LegacyWorkshopTopBar(
                 }
 
                 if (state.currentScreen.showsGameWorkshopMoreShortcut()) {
-                    IconButton(onClick = actions.onToggleGameWorkshopMoreActions) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = if (state.gameWorkshopState?.isMoreActionsExpanded == true) {
-                                "收起更多"
-                            } else {
-                                "更多"
-                            },
-                        )
-                    }
+                    LegacyGameWorkshopMoreMenuButton(
+                        expanded = state.gameWorkshopState?.isMoreActionsExpanded == true,
+                        actions = actions,
+                    )
                 }
 
                 if (state.currentScreen.showsSettingsShortcut()) {
@@ -787,15 +784,10 @@ private fun WorkshopLiquidTopBar(
                 }
 
                 if (state.currentScreen.showsGameWorkshopMoreShortcut()) {
-                    WorkshopLiquidTopBarActionButton(
-                        onClick = actions.onToggleGameWorkshopMoreActions,
+                    LiquidGameWorkshopMoreMenuButton(
+                        expanded = state.gameWorkshopState?.isMoreActionsExpanded == true,
+                        actions = actions,
                         backdrop = backdrop,
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = if (state.gameWorkshopState?.isMoreActionsExpanded == true) {
-                            "收起更多"
-                        } else {
-                            "更多"
-                        },
                     )
                 }
 
@@ -809,6 +801,77 @@ private fun WorkshopLiquidTopBar(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LegacyGameWorkshopMoreMenuButton(
+    expanded: Boolean,
+    actions: WorkshopScreenActions,
+) {
+    Box {
+        IconButton(onClick = actions.onToggleGameWorkshopMoreActions) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "更多",
+            )
+        }
+        GameWorkshopMoreDropdownMenu(
+            expanded = expanded,
+            actions = actions,
+        )
+    }
+}
+
+@Composable
+private fun LiquidGameWorkshopMoreMenuButton(
+    expanded: Boolean,
+    actions: WorkshopScreenActions,
+    backdrop: com.kyant.backdrop.Backdrop,
+) {
+    Box {
+        WorkshopLiquidTopBarActionButton(
+            onClick = actions.onToggleGameWorkshopMoreActions,
+            backdrop = backdrop,
+            imageVector = Icons.Default.MoreVert,
+            contentDescription = "更多",
+        )
+        GameWorkshopMoreDropdownMenu(
+            expanded = expanded,
+            actions = actions,
+        )
+    }
+}
+
+@Composable
+private fun GameWorkshopMoreDropdownMenu(
+    expanded: Boolean,
+    actions: WorkshopScreenActions,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = actions.onDismissGameWorkshopMoreActions,
+    ) {
+        DropdownMenuItem(
+            text = { Text("刷新列表") },
+            onClick = {
+                actions.onDismissGameWorkshopMoreActions()
+                actions.onSearchCurrentWorkshop()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text("填写 publishedID") },
+            onClick = {
+                actions.onOpenGameWorkshopDirectDownloadDialog()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text("设置") },
+            onClick = {
+                actions.onDismissGameWorkshopMoreActions()
+                actions.onNavigateToSettings()
+            },
+        )
     }
 }
 

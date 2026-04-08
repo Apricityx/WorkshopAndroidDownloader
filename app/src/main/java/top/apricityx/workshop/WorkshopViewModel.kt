@@ -1295,6 +1295,46 @@ class WorkshopViewModel(
         }
     }
 
+    fun dismissGameWorkshopMoreActions() {
+        _uiState.update { state ->
+            val currentWorkshopState = state.gameWorkshopState ?: return@update state
+            if (!currentWorkshopState.isMoreActionsExpanded) {
+                return@update state
+            }
+            state.copy(
+                gameWorkshopState = currentWorkshopState.copy(
+                    isMoreActionsExpanded = false,
+                ),
+            )
+        }
+    }
+
+    fun openGameWorkshopDirectDownloadDialog() {
+        _uiState.update { state ->
+            val currentWorkshopState = state.gameWorkshopState ?: return@update state
+            state.copy(
+                gameWorkshopState = currentWorkshopState.copy(
+                    isMoreActionsExpanded = false,
+                    showDirectDownloadDialog = true,
+                ),
+            )
+        }
+    }
+
+    fun dismissGameWorkshopDirectDownloadDialog() {
+        _uiState.update { state ->
+            val currentWorkshopState = state.gameWorkshopState ?: return@update state
+            if (!currentWorkshopState.showDirectDownloadDialog) {
+                return@update state
+            }
+            state.copy(
+                gameWorkshopState = currentWorkshopState.copy(
+                    showDirectDownloadDialog = false,
+                ),
+            )
+        }
+    }
+
     fun openWorkshopItemDetail(item: WorkshopBrowseItem) {
         val targetAppId = item.appId
         val targetPublishedFileId = item.publishedFileId

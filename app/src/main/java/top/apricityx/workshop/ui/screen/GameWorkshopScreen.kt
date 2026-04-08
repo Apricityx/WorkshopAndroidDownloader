@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -79,7 +78,7 @@ fun GameWorkshopScreen(
     onLoadMore: () -> Unit,
     onOpenItemDetail: (WorkshopBrowseItem) -> Unit,
     onDownloadSingleItem: (WorkshopBrowseItem) -> Unit,
-    onOpenSettings: () -> Unit,
+    onDismissDirectDownloadDialog: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberSaveable(
@@ -91,9 +90,6 @@ fun GameWorkshopScreen(
     var directPublishedFileIdText by rememberSaveable(state.game.appId.toString()) {
         mutableStateOf("")
     }
-    var showDirectPublishedIdDialog by rememberSaveable(state.game.appId.toString()) {
-        mutableStateOf(false)
-    }
     val showingRefreshState = state.isLoading && state.items.isNotEmpty()
     val directPublishedFileId = WorkshopPublishedFileIdParser.parse(directPublishedFileIdText)
     val canDirectDownload = directPublishedFileId != null
@@ -101,13 +97,13 @@ fun GameWorkshopScreen(
         modStatusResolver.resolve(appId = state.game.appId, publishedFileId = publishedFileId)
     } ?: WorkshopModStatus.NotDownloaded
 
-    if (showDirectPublishedIdDialog) {
+    if (state.showDirectDownloadDialog) {
         DirectPublishedIdDownloadDialog(
             directPublishedFileIdText = directPublishedFileIdText,
             modStatus = directModStatus,
             canDirectDownload = canDirectDownload,
             onPublishedFileIdChange = { value -> directPublishedFileIdText = value },
-            onDismiss = { showDirectPublishedIdDialog = false },
+            onDismiss = onDismissDirectDownloadDialog,
             onDownload = {
                 val publishedFileId = directPublishedFileId ?: return@DirectPublishedIdDownloadDialog
                 onDownloadSingleItem(
@@ -120,7 +116,7 @@ fun GameWorkshopScreen(
                         descriptionSnippet = "",
                     ),
                 )
-                showDirectPublishedIdDialog = false
+                onDismissDirectDownloadDialog()
             },
         )
     }
@@ -178,17 +174,6 @@ fun GameWorkshopScreen(
                     state = state,
                     onSortOptionSelected = onSortOptionSelected,
                     onTimeWindowSelected = onTimeWindowSelected,
-                )
-            }
-        }
-
-        if (state.isMoreActionsExpanded) {
-            item {
-                GameWorkshopMoreActionsPanel(
-                    isRefreshing = state.isLoading || state.isLoadingMore,
-                    onRefresh = onSearch,
-                    onOpenDirectDownload = { showDirectPublishedIdDialog = true },
-                    onOpenSettings = onOpenSettings,
                 )
             }
         }
@@ -359,48 +344,6 @@ private fun DirectPublishedIdDownloadDialog(
                         },
                     )
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun GameWorkshopMoreActionsPanel(
-    isRefreshing: Boolean,
-    onRefresh: () -> Unit,
-    onOpenDirectDownload: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    WorkshopPanelCard {
-        Text(
-            text = "更多操作",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = "把不常用的浏览辅助功能收在这里，避免干扰列表浏览。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            WorkshopOutlinedButton(
-                onClick = onRefresh,
-                enabled = !isRefreshing,
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null)
-                Text(if (isRefreshing) "正在刷新" else "刷新列表")
-            }
-            WorkshopOutlinedButton(onClick = onOpenDirectDownload) {
-                Text("填写 publishedID")
-            }
-            WorkshopOutlinedButton(onClick = onOpenSettings) {
-                Icon(Icons.Default.Settings, contentDescription = null)
-                Text("设置")
             }
         }
     }
