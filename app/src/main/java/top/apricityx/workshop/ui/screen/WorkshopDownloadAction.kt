@@ -11,7 +11,7 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.SystemUpdateAlt
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -33,7 +33,7 @@ internal fun WorkshopModStatus.actionLabel(): String =
 internal fun WorkshopModStatus.actionIcon(): ImageVector =
     when (this) {
         WorkshopModStatus.LatestDownloaded -> Icons.Default.Done
-        WorkshopModStatus.UpdateAvailable -> Icons.Default.SystemUpdateAlt
+        WorkshopModStatus.UpdateAvailable -> Icons.Default.Upload
         WorkshopModStatus.NotDownloaded -> Icons.Default.Download
         WorkshopModStatus.Downloading -> Icons.Default.Sync
     }

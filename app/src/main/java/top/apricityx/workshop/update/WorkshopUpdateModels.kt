@@ -107,6 +107,16 @@ enum class UpdateSource(
             ordered += OFFICIAL
             return ordered.filter { it.supportsDownloadProxy }
         }
+
+        fun oneShotDownloadSelectionSources(primarySource: UpdateSource): List<UpdateSource> {
+            val ordered = LinkedHashSet<UpdateSource>()
+            ordered += primarySource
+            userSelectableSources().forEach { source ->
+                ordered += source
+            }
+            ordered += OFFICIAL
+            return ordered.toList()
+        }
     }
 }
 

@@ -406,11 +406,6 @@ fun SettingsScreen(
 
             SettingsSectionCard {
             Text("应用更新", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "参考 SlayTheAmethystModded 的策略，从 GitHub Releases 检查最新发布版，发现新版本后展示更新说明并跳转下载。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

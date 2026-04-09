@@ -2435,6 +2435,20 @@ class WorkshopViewModel(
         downloadResolution: UpdateDownloadResolution?,
     ): UpdatePromptState? {
         val resolvedDownload = downloadResolution ?: return null
+        val downloadOptions = UpdateSource
+            .oneShotDownloadSelectionSources(resolvedDownload.source)
+            .distinctBy(UpdateSource::id)
+            .map { source ->
+                UpdateDownloadOptionState(
+                    label = if (source == UpdateSource.OFFICIAL) {
+                        "GitHub Release（直链）"
+                    } else {
+                        source.displayName
+                    },
+                    url = source.buildUrl(release.assetDownloadUrl),
+                    source = source,
+                )
+            }
         return UpdatePromptState(
             currentVersion = BuildConfig.VERSION_NAME,
             latestVersion = release.normalizedVersion,
@@ -2442,6 +2456,8 @@ class WorkshopViewModel(
             downloadSourceDisplayName = resolvedDownload.source.displayName,
             notesText = release.notesText.ifBlank { "暂无更新说明。" },
             downloadUrl = resolvedDownload.resolvedUrl,
+            defaultDownloadSourceId = resolvedDownload.source.id,
+            downloadOptions = downloadOptions,
         )
     }
 

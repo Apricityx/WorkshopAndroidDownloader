@@ -288,6 +288,14 @@ data class UpdatePromptState(
     val downloadSourceDisplayName: String,
     val notesText: String,
     val downloadUrl: String,
+    val defaultDownloadSourceId: String,
+    val downloadOptions: List<UpdateDownloadOptionState>,
+)
+
+data class UpdateDownloadOptionState(
+    val label: String,
+    val url: String,
+    val source: UpdateSource,
 )
 
 fun AppThemeMode.displayName(): String =

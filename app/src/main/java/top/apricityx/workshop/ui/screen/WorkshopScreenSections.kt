@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
@@ -74,6 +76,7 @@ import top.apricityx.workshop.toggleContentDescription
 import top.apricityx.workshop.versionLabel
 import top.apricityx.workshop.workshopModKey
 import top.apricityx.workshop.ui.component.WorkshopButton
+import top.apricityx.workshop.ui.component.SimpleMarkdownCard
 import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
@@ -188,6 +191,93 @@ private fun WorkshopDialogs(
     val pendingRenameMod = state.pendingRenameMod
 
     if (updatePrompt != null) {
+        var showDownloadChoiceDialog by remember(updatePrompt) {
+            mutableStateOf(false)
+        }
+        var downloadMenuExpanded by remember(updatePrompt) {
+            mutableStateOf(false)
+        }
+        var selectedDownloadSourceId by remember(updatePrompt) {
+            mutableStateOf(updatePrompt.defaultDownloadSourceId)
+        }
+        val selectedDownloadOption = updatePrompt.downloadOptions.firstOrNull {
+            it.source.id == selectedDownloadSourceId
+        } ?: updatePrompt.downloadOptions.firstOrNull()
+        if (showDownloadChoiceDialog) {
+            WorkshopDialog(
+                onDismissRequest = {
+                    downloadMenuExpanded = false
+                    showDownloadChoiceDialog = false
+                },
+                title = { Text("选择下载方式") },
+                buttons = {
+                    WorkshopOutlinedButton(
+                        onClick = {
+                            downloadMenuExpanded = false
+                            showDownloadChoiceDialog = false
+                            actions.onOpenExternalUrl(updateQuarkDownloadUrl)
+                            actions.onDismissUpdatePrompt()
+                        },
+                    ) {
+                        Text("夸克下载")
+                    }
+                    WorkshopButton(
+                        onClick = {
+                            val targetUrl = selectedDownloadOption?.url ?: return@WorkshopButton
+                            downloadMenuExpanded = false
+                            showDownloadChoiceDialog = false
+                            actions.onOpenExternalUrl(targetUrl)
+                            actions.onDismissUpdatePrompt()
+                        },
+                    ) {
+                        Text("直链下载")
+                    }
+                },
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = "直链下载将从 GitHub Release 进行下载，不一定会有稳定的速度。如果想要支持开发，可以使用夸克下载。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        text = "下载源",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        WorkshopOutlinedButton(
+                            onClick = { downloadMenuExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(selectedDownloadOption?.label.orEmpty())
+                                Text(if (downloadMenuExpanded) "▲" else "▼")
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = downloadMenuExpanded,
+                            onDismissRequest = { downloadMenuExpanded = false },
+                        ) {
+                            updatePrompt.downloadOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    onClick = {
+                                        selectedDownloadSourceId = option.source.id
+                                        downloadMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
         WorkshopDialog(
             onDismissRequest = actions.onDismissUpdatePrompt,
             title = { Text("发现新版本") },
@@ -196,10 +286,7 @@ private fun WorkshopDialogs(
                     Text("稍后")
                 }
                 WorkshopButton(
-                    onClick = {
-                        actions.onOpenExternalUrl(updatePrompt.downloadUrl)
-                        actions.onDismissUpdatePrompt()
-                    },
+                    onClick = { showDownloadChoiceDialog = true },
                 ) {
                     Text("前往下载")
                 }
@@ -215,15 +302,12 @@ private fun WorkshopDialogs(
                 Text("最新版本：${updatePrompt.latestVersion}")
                 Text("发布日期：${updatePrompt.publishedAtText}")
                 Text("下载来源：${updatePrompt.downloadSourceDisplayName}")
-                Text(
-                    text = "更新说明",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = updatePrompt.notesText,
-                    style = MaterialTheme.typography.bodyMedium,
+                SimpleMarkdownCard(
+                    title = "更新说明",
+                    markdown = updatePrompt.notesText,
                 )
             }
+        }
         }
     }
 
@@ -558,6 +642,7 @@ private fun WorkshopUiState.titleForScreen(
     }
 
 private const val baiduApiKeyGuideUrl = "https://fanyi-api.baidu.com/product/13"
+private const val updateQuarkDownloadUrl = "https://pan.quark.cn/s/2ffa884df03f"
 
 @Composable
 private fun LegacyBlurBar(
