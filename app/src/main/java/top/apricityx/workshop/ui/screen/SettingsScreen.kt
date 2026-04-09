@@ -237,7 +237,7 @@ fun SettingsScreen(
             SettingsSectionCard {
             Text("翻译设置", style = MaterialTheme.typography.titleLarge)
             Text(
-                "描述翻译现在只走百度大模型文本翻译；如果没有配置 AppID 和 API Key，点击翻译时会直接弹出提示。",
+                "描述翻译现在只走百度大模型文本翻译；需要配置 AppID 和 API Key。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -245,7 +245,7 @@ fun SettingsScreen(
                 text = if (state.baiduTranslationApiKeyConfigured) {
                     "当前已配置 AppID 和 API Key，描述翻译会直接调用百度大模型文本翻译。"
                 } else {
-                    "当前尚未配置 AppID 和 API Key，未配置时翻译按钮会弹出 Toast 提示。"
+                    "当前尚未配置 AppID 和 API Key。如有需要，请按照教程配置。"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

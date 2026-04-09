@@ -38,7 +38,7 @@ class BaiduAiTextTranslationClient(
         credentials: BaiduTranslationCredentials,
     ): String = withContext(Dispatchers.IO) {
         require(credentials.isConfigured()) {
-            "请先配置百度大模型文本翻译的 AppID 和 API Key。"
+            "请先在设置中配置百度大模型文本翻译的 AppID 和 API Key。"
         }
 
         val normalizedText = text.trim()

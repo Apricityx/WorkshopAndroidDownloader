@@ -55,6 +55,7 @@ internal fun WorkshopItemDetailScreen(
     downloadedItemIds: Set<ULong>,
     modStatus: WorkshopModStatus,
     onRetry: () -> Unit,
+    onRetryComments: () -> Unit,
     onLoadPreviousCommentsPage: () -> Unit,
     onLoadNextCommentsPage: () -> Unit,
     onTranslateDescription: () -> Unit,
@@ -268,6 +269,17 @@ internal fun WorkshopItemDetailScreen(
                             message = commentErrorMessage,
                             tone = MessageTone.Error,
                         )
+                        WorkshopOutlinedButton(
+                            onClick = onRetryComments,
+                            enabled = !state.isLoadingComments,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                            )
+                            Text(" 重试加载评论")
+                        }
                     }
 
                     if (state.isLoadingComments) {

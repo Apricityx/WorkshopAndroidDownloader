@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -23,7 +24,7 @@ import top.apricityx.workshop.WorkshopModStatus
 
 internal fun WorkshopModStatus.actionLabel(): String =
     when (this) {
-        WorkshopModStatus.LatestDownloaded -> "最新版已下载"
+        WorkshopModStatus.LatestDownloaded -> "已下载"
         WorkshopModStatus.UpdateAvailable -> "更新到最新版本"
         WorkshopModStatus.NotDownloaded -> "下载"
         WorkshopModStatus.Downloading -> "下载中"
@@ -32,7 +33,7 @@ internal fun WorkshopModStatus.actionLabel(): String =
 internal fun WorkshopModStatus.actionIcon(): ImageVector =
     when (this) {
         WorkshopModStatus.LatestDownloaded -> Icons.Default.Done
-        WorkshopModStatus.UpdateAvailable -> Icons.Default.Refresh
+        WorkshopModStatus.UpdateAvailable -> Icons.Default.SystemUpdateAlt
         WorkshopModStatus.NotDownloaded -> Icons.Default.Download
         WorkshopModStatus.Downloading -> Icons.Default.Sync
     }

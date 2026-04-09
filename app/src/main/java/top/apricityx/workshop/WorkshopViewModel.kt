@@ -1415,6 +1415,20 @@ class WorkshopViewModel(
         shiftWorkshopCommentsPage(delta = 1)
     }
 
+    fun retryWorkshopCommentsPage() {
+        val detailState = _uiState.value.workshopItemDetailState ?: return
+        val detail = detailState.detail ?: return
+        if (detailState.isLoading || detailState.isLoadingComments) {
+            return
+        }
+
+        loadWorkshopCommentsPage(
+            appId = detailState.item.appId,
+            publishedFileId = detailState.item.publishedFileId,
+            page = detail.commentPage.coerceAtLeast(1),
+        )
+    }
+
     private fun shiftWorkshopCommentsPage(delta: Int) {
         val detailState = _uiState.value.workshopItemDetailState ?: return
         val detail = detailState.detail ?: return
@@ -1474,7 +1488,7 @@ class WorkshopViewModel(
 
         viewModelScope.launch {
             runCatching {
-                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                withTimeout(WORKSHOP_COMMENTS_TIMEOUT_MS) {
                     detailRepository.loadWorkshopCommentPage(
                         detail = detailSnapshot,
                         page = page,
@@ -3125,6 +3139,7 @@ class WorkshopViewModel(
     companion object {
         private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
         private const val WORKSHOP_BROWSE_TIMEOUT_MS = 12_000L
+        private const val WORKSHOP_COMMENTS_TIMEOUT_MS = 15_000L
         private const val WORKSHOP_ITEMS_PER_PAGE = 30
         private const val STEAM_WEB_SESSION_USER_AGENT = "WorkshopOnAndroid/1.0"
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"

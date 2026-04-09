@@ -53,6 +53,7 @@ import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.component.liquid.LiquidSlider
 import top.apricityx.workshop.ui.component.liquid.LiquidToggle
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
+import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
 import kotlin.math.round
@@ -211,11 +212,17 @@ private fun WorkshopAdaptiveButton(
         return
     }
 
-    val contentColor = when (variant) {
-        WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.onPrimary
-        WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
-        WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
-        WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.onError
+    val forceDarkTextInLiteMode = isLiteLiquidGlassFrontendEnabled() &&
+        (variant == WorkshopButtonVariant.Primary || variant == WorkshopButtonVariant.Destructive)
+    val contentColor = if (forceDarkTextInLiteMode) {
+        Color.Black
+    } else {
+        when (variant) {
+            WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.onPrimary
+            WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
+            WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
+            WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.onError
+        }
     }
     val tintColor = when (variant) {
         WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.primary

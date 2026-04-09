@@ -444,6 +444,7 @@ private fun WorkshopScreenScene(
                         downloadedItemIds = downloadedItemIds,
                         modStatus = modStatusResolver.resolve(detailState.item),
                         onRetry = actions.onRetryWorkshopItemDetail,
+                        onRetryComments = actions.onRetryWorkshopCommentsPage,
                         onLoadPreviousCommentsPage = actions.onLoadPreviousWorkshopCommentsPage,
                         onLoadNextCommentsPage = actions.onLoadNextWorkshopCommentsPage,
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
