@@ -203,6 +203,56 @@ fun WorkshopGlassSurface(
 }
 
 @Composable
+fun WorkshopLensBackdropSurface(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(28.dp),
+    lensHeight: Dp = 10.dp,
+    lensAmount: Dp = 12.dp,
+    surfaceColor: Color = MaterialTheme.colorScheme.surface.copy(alpha = 0.18f),
+    borderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val liquidEnabled = isLiquidGlassFrontendEnabled()
+    val backdrop = LocalWorkshopBackdrop.current
+
+    if (!liquidEnabled || backdrop == null) {
+        Surface(
+            modifier = modifier,
+            shape = shape,
+            color = surfaceColor,
+            border = BorderStroke(1.dp, borderColor),
+            contentColor = contentColor,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides contentColor) {
+                Box(content = content)
+            }
+        }
+        return
+    }
+
+    Box(
+        modifier = modifier
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { shape },
+                effects = {
+                    lens(lensHeight.toPx(), lensAmount.toPx())
+                },
+                onDrawSurface = {
+                    drawRect(surfaceColor)
+                },
+            )
+            .border(width = 1.dp, color = borderColor, shape = shape)
+            .clip(shape),
+    ) {
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            content()
+        }
+    }
+}
+
+@Composable
 fun WorkshopGlassIconButton(
     onClick: () -> Unit,
     imageVector: ImageVector,

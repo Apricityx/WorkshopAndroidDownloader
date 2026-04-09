@@ -3,6 +3,7 @@ package top.apricityx.workshop.ui.screen
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -78,15 +80,16 @@ import top.apricityx.workshop.workshopModKey
 import top.apricityx.workshop.ui.component.WorkshopButton
 import top.apricityx.workshop.ui.component.SimpleMarkdownCard
 import top.apricityx.workshop.ui.component.WorkshopDialog
+import top.apricityx.workshop.ui.component.WorkshopLensBackdropSurface
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.liquid.LiquidBottomTab
 import top.apricityx.workshop.ui.component.liquid.LiquidBottomTabs
-import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.shapes.Capsule
 
 @Composable
 internal fun WorkshopTopBar(
@@ -239,7 +242,7 @@ private fun WorkshopDialogs(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(
-                        text = "直链下载将从 GitHub Release 进行下载，不一定会有稳定的速度。如果想要支持开发，可以使用夸克下载。",
+                        text = "直链下载将从 GitHub Release 进行下载，不一定会有稳定的速度。如果想要支持开发，可以使用夸克下载。开发者会从每一次转存获得收益😋",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
@@ -805,24 +808,16 @@ private fun WorkshopLiquidTopBar(
             if (!state.currentScreen.isLibraryRoot()) {
                 WorkshopLiquidTopBarActionButton(
                     onClick = actions.onNavigateBack,
-                    backdrop = backdrop,
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "返回",
                 )
             }
 
-            LiquidButton(
-                onClick = null,
-                backdrop = backdrop,
+            WorkshopLiquidTopBarCapsule(
                 modifier = Modifier.weight(1f),
-                isInteractive = false,
-                surfaceColor = Color.Transparent,
-                enableVibrancy = false,
-                blurRadius = 1.dp,
-                lensHeight = 8.dp,
-                lensAmount = 16.dp,
                 height = 52.dp,
                 horizontalPadding = 18.dp,
+                fillWidth = true,
             ) {
                 Text(
                     text = state.titleForScreen(selectedTask = selectedTask, selectedMod = selectedMod),
@@ -840,7 +835,6 @@ private fun WorkshopLiquidTopBar(
                 if (state.currentScreen.showsDownloadCenterShortcut()) {
                     WorkshopLiquidTopBarActionButton(
                         onClick = actions.onNavigateToDownloadCenter,
-                        backdrop = backdrop,
                         imageVector = Icons.Default.Download,
                         contentDescription = "下载中心",
                         badgeCount = state.downloadCenterState.activeCount,
@@ -850,7 +844,6 @@ private fun WorkshopLiquidTopBar(
                 if (state.currentScreen == WorkshopScreenDestination.GameLibrary) {
                     WorkshopLiquidTopBarActionButton(
                         onClick = actions.onNavigateToAddGame,
-                        backdrop = backdrop,
                         imageVector = Icons.Default.Add,
                         contentDescription = "添加游戏",
                     )
@@ -865,7 +858,6 @@ private fun WorkshopLiquidTopBar(
                     }
                     WorkshopLiquidTopBarActionButton(
                         onClick = actions.onToggleModLibraryDisplayMode,
-                        backdrop = backdrop,
                         imageVector = toggleIcon,
                         contentDescription = toggleContentDescription,
                         modifier = Modifier.testTag("modLibraryDisplayModeToggle"),
@@ -876,14 +868,12 @@ private fun WorkshopLiquidTopBar(
                     LiquidGameWorkshopMoreMenuButton(
                         expanded = state.gameWorkshopState?.isMoreActionsExpanded == true,
                         actions = actions,
-                        backdrop = backdrop,
                     )
                 }
 
                 if (state.currentScreen.showsSettingsShortcut()) {
                     WorkshopLiquidTopBarActionButton(
                         onClick = actions.onNavigateToSettings,
-                        backdrop = backdrop,
                         imageVector = Icons.Default.Settings,
                         contentDescription = "设置",
                     )
@@ -916,18 +906,55 @@ private fun LegacyGameWorkshopMoreMenuButton(
 private fun LiquidGameWorkshopMoreMenuButton(
     expanded: Boolean,
     actions: WorkshopScreenActions,
-    backdrop: com.kyant.backdrop.Backdrop,
 ) {
     Box {
         WorkshopLiquidTopBarActionButton(
             onClick = actions.onToggleGameWorkshopMoreActions,
-            backdrop = backdrop,
             imageVector = Icons.Default.MoreVert,
             contentDescription = "更多",
         )
         GameWorkshopMoreDropdownMenu(
             expanded = expanded,
             actions = actions,
+        )
+    }
+}
+
+@Composable
+private fun WorkshopLiquidTopBarCapsule(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    height: androidx.compose.ui.unit.Dp = 48.dp,
+    horizontalPadding: androidx.compose.ui.unit.Dp = 16.dp,
+    fillWidth: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
+) {
+    WorkshopLensBackdropSurface(
+        modifier = modifier,
+        shape = Capsule(),
+        lensHeight = 8.dp,
+        lensAmount = 16.dp,
+        surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+        borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+    ) {
+        Row(
+            modifier = (if (fillWidth) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier
+            })
+                .heightIn(min = height)
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable(onClick = onClick)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = horizontalPadding, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
         )
     }
 }
@@ -1112,21 +1139,14 @@ private fun WorkshopLiquidBottomBar(
 @Composable
 private fun WorkshopLiquidTopBarActionButton(
     onClick: () -> Unit,
-    backdrop: com.kyant.backdrop.Backdrop,
     imageVector: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     modifier: Modifier = Modifier,
     badgeCount: Int = 0,
 ) {
-    LiquidButton(
-        onClick = onClick,
-        backdrop = backdrop,
+    WorkshopLiquidTopBarCapsule(
         modifier = modifier,
-        surfaceColor = Color.Transparent,
-        enableVibrancy = false,
-        blurRadius = 1.dp,
-        lensHeight = 8.dp,
-        lensAmount = 16.dp,
+        onClick = onClick,
         horizontalPadding = if (badgeCount > 0) 14.dp else 12.dp,
     ) {
         Icon(

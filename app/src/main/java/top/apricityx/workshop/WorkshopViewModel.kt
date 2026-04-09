@@ -3037,16 +3037,23 @@ class WorkshopViewModel(
         rememberPrevious: Boolean = true,
     ) {
         _uiState.update { state ->
+            val rawPrevious = if (
+                rememberPrevious &&
+                state.currentScreen != screen &&
+                state.currentScreen != WorkshopScreenDestination.DownloadCenter
+            ) {
+                state.currentScreen
+            } else {
+                state.previousScreen
+            }
+            val sanitizedPrevious = if (rawPrevious == WorkshopScreenDestination.DownloadTaskDetail) {
+                state.previousScreen.takeIf { it != WorkshopScreenDestination.DownloadTaskDetail }
+                    ?: WorkshopScreenDestination.GameLibrary
+            } else {
+                rawPrevious
+            }
             state.copy(
-                previousScreen = if (
-                    rememberPrevious &&
-                    state.currentScreen != screen &&
-                    state.currentScreen != WorkshopScreenDestination.DownloadCenter
-                ) {
-                    state.currentScreen
-                } else {
-                    state.previousScreen
-                },
+                previousScreen = sanitizedPrevious,
                 currentScreen = screen,
                 selectedDownloadTaskId = if (screen == WorkshopScreenDestination.DownloadTaskDetail) {
                     state.selectedDownloadTaskId

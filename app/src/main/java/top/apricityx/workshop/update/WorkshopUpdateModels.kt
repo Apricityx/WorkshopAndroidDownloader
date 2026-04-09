@@ -52,7 +52,7 @@ enum class UpdateSource(
         proxyPrefix = null,
         supportsMetadataCheck = true,
         supportsDownloadProxy = true,
-        userSelectable = false,
+        userSelectable = true,
     ),
     ;
 

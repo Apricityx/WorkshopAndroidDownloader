@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -72,21 +73,57 @@ fun ScreenSummaryCard(
     modifier: Modifier = Modifier,
     content: @Composable (ColumnScope.() -> Unit)? = null,
 ) {
-    WorkshopPanelCard(modifier = modifier) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (metrics.isNotEmpty()) {
-            MetricFlow(metrics = metrics)
+    if (isLiquidGlassFrontendEnabled()) {
+        WorkshopLensBackdropSurface(
+            modifier = modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            lensHeight = 10.dp,
+            lensAmount = 18.dp,
+            surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.18f),
+            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CompositionLocalProvider(LocalWorkshopPreferLensButtons provides true) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (metrics.isNotEmpty()) {
+                        MetricFlow(metrics = metrics)
+                    }
+                    content?.invoke(this)
+                }
+            }
         }
-        content?.invoke(this)
+        return
+    }
+
+    WorkshopPanelCard(modifier = modifier) {
+        CompositionLocalProvider(LocalWorkshopPreferLensButtons provides false) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (metrics.isNotEmpty()) {
+                MetricFlow(metrics = metrics)
+            }
+            content?.invoke(this)
+        }
     }
 }
 

@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton as MaterialTextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
@@ -56,6 +58,7 @@ import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
+import com.kyant.shapes.Capsule
 import kotlin.math.round
 
 private enum class WorkshopButtonVariant {
@@ -64,6 +67,8 @@ private enum class WorkshopButtonVariant {
     Ghost,
     Destructive,
 }
+
+internal val LocalWorkshopPreferLensButtons = compositionLocalOf { false }
 
 @Composable
 fun WorkshopButton(
@@ -212,6 +217,17 @@ private fun WorkshopAdaptiveButton(
         return
     }
 
+    if (LocalWorkshopPreferLensButtons.current) {
+        WorkshopLensAdaptiveButton(
+            variant = variant,
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            content = content,
+        )
+        return
+    }
+
     val forceDarkTextInLiteMode = isLiteLiquidGlassFrontendEnabled() &&
         (variant == WorkshopButtonVariant.Primary || variant == WorkshopButtonVariant.Destructive)
     val contentColor = if (forceDarkTextInLiteMode) {
@@ -250,6 +266,80 @@ private fun WorkshopAdaptiveButton(
         CompositionLocalProvider(LocalContentColor provides contentColor) {
             ProvideTextStyle(MaterialTheme.typography.labelLarge) {
                 content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkshopLensAdaptiveButton(
+    variant: WorkshopButtonVariant,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    enabled: Boolean,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val forceDarkTextInLiteMode = isLiteLiquidGlassFrontendEnabled() &&
+        (variant == WorkshopButtonVariant.Primary || variant == WorkshopButtonVariant.Destructive)
+    val contentColor = if (forceDarkTextInLiteMode) {
+        Color.Black
+    } else {
+        when (variant) {
+            WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.onPrimary
+            WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
+            WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
+            WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.onError
+        }
+    }
+    val tintColor = when (variant) {
+        WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.primary
+        WorkshopButtonVariant.Secondary -> Color.Unspecified
+        WorkshopButtonVariant.Ghost -> Color.Unspecified
+        WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.error
+    }
+    val baseSurfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f)
+    val surfaceColor = when (variant) {
+        WorkshopButtonVariant.Primary -> tintColor.copy(alpha = 0.1f).compositeOver(baseSurfaceColor)
+        WorkshopButtonVariant.Secondary -> baseSurfaceColor
+        WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.surface.copy(alpha = 0.12f)
+        WorkshopButtonVariant.Destructive -> tintColor.copy(alpha = 0.1f).compositeOver(baseSurfaceColor)
+    }
+    val borderColor = when (variant) {
+        WorkshopButtonVariant.Primary -> tintColor.copy(alpha = 0.24f)
+        WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+        WorkshopButtonVariant.Destructive -> tintColor.copy(alpha = 0.24f)
+    }
+
+    WorkshopLensBackdropSurface(
+        modifier = modifier
+            .alpha(if (enabled) 1f else 0.52f)
+            .let { baseModifier ->
+                if (enabled) {
+                    baseModifier.clickable(onClick = onClick)
+                } else {
+                    baseModifier
+                }
+            },
+        shape = Capsule(),
+        lensHeight = 8.dp,
+        lensAmount = if (variant == WorkshopButtonVariant.Ghost) 12.dp else 16.dp,
+        surfaceColor = surfaceColor,
+        borderColor = borderColor,
+        contentColor = contentColor,
+    ) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .defaultMinSize(minHeight = if (variant == WorkshopButtonVariant.Ghost) 40.dp else 48.dp)
+                .padding(horizontal = if (variant == WorkshopButtonVariant.Ghost) 14.dp else 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides contentColor) {
+                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                    content()
+                }
             }
         }
     }
