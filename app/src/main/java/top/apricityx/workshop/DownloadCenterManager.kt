@@ -90,6 +90,7 @@ class DownloadCenterManager private constructor(
             state.copy(tasks = newTasks + state.tasks)
         }
 
+        DownloadForegroundService.start(application)
         newTasks.forEach { task ->
             debugLogManager.initializeTaskLog(task)
             task.logs.forEach { line ->
@@ -178,6 +179,7 @@ class DownloadCenterManager private constructor(
         retryBindingLog?.let { debugLogManager.append(taskId, it) }
         debugLogManager.append(taskId, "Retry binding account=${retryBinding.accountName} id=${retryBinding.accountId ?: "anonymous"}")
         debugLogManager.append(taskId, "Task resumed and re-queued")
+        DownloadForegroundService.start(application)
         ensureRunner()
     }
 

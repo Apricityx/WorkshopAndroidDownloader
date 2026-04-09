@@ -59,6 +59,19 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_LONG,
                 ).show()
             }
+            continueStartingDownloads(items)
+        }
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val items = pendingDownloadItems.takeIf { it.isNotEmpty() } ?: return@registerForActivityResult
+            pendingDownloadItems = emptyList()
+            if (!granted) {
+                Toast.makeText(
+                    this,
+                    "未授予通知权限，后台下载通知可能不会显示。",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
             if (!workshopViewModel.downloadItems(items)) {
                 clearPendingDownloads(items)
             }
@@ -164,6 +177,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleLaunchIntent() {
+        if (intent?.action == WorkshopAppContract.openDownloadCenterAction) {
+            workshopViewModel.navigateToDownloadCenter()
+        }
         AdbDownloadCommandParser.parse(intent)?.let(workshopViewModel::applyAdbCommand)
     }
 
@@ -198,14 +214,25 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (!shouldRequestLegacyStoragePermission()) {
-            if (!workshopViewModel.downloadItems(distinctItems)) {
-                clearPendingDownloads(distinctItems)
-            }
+            continueStartingDownloads(distinctItems)
             return
         }
 
         pendingDownloadItems = distinctItems
         legacyStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    }
+
+    private fun continueStartingDownloads(items: List<WorkshopBrowseItem>) {
+        if (shouldRequestNotificationPermission()) {
+            pendingDownloadItems = items
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        pendingDownloadItems = emptyList()
+        if (!workshopViewModel.downloadItems(items)) {
+            clearPendingDownloads(items)
+        }
     }
 
     private fun markDownloadPending(item: WorkshopBrowseItem) {
@@ -347,6 +374,13 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            ) != PackageManager.PERMISSION_GRANTED
+
+    private fun shouldRequestNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
 
     private fun openExternalUrl(url: String) {

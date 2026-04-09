@@ -125,6 +125,9 @@ class WorkshopViewModel(
         refreshModLibrary()
         loadFeaturedGames()
         maybeStartAutoUpdateCheck()
+        if (downloadCenterManager.uiState.value.activeCount > 0) {
+            DownloadForegroundService.start(application)
+        }
         lastDownloadCenterModSignature = buildModLibrarySyncSignature(downloadCenterManager.uiState.value)
         viewModelScope.launch {
             downloadCenterManager.uiState.collect { downloadCenterState ->
