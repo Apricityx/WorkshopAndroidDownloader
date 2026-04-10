@@ -13,30 +13,19 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.data.WorkshopRequiredItem
+import top.apricityx.workshop.ui.component.DownloadDependencyWarningDialog
 import top.apricityx.workshop.ui.screen.WorkshopScreen
 import top.apricityx.workshop.ui.screen.WorkshopScreenActions
-import top.apricityx.workshop.ui.component.WorkshopButton
-import top.apricityx.workshop.ui.component.WorkshopDialog
-import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
-import top.apricityx.workshop.ui.component.WorkshopTextButton
 import top.apricityx.workshop.ui.theme.SteamWorkshopDemoTheme
 import kotlinx.coroutines.launch
 
@@ -115,56 +104,24 @@ class MainActivity : ComponentActivity() {
                 )
 
                 downloadDependencyWarningDialogState?.let { dialogState ->
-                    WorkshopDialog(
+                    DownloadDependencyWarningDialog(
+                        item = dialogState.item,
+                        requiredItems = dialogState.requiredItems,
                         onDismissRequest = { downloadDependencyWarningDialogState = null },
-                        title = { Text("还有前置未下载") },
-                        buttons = {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                horizontalAlignment = Alignment.End,
-                            ) {
-                                WorkshopButton(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        val items = dialogState.requiredItems
-                                            .map(WorkshopRequiredItem::toBrowseItem) + dialogState.item
-                                        downloadDependencyWarningDialogState = null
-                                        markDownloadPending(items)
-                                        startDownloadItemsWithCompatibilityGuard(items)
-                                    },
-                                ) {
-                                    Text("下载所有前置并下载模组")
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                                ) {
-                                    WorkshopTextButton(onClick = { downloadDependencyWarningDialogState = null }) {
-                                        Text("取消")
-                                    }
-                                    WorkshopOutlinedButton(
-                                        onClick = {
-                                            val item = dialogState.item
-                                            downloadDependencyWarningDialogState = null
-                                            markDownloadPending(item)
-                                            startDownloadItemsWithCompatibilityGuard(listOf(item))
-                                        },
-                                    ) {
-                                        Text("只下载模组")
-                                    }
-                                }
-                            }
+                        onDownloadAllWithDependencies = {
+                            val items = dialogState.requiredItems
+                                .map(WorkshopRequiredItem::toBrowseItem) + dialogState.item
+                            downloadDependencyWarningDialogState = null
+                            markDownloadPending(items)
+                            startDownloadItemsWithCompatibilityGuard(items)
                         },
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("「${dialogState.item.title}」还有 ${dialogState.requiredItems.size} 个前置工坊物品未下载。")
-                            Text("你可以选择下载所有前置后再下载模组，或者只下载当前模组。")
-                            Text(
-                                text = dialogState.requiredItems.joinToString(separator = "\n") { "• ${it.title}" },
-                            )
-                        }
-                    }
+                        onDownloadOnlyCurrent = {
+                            val item = dialogState.item
+                            downloadDependencyWarningDialogState = null
+                            markDownloadPending(item)
+                            startDownloadItemsWithCompatibilityGuard(listOf(item))
+                        },
+                    )
                 }
             }
         }
