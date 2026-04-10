@@ -263,44 +263,30 @@ fun WorkshopGlassIconButton(
     content: (@Composable () -> Unit)? = null,
 ) {
     val backdrop = LocalWorkshopBackdrop.current
-    val interactionSource = remember { MutableInteractionSource() }
     if (isLiquidGlassFrontendEnabled() && backdrop != null) {
-        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
-        Surface(
-            modifier = modifier
-                .size(42.dp)
-                .alpha(if (enabled) 1f else 0.52f)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    enabled = enabled,
-                    onClick = onClick,
-                ),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = if (isDark) 0.22f else 0.16f),
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDark) 0.14f else 0.1f),
-            ),
+        LiquidButton(
+            onClick = if (enabled) onClick else null,
+            backdrop = backdrop,
+            modifier = modifier.alpha(if (enabled) 1f else 0.52f),
+            isInteractive = enabled,
+            surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f),
+            height = 42.dp,
+            horizontalPadding = 10.dp,
         ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (content != null) {
-                    content()
-                } else {
-                    Icon(
-                        imageVector = imageVector,
-                        contentDescription = contentDescription,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
+            if (content != null) {
+                content()
+            } else {
+                Icon(
+                    imageVector = imageVector,
+                    contentDescription = contentDescription,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
         return
     }
 
+    val interactionSource = remember { MutableInteractionSource() }
     WorkshopGlassSurface(
         modifier = modifier
             .size(42.dp)

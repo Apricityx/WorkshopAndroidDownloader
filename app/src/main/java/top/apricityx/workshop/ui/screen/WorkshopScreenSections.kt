@@ -85,6 +85,7 @@ import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopLensBackdropSurface
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
+import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.component.liquid.LiquidBottomTab
 import top.apricityx.workshop.ui.component.liquid.LiquidBottomTabs
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
@@ -1167,9 +1168,35 @@ private fun WorkshopLiquidTopBarActionButton(
     modifier: Modifier = Modifier,
     badgeCount: Int = 0,
 ) {
-    WorkshopLiquidTopBarCapsule(
-        modifier = modifier,
+    val backdrop = LocalWorkshopBackdrop.current
+    if (backdrop == null) {
+        WorkshopLiquidTopBarCapsule(
+            modifier = modifier,
+            onClick = onClick,
+            horizontalPadding = if (badgeCount > 0) 14.dp else 12.dp,
+        ) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+            if (badgeCount > 0) {
+                Text(
+                    text = badgeCount.coerceAtMost(99).toString(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        return
+    }
+
+    LiquidButton(
         onClick = onClick,
+        backdrop = backdrop,
+        modifier = modifier,
+        surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+        height = 48.dp,
         horizontalPadding = if (badgeCount > 0) 14.dp else 12.dp,
     ) {
         Icon(

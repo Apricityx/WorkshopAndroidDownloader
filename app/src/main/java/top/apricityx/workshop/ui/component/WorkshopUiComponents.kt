@@ -87,20 +87,20 @@ fun ScreenSummaryCard(
                 modifier = Modifier.padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                CompositionLocalProvider(LocalWorkshopPreferLensButtons provides true) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (metrics.isNotEmpty()) {
-                        MetricFlow(metrics = metrics)
-                    }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (metrics.isNotEmpty()) {
+                    MetricFlow(metrics = metrics)
+                }
+                CompositionLocalProvider(LocalWorkshopPreferLensButtons provides false) {
                     content?.invoke(this)
                 }
             }

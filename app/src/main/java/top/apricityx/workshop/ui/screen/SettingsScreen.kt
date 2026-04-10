@@ -1,5 +1,8 @@
 package top.apricityx.workshop.ui.screen
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,8 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Card
@@ -20,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -56,7 +58,6 @@ import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
-import top.apricityx.workshop.ui.component.WorkshopRadioButton
 import top.apricityx.workshop.ui.component.WorkshopSlider
 import top.apricityx.workshop.ui.component.WorkshopSwitch
 import top.apricityx.workshop.ui.component.WorkshopTextButton
@@ -274,90 +275,23 @@ fun SettingsScreen(
 
             Text("前端样式", style = MaterialTheme.typography.titleMedium)
 
-            Column(
-                modifier = Modifier.selectableGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AppFrontendMode.entries.forEach { mode ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = state.selectedFrontendMode == mode,
-                                onClick = { onFrontendModeSelected(mode) },
-                            )
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        WorkshopRadioButton(
-                            selected = state.selectedFrontendMode == mode,
-                            onClick = null,
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = mode.displayName(),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                text = when (mode) {
-                                    AppFrontendMode.LiquidGlass ->
-                                        "新的液态玻璃外观，完全重构了前端。"
-
-                                    AppFrontendMode.LiteLiquidGlass ->
-                                        "保留液态玻璃的视觉语言，但减少滚动时的模糊和动态效果，优先保证流畅度。"
-
-                                    AppFrontendMode.Legacy ->
-                                        "保留稳定的经典 Material 风格界面。"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
+            SettingsChoiceDropdown(
+                selectedOption = state.selectedFrontendMode,
+                options = AppFrontendMode.entries,
+                optionLabel = AppFrontendMode::displayName,
+                optionDescription = ::frontendModeDescription,
+                onOptionSelected = onFrontendModeSelected,
+            )
 
             Text("颜色主题", style = MaterialTheme.typography.titleMedium)
 
-            Column(
-                modifier = Modifier.selectableGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AppThemeMode.entries.forEach { mode ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = state.selectedThemeMode == mode,
-                                onClick = { onThemeModeSelected(mode) },
-                            )
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        WorkshopRadioButton(
-                            selected = state.selectedThemeMode == mode,
-                            onClick = null,
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = mode.displayName(),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                text = when (mode) {
-                                    AppThemeMode.FollowSystem -> "根据系统当前外观自动切换。"
-                                    AppThemeMode.Light -> "始终使用亮色界面。"
-                                    AppThemeMode.Dark -> "始终使用深色界面。"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
+            SettingsChoiceDropdown(
+                selectedOption = state.selectedThemeMode,
+                options = AppThemeMode.entries,
+                optionLabel = AppThemeMode::displayName,
+                optionDescription = ::themeModeDescription,
+                onOptionSelected = onThemeModeSelected,
+            )
             }
 
             SettingsSectionCard {
@@ -368,40 +302,13 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Column(
-                modifier = Modifier.selectableGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SteamLanguagePreference.entries.forEach { preference ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = state.selectedSteamLanguagePreference == preference,
-                                onClick = { onSteamLanguagePreferenceSelected(preference) },
-                            )
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        WorkshopRadioButton(
-                            selected = state.selectedSteamLanguagePreference == preference,
-                            onClick = null,
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = preference.displayName(),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                text = steamLanguagePreferenceDescription(preference),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
+            SettingsChoiceDropdown(
+                selectedOption = state.selectedSteamLanguagePreference,
+                options = SteamLanguagePreference.entries,
+                optionLabel = SteamLanguagePreference::displayName,
+                optionDescription = ::steamLanguagePreferenceDescription,
+                onOptionSelected = onSteamLanguagePreferenceSelected,
+            )
             }
 
             SettingsSectionCard {
@@ -436,40 +343,13 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Column(
-                modifier = Modifier.selectableGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                state.availableUpdateSources.forEach { source ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .selectable(
-                                selected = state.preferredUpdateSource == source,
-                                onClick = { onPreferredUpdateSourceSelected(source) },
-                            )
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        WorkshopRadioButton(
-                            selected = state.preferredUpdateSource == source,
-                            onClick = null,
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = source.displayName,
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                text = sourceDescription(source),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
+            SettingsChoiceDropdown(
+                selectedOption = state.preferredUpdateSource,
+                options = state.availableUpdateSources,
+                optionLabel = { it.displayName },
+                optionDescription = ::sourceDescription,
+                onOptionSelected = onPreferredUpdateSourceSelected,
+            )
 
             Text("当前版本：${state.currentVersionText}", style = MaterialTheme.typography.bodyMedium)
 
@@ -798,6 +678,80 @@ private fun sliderSettingValue(
         ?: savedValue.coerceIn(minValue, maxValue)
 
 @Composable
+private fun <T> SettingsChoiceDropdown(
+    selectedOption: T,
+    options: Iterable<T>,
+    optionLabel: (T) -> String,
+    optionDescription: (T) -> String,
+    onOptionSelected: (T) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        WorkshopOutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = optionLabel(selectedOption),
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = optionDescription(selectedOption),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "展开选项",
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(optionLabel(option))
+                            Text(
+                                text = optionDescription(option),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    leadingIcon = {
+                        if (option == selectedOption) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onOptionSelected(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SteamAccountActionsButton(
     onReauthenticate: () -> Unit,
     onRemove: () -> Unit,
@@ -1058,6 +1012,25 @@ private fun sourceDescription(source: UpdateSource): String =
         UpdateSource.GH_LLKK -> "支持元数据和下载代理，可作为另一条回退线路。"
         UpdateSource.GH_PROXY_NET -> "自动回退源，不在设置里手动选择。"
         UpdateSource.OFFICIAL -> "官方 GitHub 直连地址。"
+    }
+
+private fun frontendModeDescription(mode: AppFrontendMode): String =
+    when (mode) {
+        AppFrontendMode.LiquidGlass ->
+            "新的液态玻璃外观，完全重构了前端。"
+
+        AppFrontendMode.LiteLiquidGlass ->
+            "保留液态玻璃的视觉语言，但减少滚动时的模糊和动态效果，优先保证流畅度。"
+
+        AppFrontendMode.Legacy ->
+            "保留稳定的经典 Material 风格界面。"
+    }
+
+private fun themeModeDescription(mode: AppThemeMode): String =
+    when (mode) {
+        AppThemeMode.FollowSystem -> "根据系统当前外观自动切换。"
+        AppThemeMode.Light -> "始终使用亮色界面。"
+        AppThemeMode.Dark -> "始终使用深色界面。"
     }
 
 private fun steamLanguagePreferenceDescription(
