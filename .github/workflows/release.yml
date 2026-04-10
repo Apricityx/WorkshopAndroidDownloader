@@ -18,6 +18,8 @@ jobs:
     name: Build signed release APK
     runs-on: ubuntu-latest
     environment: release-signing
+    env:
+      USE_ALIYUN_MIRROR: "false"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
