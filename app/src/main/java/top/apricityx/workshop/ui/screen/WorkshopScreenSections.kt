@@ -76,7 +76,9 @@ import top.apricityx.workshop.showsDownloadCenterShortcut
 import top.apricityx.workshop.showsSettingsShortcut
 import top.apricityx.workshop.toggleContentDescription
 import top.apricityx.workshop.versionLabel
+import top.apricityx.workshop.workshopChangeNotesUrl
 import top.apricityx.workshop.workshopModKey
+import top.apricityx.workshop.ui.component.WorkshopChangeNotesDialog
 import top.apricityx.workshop.ui.component.WorkshopButton
 import top.apricityx.workshop.ui.component.SimpleMarkdownCard
 import top.apricityx.workshop.ui.component.WorkshopDialog
@@ -189,9 +191,28 @@ private fun WorkshopDialogs(
     }
 
     val updatePrompt = state.settingsState.updatePromptState
+    val modLibraryChangeNotesDialogState = state.modLibraryState.changeNotesDialogState
     val pendingRemoveGame = state.pendingRemoveGame
     val pendingRemoveMod = state.pendingRemoveMod
     val pendingRenameMod = state.pendingRenameMod
+
+    if (modLibraryChangeNotesDialogState != null) {
+        WorkshopChangeNotesDialog(
+            title = modLibraryChangeNotesDialogState.group.itemTitle,
+            markdown = modLibraryChangeNotesDialogState.markdown,
+            isLoading = modLibraryChangeNotesDialogState.isLoading,
+            errorMessage = modLibraryChangeNotesDialogState.errorMessage,
+            onRetryRequest = {
+                actions.onOpenModLibraryChangeNotes(modLibraryChangeNotesDialogState.group)
+            },
+            onDismissRequest = actions.onDismissModLibraryChangeNotes,
+            onOpenExternalUrl = {
+                actions.onOpenExternalUrl(
+                    workshopChangeNotesUrl(modLibraryChangeNotesDialogState.group.publishedFileId),
+                )
+            },
+        )
+    }
 
     if (updatePrompt != null) {
         var showDownloadChoiceDialog by remember(updatePrompt) {
@@ -492,6 +513,7 @@ private fun WorkshopScreenScene(
                     onOpenModDetail = actions.onOpenModDetail,
                     onOpenPrimaryFile = actions.onOpenModFile,
                     onSharePrimaryFile = actions.onShareModFile,
+                    onViewChangeNotes = actions.onOpenModLibraryChangeNotes,
                     modifier = Modifier.fillMaxSize(),
                 )
 
@@ -553,6 +575,7 @@ private fun WorkshopScreenScene(
                         onShareFile = actions.onShareModFile,
                         onUpdateMod = actions.onUpdateMod,
                         onRemoveMod = actions.onRequestRemoveMod,
+                        onViewChangeNotes = actions.onOpenModLibraryChangeNotes,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

@@ -10,6 +10,7 @@ data class DownloadedModEntry(
     val gameTitle: String,
     val itemTitle: String,
     val description: String = "",
+    val changeNotes: String = "",
     val previewImagePath: String? = null,
     val versionId: String = LEGACY_MOD_VERSION_ID,
     val versionUpdatedAtMillis: Long? = null,
@@ -36,6 +37,7 @@ data class DownloadedModGroup(
     val gameTitle: String,
     val itemTitle: String,
     val description: String = "",
+    val changeNotes: String = "",
     val previewImagePath: String? = null,
     val versions: List<DownloadedModEntry>,
 ) {
@@ -138,6 +140,10 @@ fun List<DownloadedModEntry>.groupedForDisplay(): List<DownloadedModGroup> =
                 itemTitle = latestVersion.itemTitle,
                 description = sortedVersions
                     .mapNotNull { it.description.takeIf(String::isNotBlank) }
+                    .firstOrNull()
+                    .orEmpty(),
+                changeNotes = sortedVersions
+                    .mapNotNull { it.changeNotes.takeIf(String::isNotBlank) }
                     .firstOrNull()
                     .orEmpty(),
                 previewImagePath = sortedVersions

@@ -63,6 +63,24 @@ internal object SteamHtmlDecoder {
         )
     }
 
+    fun decodeWorkshopChangeNotes(value: String): String {
+        if (value.isBlank()) {
+            return ""
+        }
+
+        return decodePreservingLineBreaks(
+            value
+                .replace(Regex("""(?i)<br\s*/?>"""), "\n")
+                .replace(Regex("""(?i)<li[^>]*>"""), "- ")
+                .replace(Regex("""(?i)</li\s*>"""), "\n")
+                .replace(Regex("""(?i)<(?:ul|ol)[^>]*>"""), "\n")
+                .replace(Regex("""(?i)</(?:ul|ol)\s*>"""), "\n")
+                .replace(Regex("""(?i)</p\s*>"""), "\n\n")
+                .replace(Regex("""(?i)</div\s*>"""), "\n")
+                .replace(htmlTagRegex, " "),
+        )
+    }
+
     fun decodeWorkshopComment(value: String): String {
         if (value.isBlank()) {
             return ""

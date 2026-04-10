@@ -166,11 +166,19 @@ data class ModLibraryDescriptionTranslationUiState(
     val translationErrorMessage: String? = null,
 )
 
+data class ModLibraryChangeNotesDialogUiState(
+    val group: DownloadedModGroup,
+    val markdown: String = "",
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+)
+
 data class ModLibraryUiState(
     val items: List<DownloadedModGroup> = emptyList(),
     val selectedEntry: DownloadedModGroup? = null,
     val detailDescriptionTranslation: ModLibraryDescriptionTranslationUiState =
         ModLibraryDescriptionTranslationUiState(),
+    val changeNotesDialogState: ModLibraryChangeNotesDialogUiState? = null,
     val displayMode: ModLibraryDisplayMode = DownloadSettingsRepository.DEFAULT_MOD_LIBRARY_DISPLAY_MODE,
     val filterState: ModLibraryFilterState = ModLibraryFilterState(),
     val filterPanelExpanded: Boolean = false,

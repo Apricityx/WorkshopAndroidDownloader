@@ -73,6 +73,8 @@ data class WorkshopScreenActions(
     val onConfirmRemoveGame: () -> Unit,
     val onDismissRemoveGame: () -> Unit,
     val onOpenModDetail: (DownloadedModGroup) -> Unit,
+    val onOpenModLibraryChangeNotes: (DownloadedModGroup) -> Unit,
+    val onDismissModLibraryChangeNotes: () -> Unit,
     val onRequestRenameMod: (DownloadedModGroup) -> Unit,
     val onUpdateRenameModTitleInput: (String) -> Unit,
     val onConfirmRenameMod: () -> Unit,

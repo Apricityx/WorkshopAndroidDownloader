@@ -6,3 +6,6 @@ captures/
 .idea/
 .tmp-*/
 *.iml
+/scripts/export-release-apk.bat
+/scripts/export-release-apk.ps1
+/.codex_tmp/*

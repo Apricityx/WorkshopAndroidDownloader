@@ -230,6 +230,85 @@ class WorkshopDetailRepositoryTest {
     }
 
     @Test
+    fun loadWorkshopItemDetail_includeChangeNotes_parsesMarkdown() = runBlocking {
+        val repository = WorkshopDetailRepository(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            communityBaseUrl = server.url("/"),
+            languagePreferenceProvider = { SteamLanguagePreference.English },
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "response": {
+                    "publishedfiledetails": [
+                      {
+                        "publishedfileid": "1605060445",
+                        "title": "ModTheSpire",
+                        "description": "Description",
+                        "preview_url": "https://example.com/full.png",
+                        "time_updated": "1674519814",
+                        "tags": [{"tag": "Tool"}]
+                      }
+                    ]
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                <html>
+                    <div class="workshopItemTitle">ModTheSpire</div>
+                    <div class="workshopItemDescription" id="highlightContent">Description</div>
+                    <div id="commentthread_allcommentslink">0</div>
+                </html>
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                <html>
+                    <div class="detailBox workshopAnnouncement noFooter changeLogCtn">
+                        <div class="changelog headline">Update: 23 Jan, 2023 @ 4:23pm</div>
+                        <div style="clear: right"></div>
+                        <p id="1674519814">v3.30.3<br><ul class="bb_ul"><li>Fix package information being lost</li><li>Second fix</li></ul></p>
+                    </div>
+                </html>
+                """.trimIndent(),
+            ),
+        )
+
+        val result = repository.loadWorkshopItemDetail(
+            item = WorkshopBrowseItem(
+                appId = 646570u,
+                publishedFileId = 1605060445uL,
+                title = "ModTheSpire",
+                authorName = "Bug Kiooeht",
+                previewImageUrl = "https://example.com/thumb.png",
+                descriptionSnippet = "Description",
+            ),
+            includeChangeNotes = true,
+        )
+
+        assertThat(result.changeNotes).contains("### Update: 23 Jan, 2023 @ 4:23pm")
+        assertThat(result.changeNotes).contains("v3.30.3")
+        assertThat(result.changeNotes).contains("- Fix package information being lost")
+        assertThat(result.changeNotes).contains("- Second fix")
+        assertThat(result.changeNotesUrl)
+            .isEqualTo("https://steamcommunity.com/sharedfiles/filedetails/changelog/1605060445?l=english")
+
+        server.takeRequest()
+        server.takeRequest()
+        val changeNotesRequest = server.takeRequest()
+        assertThat(changeNotesRequest.url.encodedPath).isEqualTo("/sharedfiles/filedetails/changelog/1605060445")
+        assertThat(changeNotesRequest.url.queryParameter("l")).isEqualTo("english")
+    }
+
+    @Test
     fun loadWorkshopCommentPage_supportsPagination() = runBlocking {
         val repository = WorkshopDetailRepository(
             client = OkHttpClient(),
@@ -259,6 +338,7 @@ class WorkshopDetailRepositoryTest {
                 authorName = "OriginalAuthor",
                 previewImageUrl = "https://example.com/thumb.png",
                 description = "Description",
+                changeNotesUrl = "https://steamcommunity.com/sharedfiles/filedetails/changelog/973145750?l=english",
                 fileSizeBytes = null,
                 timeUpdatedEpochSeconds = null,
                 subscriptions = null,

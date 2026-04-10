@@ -1154,6 +1154,88 @@ class WorkshopViewModel(
         navigateTo(WorkshopScreenDestination.ModDetail)
     }
 
+    fun openModLibraryChangeNotes(group: DownloadedModGroup) {
+        val targetGroupKey = group.modGroupKey()
+        val cachedMarkdown = _uiState.value.modLibraryState.changeNotesDialogState
+            ?.takeIf { dialogState -> dialogState.group.matches(group) }
+            ?.markdown
+            ?.takeIf(String::isNotBlank)
+            ?: group.changeNotes
+        val shouldLoad = cachedMarkdown.isBlank()
+
+        _uiState.update { state ->
+            val resolvedGroup = state.modLibraryState.items.firstOrNull { it.matches(group) } ?: group
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    changeNotesDialogState = ModLibraryChangeNotesDialogUiState(
+                        group = resolvedGroup,
+                        markdown = cachedMarkdown,
+                        isLoading = shouldLoad,
+                        errorMessage = null,
+                    ),
+                ),
+            )
+        }
+
+        if (!shouldLoad) {
+            return
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    detailRepository.loadChangeNotesMarkdown(group.publishedFileId)
+                }
+            }.onSuccess { markdown ->
+                _uiState.update { state ->
+                    val dialogState = state.modLibraryState.changeNotesDialogState ?: return@update state
+                    if (dialogState.group.modGroupKey() != targetGroupKey) {
+                        return@update state
+                    }
+                    val resolvedGroup = state.modLibraryState.items.firstOrNull { it.matches(group) } ?: dialogState.group
+                    state.copy(
+                        modLibraryState = state.modLibraryState.copy(
+                            changeNotesDialogState = dialogState.copy(
+                                group = resolvedGroup,
+                                markdown = markdown,
+                                isLoading = false,
+                                errorMessage = null,
+                            ),
+                        ),
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update { state ->
+                    val dialogState = state.modLibraryState.changeNotesDialogState ?: return@update state
+                    if (dialogState.group.modGroupKey() != targetGroupKey) {
+                        return@update state
+                    }
+                    state.copy(
+                        modLibraryState = state.modLibraryState.copy(
+                            changeNotesDialogState = dialogState.copy(
+                                isLoading = false,
+                                errorMessage = workshopRequestFailureMessage(
+                                    error = error,
+                                    fallbackMessage = error.message ?: "加载更新日志失败。",
+                                ),
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissModLibraryChangeNotes() {
+        _uiState.update { state ->
+            state.copy(
+                modLibraryState = state.modLibraryState.copy(
+                    changeNotesDialogState = null,
+                ),
+            )
+        }
+    }
+
     fun updateMod(entry: DownloadedModEntry) {
         enqueueWorkshopItems(
             appId = entry.appId,
@@ -1367,7 +1449,10 @@ class WorkshopViewModel(
         viewModelScope.launch {
             runCatching {
                 withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
-                    detailRepository.loadWorkshopItemDetail(item)
+                    detailRepository.loadWorkshopItemDetail(
+                        item = item,
+                        includeChangeNotes = true,
+                    )
                 }
             }.onSuccess { detail ->
                 val shouldLoadComments = detail.shouldLoadWorkshopComments()
@@ -3125,6 +3210,10 @@ class WorkshopViewModel(
                 next = selectedEntry,
             )
         } ?: ModLibraryDescriptionTranslationUiState()
+        val changeNotesDialogState = preserveModLibraryChangeNotesDialogState(
+            previous = state.modLibraryState.changeNotesDialogState,
+            groupedEntries = groupedEntries,
+        )
         return state.copy(
             currentScreen = nextScreen,
             pendingRenameMod = pendingRenameMod,
@@ -3137,6 +3226,7 @@ class WorkshopViewModel(
                 items = groupedEntries,
                 selectedEntry = selectedEntry,
                 detailDescriptionTranslation = detailDescriptionTranslation,
+                changeNotesDialogState = changeNotesDialogState,
                 updateCheckState = updateCheckState,
                 isLoading = isLoading,
                 errorMessage = errorMessage,
@@ -3248,6 +3338,21 @@ internal fun shouldPreserveModLibraryDescriptionTranslation(
         next != null &&
         previous.modGroupKey() == next.modGroupKey() &&
         previous.description == next.description
+
+private fun preserveModLibraryChangeNotesDialogState(
+    previous: ModLibraryChangeNotesDialogUiState?,
+    groupedEntries: List<DownloadedModGroup>,
+): ModLibraryChangeNotesDialogUiState? {
+    val dialogState = previous ?: return null
+    val resolvedGroup = groupedEntries.firstOrNull { it.matches(dialogState.group) } ?: return null
+    val resolvedMarkdown = dialogState.markdown.ifBlank { resolvedGroup.changeNotes }
+    return dialogState.copy(
+        group = resolvedGroup,
+        markdown = resolvedMarkdown,
+        isLoading = dialogState.isLoading && resolvedMarkdown.isBlank(),
+        errorMessage = if (resolvedMarkdown.isNotBlank()) null else dialogState.errorMessage,
+    )
+}
 
 private fun Throwable.isTimeoutRequestFailure(): Boolean =
     this is SocketTimeoutException || this is TimeoutCancellationException

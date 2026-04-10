@@ -10,11 +10,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +58,7 @@ fun ModDetailScreen(
     onShareFile: (ExportedDownloadFile) -> Unit,
     onUpdateMod: (DownloadedModEntry) -> Unit,
     onRemoveMod: (DownloadedModEntry) -> Unit,
+    onViewChangeNotes: (DownloadedModGroup) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val latestVersion = group.latestVersion()
@@ -92,6 +96,12 @@ fun ModDetailScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("重命名模组")
+            }
+            WorkshopOutlinedButton(
+                onClick = { onViewChangeNotes(group) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("查看更新日志")
             }
             if (group.versionCount() > 1) {
                 Text(
@@ -216,7 +226,12 @@ private fun ModVersionPanel(
                 onClick = onUpdateMod,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("更新到最新版本")
+                CompositionLocalProvider(LocalContentColor provides Color.Black) {
+                    Text(
+                        text = "更新到最新版本",
+                        color = Color.Black,
+                    )
+                }
             }
         }
 

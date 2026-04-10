@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -138,6 +139,7 @@ fun ModLibraryScreen(
     onOpenModDetail: (DownloadedModGroup) -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
+    onViewChangeNotes: (DownloadedModGroup) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val updateResults = state.updateCheckState.results
@@ -195,6 +197,7 @@ fun ModLibraryScreen(
             onOpenModDetail = onOpenModDetail,
             onOpenPrimaryFile = onOpenPrimaryFile,
             onSharePrimaryFile = onSharePrimaryFile,
+            onViewChangeNotes = onViewChangeNotes,
             modifier = modifier,
         )
 
@@ -212,6 +215,7 @@ fun ModLibraryScreen(
             onOpenModDetail = onOpenModDetail,
             onOpenPrimaryFile = onOpenPrimaryFile,
             onSharePrimaryFile = onSharePrimaryFile,
+            onViewChangeNotes = onViewChangeNotes,
             modifier = modifier,
         )
     }
@@ -232,6 +236,7 @@ private fun ListModLibraryContent(
     onOpenModDetail: (DownloadedModGroup) -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
+    onViewChangeNotes: (DownloadedModGroup) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -264,12 +269,14 @@ private fun ListModLibraryContent(
                         onOpenDetail = { onOpenModDetail(group) },
                         onOpenPrimaryFile = { onOpenPrimaryFile(it) },
                         onSharePrimaryFile = { onSharePrimaryFile(it) },
+                        onViewChangeNotes = { onViewChangeNotes(group) },
                     )
 
                     ModLibraryDisplayMode.CompactList -> CompactListModLibraryCard(
                         group = group,
                         updateResult = latestUpdateResult(group, state),
                         onOpenDetail = { onOpenModDetail(group) },
+                        onViewChangeNotes = { onViewChangeNotes(group) },
                     )
 
                     ModLibraryDisplayMode.Overview -> Unit
@@ -294,6 +301,7 @@ private fun OverviewModLibraryGrid(
     onOpenModDetail: (DownloadedModGroup) -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
+    onViewChangeNotes: (DownloadedModGroup) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalGrid(
@@ -327,6 +335,7 @@ private fun OverviewModLibraryGrid(
                     onOpenDetail = { onOpenModDetail(group) },
                     onOpenPrimaryFile = { onOpenPrimaryFile(it) },
                     onSharePrimaryFile = { onSharePrimaryFile(it) },
+                    onViewChangeNotes = { onViewChangeNotes(group) },
                 )
             }
         }
@@ -834,6 +843,7 @@ private fun LargePreviewModLibraryCard(
     onOpenDetail: () -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
+    onViewChangeNotes: () -> Unit,
 ) {
     val latestVersion = group.latestVersion()
     val primaryFile = group.primaryFile()
@@ -893,7 +903,20 @@ private fun LargePreviewModLibraryCard(
             ) {
                 Text("查看详情")
             }
-            primaryFile?.let { file ->
+            WorkshopOutlinedButton(
+                onClick = onViewChangeNotes,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("查看更新日志")
+            }
+        }
+
+        primaryFile?.let { file ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 WorkshopOutlinedButton(
                     onClick = { onOpenPrimaryFile(file) },
                     modifier = Modifier.weight(1f),
@@ -919,6 +942,7 @@ private fun OverviewModLibraryTile(
     onOpenDetail: () -> Unit,
     onOpenPrimaryFile: (ExportedDownloadFile) -> Unit,
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
+    onViewChangeNotes: () -> Unit,
 ) {
     val primaryFile = group.primaryFile()
     val borderColor = overviewBorderColor(updateResult)
@@ -1040,6 +1064,10 @@ private fun OverviewModLibraryTile(
                     menuExpanded = false
                     onOpenDetail()
                 },
+                onViewChangeNotes = {
+                    menuExpanded = false
+                    onViewChangeNotes()
+                },
                 onOpenPrimaryFile = primaryFile?.let { file ->
                     {
                         menuExpanded = false
@@ -1062,6 +1090,7 @@ private fun OverviewModLibraryContextMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     onOpenDetail: () -> Unit,
+    onViewChangeNotes: () -> Unit,
     onOpenPrimaryFile: (() -> Unit)?,
     onSharePrimaryFile: (() -> Unit)?,
 ) {
@@ -1089,6 +1118,19 @@ private fun OverviewModLibraryContextMenu(
                         Text("查看详情")
                     },
                     onClick = onOpenDetail,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text("查看更新日志")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = onViewChangeNotes,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 onOpenPrimaryFile?.let { action ->
@@ -1177,49 +1219,59 @@ private fun CompactListModLibraryCard(
     group: DownloadedModGroup,
     updateResult: ModUpdateCheckResult?,
     onOpenDetail: () -> Unit,
+    onViewChangeNotes: () -> Unit,
 ) {
     val latestVersion = group.latestVersion()
     WorkshopPanelCard(
         modifier = Modifier.clickable(onClick = onOpenDetail),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = group.itemTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = group.itemTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${group.gameTitle} · ${group.versionCount()} 个版本 · ${group.totalFileCount()} 个文件",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "最新版本：${latestVersion.versionLabel()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    ModUpdateStatusText(result = updateResult)
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
                 )
-                Text(
-                    text = "${group.gameTitle} · ${group.versionCount()} 个版本 · ${group.totalFileCount()} 个文件",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "最新版本：${latestVersion.versionLabel()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                ModUpdateStatusText(result = updateResult)
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
+
+            WorkshopTextButton(
+                onClick = onViewChangeNotes,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("查看更新日志")
+            }
         }
     }
 }

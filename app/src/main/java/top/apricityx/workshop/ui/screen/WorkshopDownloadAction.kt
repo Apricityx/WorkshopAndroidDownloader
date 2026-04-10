@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,7 @@ internal fun WorkshopModStatus.isDownloadActionEnabled(): Boolean =
 @Composable
 internal fun DownloadingAnimatedIcon(
     modifier: Modifier = Modifier,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val infiniteTransition = rememberInfiniteTransition()
     val rotation by infiniteTransition.animateFloat(
@@ -57,7 +59,7 @@ internal fun DownloadingAnimatedIcon(
     Icon(
         imageVector = Icons.Default.Sync,
         contentDescription = null,
-        tint = MaterialTheme.colorScheme.onSurface,
+        tint = tint,
         modifier = modifier
             .size(18.dp)
             .graphicsLayer { rotationZ = rotation },

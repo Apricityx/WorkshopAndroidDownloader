@@ -419,6 +419,8 @@ class MainActivity : ComponentActivity() {
             onConfirmRemoveGame = workshopViewModel::confirmRemoveGame,
             onDismissRemoveGame = workshopViewModel::dismissRemoveGameDialog,
             onOpenModDetail = workshopViewModel::openModDetail,
+            onOpenModLibraryChangeNotes = workshopViewModel::openModLibraryChangeNotes,
+            onDismissModLibraryChangeNotes = workshopViewModel::dismissModLibraryChangeNotes,
             onRequestRenameMod = workshopViewModel::requestRenameMod,
             onUpdateRenameModTitleInput = workshopViewModel::updateRenameModTitleInput,
             onConfirmRenameMod = workshopViewModel::confirmRenameMod,

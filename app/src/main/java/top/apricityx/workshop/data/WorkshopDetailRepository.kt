@@ -23,7 +23,10 @@ class WorkshopDetailRepository(
     private val communityBaseUrl: HttpUrl = "https://steamcommunity.com/".toHttpUrl(),
     private val languagePreferenceProvider: () -> SteamLanguagePreference = { SteamLanguagePreference.SimplifiedChinese },
 ) {
-    suspend fun loadWorkshopItemDetail(item: WorkshopBrowseItem): WorkshopItemDetail = withContext(Dispatchers.IO) {
+    suspend fun loadWorkshopItemDetail(
+        item: WorkshopBrowseItem,
+        includeChangeNotes: Boolean = false,
+    ): WorkshopItemDetail = withContext(Dispatchers.IO) {
         val languagePreference = languagePreferenceProvider()
         val detail = loadPublishedFileDetails(item.appId, listOf(item.publishedFileId))
             .firstOrNull()
@@ -31,6 +34,16 @@ class WorkshopDetailRepository(
         val localizedDetail = runCatching {
             loadLocalizedDetailPage(item, languagePreference.requestValue)
         }.getOrNull()
+        val changeNotes = if (includeChangeNotes) {
+            runCatching {
+                loadChangeNotesMarkdown(
+                    publishedFileId = item.publishedFileId,
+                    languageRequestValue = languagePreference.requestValue,
+                )
+            }.getOrDefault("")
+        } else {
+            ""
+        }
         val apiTitle = detail.stringValue("title")
         val apiDescription = SteamHtmlDecoder.decodeWorkshopApiDescription(detail.stringValue("description")).ifBlank {
             item.descriptionSnippet.ifBlank { "暂无描述。" }
@@ -60,6 +73,7 @@ class WorkshopDetailRepository(
             authorName = item.authorName,
             previewImageUrl = detail.stringValue("preview_url").ifBlank { item.previewImageUrl },
             description = localizedDetail?.description?.ifBlank { apiDescription } ?: apiDescription,
+            changeNotes = changeNotes,
             fileSizeBytes = detail.longValue("file_size"),
             timeUpdatedEpochSeconds = detail.longValue("time_updated"),
             subscriptions = detail.longValue("subscriptions"),
@@ -68,11 +82,21 @@ class WorkshopDetailRepository(
             tags = detail["tags"].tagNames(),
             requiredItems = requiredItems,
             workshopUrl = buildWorkshopUrl(item.publishedFileId, languagePreference.requestValue),
+            changeNotesUrl = buildWorkshopChangeNotesUrl(item.publishedFileId, languagePreference.requestValue),
             commentThreadContext = localizedDetail?.commentThreadContext,
             commentsUrl = buildWorkshopCommentsUrl(item.publishedFileId, languagePreference.requestValue, page = 1),
             commentCount = localizedDetail?.commentCount,
             commentTotalPages = localizedDetail?.commentCount?.let(::resolveAppCommentTotalPages),
             hasNextCommentPage = localizedDetail?.commentCount?.let { count -> count > COMMENT_PAGE_SIZE } == true,
+        )
+    }
+
+    suspend fun loadChangeNotesMarkdown(
+        publishedFileId: ULong,
+    ): String = withContext(Dispatchers.IO) {
+        loadChangeNotesMarkdown(
+            publishedFileId = publishedFileId,
+            languageRequestValue = languagePreferenceProvider().requestValue,
         )
     }
 
@@ -154,6 +178,27 @@ class WorkshopDetailRepository(
                 commentThreadContext = extractCommentThreadContext(payload),
                 commentCount = extractCommentCount(payload),
             )
+        }
+    }
+
+    private fun loadChangeNotesMarkdown(
+        publishedFileId: ULong,
+        languageRequestValue: String,
+    ): String {
+        val request = Request.Builder()
+            .url(
+                communityBaseUrl.newBuilder()
+                    .addPathSegments("sharedfiles/filedetails/changelog/$publishedFileId")
+                    .addQueryParameter("l", languageRequestValue)
+                    .build(),
+            )
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                error("Workshop changelog request failed: ${response.code}")
+            }
+            return extractChangeNotesMarkdown(response.body?.string().orEmpty())
         }
     }
 
@@ -393,6 +438,11 @@ class WorkshopDetailRepository(
         languageRequestValue: String,
     ): String = "https://steamcommunity.com/sharedfiles/filedetails/?id=$publishedFileId&l=$languageRequestValue"
 
+    private fun buildWorkshopChangeNotesUrl(
+        publishedFileId: ULong,
+        languageRequestValue: String,
+    ): String = "https://steamcommunity.com/sharedfiles/filedetails/changelog/$publishedFileId?l=$languageRequestValue"
+
     private fun buildWorkshopCommentsUrl(
         publishedFileId: ULong,
         languageRequestValue: String,
@@ -455,7 +505,50 @@ class WorkshopDetailRepository(
             """<a\b[^>]*href="([^"]*filedetails/\?[^"]*\bid=(\d+)[^"]*)"[^>]*>\s*<div\b[^>]*class="requiredItem"[^>]*>(.*?)</div>\s*</a>""",
             setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
         )
+        val changeLogBlockOpeningRegex = Regex(
+            """<div\b[^>]*class="[^"]*\bchangeLogCtn\b[^"]*"[^>]*>""",
+            RegexOption.IGNORE_CASE,
+        )
+        val changeLogHeadlineRegex = Regex(
+            """<div\b[^>]*class="[^"]*\bheadline\b[^"]*"[^>]*>(.*?)</div>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
+        val changeLogBodyRegex = Regex(
+            """<p\b[^>]*>(.*?)</p>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+        )
     }
+
+    private fun extractChangeNotesMarkdown(payload: String): String =
+        changeLogBlockOpeningRegex.findAll(payload)
+            .mapNotNull { openingMatch ->
+                val block = extractDivBlock(
+                    payload = payload,
+                    openingTagStart = openingMatch.range.first,
+                    openingTagLength = openingMatch.value.length,
+                ) ?: return@mapNotNull null
+                val headline = changeLogHeadlineRegex.find(block)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.let(SteamHtmlDecoder::stripTagsAndDecode)
+                    .orEmpty()
+                val body = changeLogBodyRegex.find(block)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.let(SteamHtmlDecoder::decodeWorkshopChangeNotes)
+                    .orEmpty()
+                buildString {
+                    if (headline.isNotBlank()) {
+                        append("### ")
+                        append(headline)
+                        append("\n\n")
+                    }
+                    if (body.isNotBlank()) {
+                        append(body)
+                    }
+                }.trim().takeIf(String::isNotBlank)
+            }
+            .joinToString("\n\n")
 }
 
 private fun extractDivInnerHtml(
