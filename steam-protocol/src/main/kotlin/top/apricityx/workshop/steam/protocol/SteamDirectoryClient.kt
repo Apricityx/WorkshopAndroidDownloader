@@ -11,7 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 class SteamDirectoryClient(
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient = newDefaultOkHttpClient(),
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val apiBaseUrl: HttpUrl = "https://api.steampowered.com/".toHttpUrl(),
 ) {

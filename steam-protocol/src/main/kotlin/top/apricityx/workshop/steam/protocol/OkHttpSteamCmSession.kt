@@ -40,7 +40,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 class OkHttpSteamCmSession(
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient = newDefaultOkHttpClient(),
     private val machineName: String = DEFAULT_MACHINE_NAME,
     private val machineId: ByteArray = defaultSteamMachineId(),
 ) : SteamCmSession {
@@ -179,7 +179,7 @@ class OkHttpSteamCmSession(
         }
 
         webSocket = client.newWebSocket(request, listener)
-        withTimeout(20_000) { deferred.await() }
+        withTimeout(REQUEST_TIMEOUT_MS) { deferred.await() }
     }
 
     private fun sendHello() {
@@ -214,7 +214,7 @@ class OkHttpSteamCmSession(
             pendingLogon.completeExceptionallyIfNeeded(error)
             throw error
         }
-        return withTimeout(20_000) { pendingLogon.await() }
+        return withTimeout(REQUEST_TIMEOUT_MS) { pendingLogon.await() }
     }
 
     private fun handleIncomingPacket(rawPacket: ByteArray) {
@@ -367,7 +367,7 @@ class OkHttpSteamCmSession(
         }
 
         try {
-            withTimeout(20_000) { response.await() }
+            withTimeout(REQUEST_TIMEOUT_MS) { response.await() }
         } catch (error: Throwable) {
             pendingRequests.remove(sourceJobId)
             throw error
@@ -404,7 +404,7 @@ class OkHttpSteamCmSession(
             throw SteamProtocolException("Failed to request depot decryption key for depot=$depotId")
         }
 
-        val body = withTimeout(20_000) { response.await() }
+        val body = withTimeout(REQUEST_TIMEOUT_MS) { response.await() }
         if (body.eresult != 1) {
             throw SteamProtocolException(
                 "Steam depot key request failed for depot=$depotId app=$appId with EResult=${body.eresult}",
@@ -587,6 +587,7 @@ class OkHttpSteamCmSession(
 
     private companion object {
         private const val OBFUSCATION_MASK = 0xBAADF00D.toInt()
+        private const val REQUEST_TIMEOUT_MS = DEFAULT_HTTP_TIMEOUT_SECONDS * 1_000L
     }
 }
 

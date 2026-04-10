@@ -1,7 +1,6 @@
 package top.apricityx.workshop.update
 
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -10,14 +9,14 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import top.apricityx.workshop.BuildConfig
+import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
 
 class WorkshopUpdateService(
     baseClient: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     private val client = baseClient.newBuilder()
-        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .applyDefaultHttpTimeouts()
         .followRedirects(true)
         .build()
 
@@ -208,8 +207,6 @@ class WorkshopUpdateService(
     )
 
     companion object {
-        private const val CONNECT_TIMEOUT_SECONDS = 8L
-        private const val READ_TIMEOUT_SECONDS = 12L
         private const val USER_AGENT = "WorkshopAndroidDownloader-Update"
         private val latestReleaseApiUrl: String
             get() = "https://api.github.com/repos/${BuildConfig.UPDATE_GITHUB_OWNER}/${BuildConfig.UPDATE_GITHUB_REPO}/releases/latest"

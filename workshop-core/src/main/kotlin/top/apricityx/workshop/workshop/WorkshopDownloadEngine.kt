@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import top.apricityx.workshop.steam.protocol.newDefaultOkHttpClient
 import java.io.File
 import java.time.Instant
 
@@ -79,7 +80,7 @@ class WorkshopDownloadEngine(
 
     companion object {
         fun createDefault(
-            client: OkHttpClient = OkHttpClient.Builder().build(),
+            client: OkHttpClient = newDefaultOkHttpClient(),
             sessionFactory: () -> SteamCmSession = { OkHttpSteamCmSession(client) },
             sessionConnector: suspend (SteamCmSession, List<CmServer>) -> SessionContext = { session, servers ->
                 session.connectAnonymous(servers)

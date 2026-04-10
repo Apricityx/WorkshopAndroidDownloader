@@ -38,6 +38,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import top.apricityx.workshop.steam.protocol.DEFAULT_HTTP_TIMEOUT_SECONDS
+import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
 import top.apricityx.workshop.steam.protocol.SteamPublishedFileQuery
 import top.apricityx.workshop.steam.protocol.STEAM_PUBLISHED_FILE_QUERY_TYPE_RANKED_BY_TEXT_SEARCH
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
@@ -75,6 +77,7 @@ class WorkshopViewModel(
         sessionScopeProvider = steamAuthRepository::activeAccountId,
     )
     private val httpClient = OkHttpClient.Builder()
+        .applyDefaultHttpTimeouts()
         .cookieJar(steamWebCookieJar)
         .addInterceptor(
             SteamAuthenticatedCleartextInterceptor(
@@ -3163,9 +3166,9 @@ class WorkshopViewModel(
             }
 
     companion object {
-        private const val MAIN_SCREEN_TIMEOUT_MS = 8_000L
-        private const val WORKSHOP_BROWSE_TIMEOUT_MS = 12_000L
-        private const val WORKSHOP_COMMENTS_TIMEOUT_MS = 15_000L
+        private const val MAIN_SCREEN_TIMEOUT_MS = DEFAULT_HTTP_TIMEOUT_SECONDS * 1_000L
+        private const val WORKSHOP_BROWSE_TIMEOUT_MS = DEFAULT_HTTP_TIMEOUT_SECONDS * 1_000L
+        private const val WORKSHOP_COMMENTS_TIMEOUT_MS = DEFAULT_HTTP_TIMEOUT_SECONDS * 1_000L
         private const val WORKSHOP_ITEMS_PER_PAGE = 30
         private const val STEAM_WEB_SESSION_USER_AGENT = "WorkshopOnAndroid/1.0"
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"

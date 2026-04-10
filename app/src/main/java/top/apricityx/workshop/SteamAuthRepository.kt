@@ -25,6 +25,7 @@ import top.apricityx.workshop.steam.protocol.SteamPublishedFileClient
 import top.apricityx.workshop.steam.protocol.SteamPublishedFileQuery
 import top.apricityx.workshop.steam.protocol.SteamPublishedFileQueryResult
 import top.apricityx.workshop.steam.protocol.SteamWebAccessTokens
+import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
 import java.util.UUID
 import java.io.IOException
 import java.security.SecureRandom
@@ -84,7 +85,7 @@ class SteamAuthRepository(context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
     }
-    private val httpClient by lazy { OkHttpClient.Builder().build() }
+    private val httpClient by lazy { OkHttpClient.Builder().applyDefaultHttpTimeouts().build() }
     private val directoryClient by lazy { SteamDirectoryClient(httpClient) }
     private val authenticationClient by lazy {
         SteamAuthenticationClient(

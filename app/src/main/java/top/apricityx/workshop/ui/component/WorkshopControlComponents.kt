@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -55,7 +56,6 @@ import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.component.liquid.LiquidSlider
 import top.apricityx.workshop.ui.component.liquid.LiquidToggle
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
-import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
 import com.kyant.shapes.Capsule
@@ -228,17 +228,11 @@ private fun WorkshopAdaptiveButton(
         return
     }
 
-    val forceDarkTextInLiteMode = isLiteLiquidGlassFrontendEnabled() &&
-        (variant == WorkshopButtonVariant.Primary || variant == WorkshopButtonVariant.Destructive)
-    val contentColor = if (forceDarkTextInLiteMode) {
-        Color.Black
-    } else {
-        when (variant) {
-            WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.onPrimary
-            WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
-            WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
-            WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.onError
-        }
+    val contentColor = when (variant) {
+        WorkshopButtonVariant.Primary -> Color.White
+        WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
+        WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
+        WorkshopButtonVariant.Destructive -> Color.White
     }
     val tintColor = when (variant) {
         WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.primary
@@ -279,17 +273,11 @@ private fun WorkshopLensAdaptiveButton(
     enabled: Boolean,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val forceDarkTextInLiteMode = isLiteLiquidGlassFrontendEnabled() &&
-        (variant == WorkshopButtonVariant.Primary || variant == WorkshopButtonVariant.Destructive)
-    val contentColor = if (forceDarkTextInLiteMode) {
-        Color.Black
-    } else {
-        when (variant) {
-            WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.onPrimary
-            WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
-            WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
-            WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.onError
-        }
+    val contentColor = when (variant) {
+        WorkshopButtonVariant.Primary -> Color.White
+        WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
+        WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
+        WorkshopButtonVariant.Destructive -> Color.White
     }
     val tintColor = when (variant) {
         WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.primary
@@ -400,11 +388,11 @@ fun WorkshopRadioButton(
     }
 
     val interactionSource = remember { MutableInteractionSource() }
-    WorkshopGlassSurface(
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    Surface(
         modifier = modifier
             .size(24.dp)
             .alpha(if (enabled) 1f else 0.52f)
-            .clip(CircleShape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -412,28 +400,32 @@ fun WorkshopRadioButton(
                 onClick = { onClick?.invoke() },
             ),
         shape = CircleShape,
-        blurRadius = 8.dp,
-        lensHeight = 5.dp,
-        lensAmount = 5.dp,
-        surfaceColor = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.14f)
         } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.14f)
+            MaterialTheme.colorScheme.surface.copy(alpha = if (isDark) 0.22f else 0.14f)
         },
-        borderColor = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-        } else {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.38f else 0.28f)
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDark) 0.14f else 0.1f)
+            },
+        ),
     ) {
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .align(Alignment.Center)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-            )
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+            }
         }
     }
 }

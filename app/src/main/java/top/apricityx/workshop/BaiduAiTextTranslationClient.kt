@@ -18,6 +18,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import top.apricityx.workshop.steam.protocol.newDefaultOkHttpClient
 
 data class BaiduTranslationCredentials(
     val appId: String = "",
@@ -27,7 +28,7 @@ data class BaiduTranslationCredentials(
 }
 
 class BaiduAiTextTranslationClient(
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient = newDefaultOkHttpClient(),
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val baseUrl: HttpUrl = "https://fanyi-api.baidu.com/".toHttpUrl(),
 ) {

@@ -26,6 +26,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -262,30 +263,43 @@ fun WorkshopGlassIconButton(
     content: (@Composable () -> Unit)? = null,
 ) {
     val backdrop = LocalWorkshopBackdrop.current
+    val interactionSource = remember { MutableInteractionSource() }
     if (isLiquidGlassFrontendEnabled() && backdrop != null) {
-        LiquidButton(
-            onClick = if (enabled) onClick else null,
-            backdrop = backdrop,
-            modifier = modifier,
-            isInteractive = enabled,
-            surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f),
-            height = 42.dp,
-            horizontalPadding = 10.dp,
+        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+        Surface(
+            modifier = modifier
+                .size(42.dp)
+                .alpha(if (enabled) 1f else 0.52f)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick,
+                ),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = if (isDark) 0.22f else 0.16f),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDark) 0.14f else 0.1f),
+            ),
         ) {
-            if (content != null) {
-                content()
-            } else {
-                Icon(
-                    imageVector = imageVector,
-                    contentDescription = contentDescription,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (content != null) {
+                    content()
+                } else {
+                    Icon(
+                        imageVector = imageVector,
+                        contentDescription = contentDescription,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
         return
     }
-
-    val interactionSource = remember { MutableInteractionSource() }
 
     WorkshopGlassSurface(
         modifier = modifier

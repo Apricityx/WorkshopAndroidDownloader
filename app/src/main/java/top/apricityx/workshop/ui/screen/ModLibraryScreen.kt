@@ -649,34 +649,6 @@ private fun ModLibrarySelectionChip(
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    if (isLiquidGlassFrontendEnabled()) {
-        WorkshopGlassSurface(
-            modifier = modifier,
-            shape = MaterialTheme.shapes.large,
-            blurRadius = 14.dp,
-            lensHeight = 6.dp,
-            lensAmount = 8.dp,
-            surfaceColor = surfaceColor,
-            borderColor = borderColor,
-        ) {
-            Box(
-                modifier = Modifier
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = contentColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        return
-    }
-
     Surface(
         modifier = modifier.clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,

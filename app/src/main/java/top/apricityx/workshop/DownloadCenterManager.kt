@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
 import top.apricityx.workshop.workshop.DownloadEvent
 import top.apricityx.workshop.workshop.DownloadState
 import top.apricityx.workshop.workshop.WorkshopDownloadEngine
@@ -324,6 +325,7 @@ class DownloadCenterManager private constructor(
             return
         }
         val taskClient = OkHttpClient.Builder()
+            .applyDefaultHttpTimeouts()
             .cookieJar(
                 SteamWebSessionCookieJar(
                     projectedCookiesProvider = { url ->

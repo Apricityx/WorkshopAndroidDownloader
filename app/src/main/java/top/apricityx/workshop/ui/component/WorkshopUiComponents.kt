@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
@@ -281,13 +282,15 @@ fun MetricPill(
     modifier: Modifier = Modifier,
 ) {
     if (isLiquidGlassFrontendEnabled()) {
-        WorkshopGlassSurface(
+        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+        Surface(
             modifier = modifier,
             shape = MaterialTheme.shapes.small,
-            blurRadius = 10.dp,
-            lensHeight = 5.dp,
-            lensAmount = 6.dp,
-            surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = if (isDark) 0.22f else 0.16f),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDark) 0.14f else 0.1f),
+            ),
         ) {
             Text(
                 text = text,
