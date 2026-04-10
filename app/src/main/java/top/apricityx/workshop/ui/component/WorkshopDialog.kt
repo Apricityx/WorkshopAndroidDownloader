@@ -54,6 +54,7 @@ fun WorkshopDialog(
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
     }
+    val popupHostState = rememberWorkshopPopupHostState()
     val scrimInteractionSource = remember { MutableInteractionSource() }
     val dialogInteractionSource = remember { MutableInteractionSource() }
 
@@ -65,59 +66,65 @@ fun WorkshopDialog(
             usePlatformDefaultWidth = false,
         ),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(scrimColor)
-                .clickable(
-                    interactionSource = scrimInteractionSource,
-                    indication = null,
-                    enabled = dismissOnClickOutside,
-                    onClick = onDismissRequest,
-                )
-                .padding(horizontal = 24.dp, vertical = 32.dp),
-            contentAlignment = Alignment.Center,
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalWorkshopPopupHostState provides popupHostState,
         ) {
-            WorkshopGlassSurface(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 560.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(scrimColor)
                     .clickable(
-                        interactionSource = dialogInteractionSource,
+                        interactionSource = scrimInteractionSource,
                         indication = null,
-                    ) {},
-                shape = MaterialTheme.shapes.extraLarge,
-                blurRadius = 24.dp,
-                lensHeight = 12.dp,
-                lensAmount = 16.dp,
-                surfaceColor = surfaceColor,
-                borderColor = borderColor,
+                        enabled = dismissOnClickOutside,
+                        onClick = onDismissRequest,
+                    )
+                    .padding(horizontal = 24.dp, vertical = 32.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                WorkshopGlassSurface(
+                    modifier = modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp)
+                        .clickable(
+                            interactionSource = dialogInteractionSource,
+                            indication = null,
+                        ) {},
+                    shape = MaterialTheme.shapes.extraLarge,
+                    blurRadius = 24.dp,
+                    lensHeight = 12.dp,
+                    lensAmount = 16.dp,
+                    surfaceColor = surfaceColor,
+                    borderColor = borderColor,
                 ) {
-                    title?.let { titleContent ->
-                        ProvideTextStyle(
-                            value = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                        ) {
-                            titleContent()
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        title?.let { titleContent ->
+                            ProvideTextStyle(
+                                value = MaterialTheme.typography.headlineSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                            ) {
+                                titleContent()
+                            }
+                        }
+                        ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+                            content()
+                        }
+                        buttons?.let { buttonContent ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                                verticalAlignment = Alignment.CenterVertically,
+                                content = buttonContent,
+                            )
                         }
                     }
-                    ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
-                        content()
-                    }
-                    buttons?.let { buttonContent ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                            verticalAlignment = Alignment.CenterVertically,
-                            content = buttonContent,
-                        )
-                    }
                 }
+
+                WorkshopPopupHost(state = popupHostState)
             }
         }
     }

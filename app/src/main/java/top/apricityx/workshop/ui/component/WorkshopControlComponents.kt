@@ -45,6 +45,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
@@ -143,77 +144,36 @@ private fun WorkshopAdaptiveButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     if (!isLiquidGlassFrontendEnabled()) {
-        when (variant) {
-            WorkshopButtonVariant.Primary -> MaterialButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                content = content,
-            )
+        WorkshopMaterialAdaptiveButton(
+            variant = variant,
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            content = content,
+        )
+        return
+    }
 
-            WorkshopButtonVariant.Secondary -> MaterialOutlinedButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                content = content,
-            )
-
-            WorkshopButtonVariant.Ghost -> MaterialTextButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                content = content,
-            )
-
-            WorkshopButtonVariant.Destructive -> MaterialButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError,
-                ),
-                content = content,
-            )
-        }
+    if (shouldReduceLiquidGlassEffects()) {
+        WorkshopLiteAdaptiveButton(
+            variant = variant,
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            content = content,
+        )
         return
     }
 
     val backdrop = LocalWorkshopBackdrop.current
     if (backdrop == null) {
-        when (variant) {
-            WorkshopButtonVariant.Primary -> MaterialButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                content = content,
-            )
-
-            WorkshopButtonVariant.Secondary -> MaterialOutlinedButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                content = content,
-            )
-
-            WorkshopButtonVariant.Ghost -> MaterialTextButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                content = content,
-            )
-
-            WorkshopButtonVariant.Destructive -> MaterialButton(
-                onClick = onClick,
-                modifier = modifier,
-                enabled = enabled,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError,
-                ),
-                content = content,
-            )
-        }
+        WorkshopMaterialAdaptiveButton(
+            variant = variant,
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            content = content,
+        )
         return
     }
 
@@ -260,6 +220,116 @@ private fun WorkshopAdaptiveButton(
         CompositionLocalProvider(LocalContentColor provides contentColor) {
             ProvideTextStyle(MaterialTheme.typography.labelLarge) {
                 content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkshopMaterialAdaptiveButton(
+    variant: WorkshopButtonVariant,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    enabled: Boolean,
+    content: @Composable RowScope.() -> Unit,
+) {
+    when (variant) {
+        WorkshopButtonVariant.Primary -> MaterialButton(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            content = content,
+        )
+
+        WorkshopButtonVariant.Secondary -> MaterialOutlinedButton(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            content = content,
+        )
+
+        WorkshopButtonVariant.Ghost -> MaterialTextButton(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            content = content,
+        )
+
+        WorkshopButtonVariant.Destructive -> MaterialButton(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+            ),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun WorkshopLiteAdaptiveButton(
+    variant: WorkshopButtonVariant,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    enabled: Boolean,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val contentColor = when (variant) {
+        WorkshopButtonVariant.Primary -> Color.White
+        WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
+        WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
+        WorkshopButtonVariant.Destructive -> Color.White
+    }
+    val tintColor = when (variant) {
+        WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.primary
+        WorkshopButtonVariant.Secondary -> Unspecified
+        WorkshopButtonVariant.Ghost -> Unspecified
+        WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.error
+    }
+    val fallbackSurfaceColor = when (variant) {
+        WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.surface.copy(alpha = 0.18f)
+        WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.surface.copy(alpha = 0.1f)
+        WorkshopButtonVariant.Destructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.08f)
+    }
+    val liteBorderColor = if (tintColor.isSpecified) {
+        tintColor.copy(alpha = 0.2f)
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    }
+    val tintedSurfaceColor = if (tintColor.isSpecified) {
+        tintColor.copy(alpha = 0.24f).compositeOver(fallbackSurfaceColor)
+    } else {
+        fallbackSurfaceColor
+    }
+
+    Surface(
+        modifier = modifier
+            .alpha(if (enabled) 1f else 0.52f)
+            .defaultMinSize(minHeight = if (variant == WorkshopButtonVariant.Ghost) 40.dp else 48.dp),
+        shape = Capsule(),
+        color = tintedSurfaceColor,
+        border = BorderStroke(1.dp, liteBorderColor),
+    ) {
+        Row(
+            modifier = Modifier
+                .then(
+                    if (enabled) {
+                        Modifier.clickable(onClick = onClick)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = if (variant == WorkshopButtonVariant.Ghost) 14.dp else 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides contentColor) {
+                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                    content()
+                }
             }
         }
     }

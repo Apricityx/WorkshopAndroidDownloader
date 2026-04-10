@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -35,9 +36,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -90,6 +92,8 @@ import top.apricityx.workshop.ui.component.WorkshopCenteredState
 import top.apricityx.workshop.ui.component.WorkshopLoadingBlock
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
+import top.apricityx.workshop.ui.component.WorkshopPopupMenu
+import top.apricityx.workshop.ui.component.WorkshopPopupMenuItem
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
 import top.apricityx.workshop.ui.component.WorkshopPanelCard
 import top.apricityx.workshop.ui.component.WorkshopTextButton
@@ -518,7 +522,7 @@ private fun ModLibrarySummaryCard(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "搜索、排序和游戏筛选统一收在这里。",
+                        text = "搜索、排序和游戏筛选",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1114,7 +1118,7 @@ private fun OverviewModLibraryTile(
 }
 
 @Composable
-private fun OverviewModLibraryContextMenu(
+private fun BoxScope.OverviewModLibraryContextMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     onOpenDetail: () -> Unit,
@@ -1122,64 +1126,54 @@ private fun OverviewModLibraryContextMenu(
     onOpenPrimaryFile: (() -> Unit)?,
     onSharePrimaryFile: (() -> Unit)?,
 ) {
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
-
-    DropdownMenu(
+    WorkshopPopupMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
-        containerColor = Color.Transparent,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        modifier = Modifier.widthIn(min = 220.dp, max = 280.dp),
     ) {
-        WorkshopGlassSurface(
-            modifier = Modifier.widthIn(min = 220.dp, max = 280.dp),
-            shape = MaterialTheme.shapes.large,
-            blurRadius = 18.dp,
-            lensHeight = 10.dp,
-            lensAmount = 12.dp,
-            surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = if (isDark) 0.22f else 0.72f),
-            borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDark) 0.14f else 0.1f),
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                DropdownMenuItem(
-                    text = {
-                        Text("查看详情")
-                    },
-                    onClick = onOpenDetail,
-                    modifier = Modifier.fillMaxWidth(),
+        WorkshopPopupMenuItem(
+            text = { Text("查看详情") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
                 )
-                DropdownMenuItem(
-                    text = {
-                        Text("查看更新日志")
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Description,
-                            contentDescription = null,
-                        )
-                    },
-                    onClick = onViewChangeNotes,
-                    modifier = Modifier.fillMaxWidth(),
+            },
+            onClick = onOpenDetail,
+        )
+        WorkshopPopupMenuItem(
+            text = { Text("查看更新日志") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Description,
+                    contentDescription = null,
                 )
-                onOpenPrimaryFile?.let { action ->
-                    DropdownMenuItem(
-                        text = {
-                            Text("打开最新主文件")
-                        },
-                        onClick = action,
-                        modifier = Modifier.fillMaxWidth(),
+            },
+            onClick = onViewChangeNotes,
+        )
+        onOpenPrimaryFile?.let { action ->
+            WorkshopPopupMenuItem(
+                text = { Text("打开最新主文件") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.FolderOpen,
+                        contentDescription = null,
                     )
-                }
-                onSharePrimaryFile?.let { action ->
-                    DropdownMenuItem(
-                        text = {
-                            Text("分享最新主文件")
-                        },
-                        onClick = action,
-                        modifier = Modifier.fillMaxWidth(),
+                },
+                onClick = action,
+            )
+        }
+        onSharePrimaryFile?.let { action ->
+            WorkshopPopupMenuItem(
+                text = { Text("分享最新主文件") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
                     )
-                }
-            }
+                },
+                onClick = action,
+            )
         }
     }
 }

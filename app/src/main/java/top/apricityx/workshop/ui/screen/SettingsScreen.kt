@@ -3,6 +3,8 @@ package top.apricityx.workshop.ui.screen
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,8 +21,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -58,6 +58,8 @@ import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
+import top.apricityx.workshop.ui.component.WorkshopPopupMenu
+import top.apricityx.workshop.ui.component.WorkshopPopupMenuItem
 import top.apricityx.workshop.ui.component.WorkshopSlider
 import top.apricityx.workshop.ui.component.WorkshopSwitch
 import top.apricityx.workshop.ui.component.WorkshopTextButton
@@ -279,7 +281,6 @@ fun SettingsScreen(
                 selectedOption = state.selectedFrontendMode,
                 options = AppFrontendMode.entries,
                 optionLabel = AppFrontendMode::displayName,
-                optionDescription = ::frontendModeDescription,
                 onOptionSelected = onFrontendModeSelected,
             )
 
@@ -289,7 +290,6 @@ fun SettingsScreen(
                 selectedOption = state.selectedThemeMode,
                 options = AppThemeMode.entries,
                 optionLabel = AppThemeMode::displayName,
-                optionDescription = ::themeModeDescription,
                 onOptionSelected = onThemeModeSelected,
             )
             }
@@ -306,7 +306,6 @@ fun SettingsScreen(
                 selectedOption = state.selectedSteamLanguagePreference,
                 options = SteamLanguagePreference.entries,
                 optionLabel = SteamLanguagePreference::displayName,
-                optionDescription = ::steamLanguagePreferenceDescription,
                 onOptionSelected = onSteamLanguagePreferenceSelected,
             )
             }
@@ -347,7 +346,6 @@ fun SettingsScreen(
                 selectedOption = state.preferredUpdateSource,
                 options = state.availableUpdateSources,
                 optionLabel = { it.displayName },
-                optionDescription = ::sourceDescription,
                 onOptionSelected = onPreferredUpdateSourceSelected,
             )
 
@@ -682,7 +680,6 @@ private fun <T> SettingsChoiceDropdown(
     selectedOption: T,
     options: Iterable<T>,
     optionLabel: (T) -> String,
-    optionDescription: (T) -> String,
     onOptionSelected: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -693,46 +690,27 @@ private fun <T> SettingsChoiceDropdown(
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(
+            Text(
+                text = optionLabel(selectedOption),
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = optionLabel(selectedOption),
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = optionDescription(selectedOption),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
                 contentDescription = "展开选项",
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
-        DropdownMenu(
+        WorkshopPopupMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
             options.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(optionLabel(option))
-                            Text(
-                                text = optionDescription(option),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
+                WorkshopPopupMenuItem(
+                    text = { Text(optionLabel(option)) },
+                    reserveLeadingSpace = true,
                     leadingIcon = {
                         if (option == selectedOption) {
                             Icon(
@@ -762,19 +740,31 @@ private fun SteamAccountActionsButton(
         WorkshopOutlinedButton(onClick = { expanded = true }) {
             Text("操作")
         }
-        DropdownMenu(
+        WorkshopPopupMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            DropdownMenuItem(
+            WorkshopPopupMenuItem(
                 text = { Text("重新认证") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                    )
+                },
                 onClick = {
                     expanded = false
                     onReauthenticate()
                 },
             )
-            DropdownMenuItem(
+            WorkshopPopupMenuItem(
                 text = { Text("删除") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                    )
+                },
                 onClick = {
                     expanded = false
                     onRemove()
@@ -1012,25 +1002,6 @@ private fun sourceDescription(source: UpdateSource): String =
         UpdateSource.GH_LLKK -> "支持元数据和下载代理，可作为另一条回退线路。"
         UpdateSource.GH_PROXY_NET -> "自动回退源，不在设置里手动选择。"
         UpdateSource.OFFICIAL -> "官方 GitHub 直连地址。"
-    }
-
-private fun frontendModeDescription(mode: AppFrontendMode): String =
-    when (mode) {
-        AppFrontendMode.LiquidGlass ->
-            "新的液态玻璃外观，完全重构了前端。"
-
-        AppFrontendMode.LiteLiquidGlass ->
-            "保留液态玻璃的视觉语言，但减少滚动时的模糊和动态效果，优先保证流畅度。"
-
-        AppFrontendMode.Legacy ->
-            "保留稳定的经典 Material 风格界面。"
-    }
-
-private fun themeModeDescription(mode: AppThemeMode): String =
-    when (mode) {
-        AppThemeMode.FollowSystem -> "根据系统当前外观自动切换。"
-        AppThemeMode.Light -> "始终使用亮色界面。"
-        AppThemeMode.Dark -> "始终使用深色界面。"
     }
 
 private fun steamLanguagePreferenceDescription(

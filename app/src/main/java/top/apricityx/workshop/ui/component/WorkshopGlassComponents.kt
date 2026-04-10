@@ -263,7 +263,7 @@ fun WorkshopGlassIconButton(
     content: (@Composable () -> Unit)? = null,
 ) {
     val backdrop = LocalWorkshopBackdrop.current
-    if (isLiquidGlassFrontendEnabled() && backdrop != null) {
+    if (isLiquidGlassFrontendEnabled() && !shouldReduceLiquidGlassEffects() && backdrop != null) {
         LiquidButton(
             onClick = if (enabled) onClick else null,
             backdrop = backdrop,
@@ -331,7 +331,7 @@ fun WorkshopGlassNavigationItem(
     modifier: Modifier = Modifier,
 ) {
     val backdrop = LocalWorkshopBackdrop.current
-    if (isLiquidGlassFrontendEnabled() && backdrop != null) {
+    if (isLiquidGlassFrontendEnabled() && !shouldReduceLiquidGlassEffects() && backdrop != null) {
         LiquidButton(
             onClick = onClick,
             backdrop = backdrop,

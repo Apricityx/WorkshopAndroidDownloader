@@ -41,6 +41,10 @@ import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.isLibraryRoot
 import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.ui.component.WorkshopLiquidGlassWallpaper
+import top.apricityx.workshop.ui.component.LocalWorkshopPopupBackdrop
+import top.apricityx.workshop.ui.component.WorkshopPopupHost
+import top.apricityx.workshop.ui.component.LocalWorkshopPopupHostState
+import top.apricityx.workshop.ui.component.rememberWorkshopPopupHostState
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.LocalWorkshopChromePadding
 import top.apricityx.workshop.ui.theme.WorkshopChromePadding
@@ -153,6 +157,7 @@ fun WorkshopScreen(
     val selectedTask = state.downloadCenterState.tasks.firstOrNull { it.id == state.selectedDownloadTaskId }
     val selectedMod = state.modLibraryState.selectedEntry
     val saveableStateHolder = rememberSaveableStateHolder()
+    val popupHostState = rememberWorkshopPopupHostState()
     val isLiquidGlassFrontend = isLiquidGlassFrontendEnabled()
     val density = LocalDensity.current
     val defaultTopBarHeight = with(density) {
@@ -185,6 +190,8 @@ fun WorkshopScreen(
         val contentBackdrop = rememberLayerBackdrop()
         val chromeBackdrop = rememberCombinedBackdrop(wallpaperBackdrop, contentBackdrop)
         CompositionLocalProvider(
+            LocalWorkshopPopupBackdrop provides wallpaperBackdrop,
+            LocalWorkshopPopupHostState provides popupHostState,
             LocalWorkshopChromePadding provides chromePadding,
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -253,6 +260,8 @@ fun WorkshopScreen(
                         )
                     }
                 }
+
+                WorkshopPopupHost(state = popupHostState)
             }
         }
         return
@@ -261,6 +270,8 @@ fun WorkshopScreen(
     val backdrop = rememberLayerBackdrop()
     CompositionLocalProvider(
         LocalWorkshopBackdrop provides backdrop,
+        LocalWorkshopPopupBackdrop provides backdrop,
+        LocalWorkshopPopupHostState provides popupHostState,
         LocalWorkshopChromePadding provides chromePadding,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -309,6 +320,8 @@ fun WorkshopScreen(
                     actions = actions,
                 )
             }
+
+            WorkshopPopupHost(state = popupHostState)
         }
     }
 }

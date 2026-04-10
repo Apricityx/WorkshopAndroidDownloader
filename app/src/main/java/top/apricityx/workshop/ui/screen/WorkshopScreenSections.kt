@@ -3,9 +3,11 @@ package top.apricityx.workshop.ui.screen
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,12 +20,11 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
@@ -34,8 +35,6 @@ import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,8 +52,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -85,13 +85,18 @@ import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopLensBackdropSurface
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
+import top.apricityx.workshop.ui.component.WorkshopPopupMenu
+import top.apricityx.workshop.ui.component.WorkshopPopupMenuItem
 import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.component.liquid.LiquidBottomTab
 import top.apricityx.workshop.ui.component.liquid.LiquidBottomTabs
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
+import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.shapes.Capsule
 
 @Composable
@@ -285,13 +290,22 @@ private fun WorkshopDialogs(
                                 Text(if (downloadMenuExpanded) "▲" else "▼")
                             }
                         }
-                        DropdownMenu(
+                        WorkshopPopupMenu(
                             expanded = downloadMenuExpanded,
                             onDismissRequest = { downloadMenuExpanded = false },
                         ) {
                             updatePrompt.downloadOptions.forEach { option ->
-                                DropdownMenuItem(
+                                WorkshopPopupMenuItem(
                                     text = { Text(option.label) },
+                                    reserveLeadingSpace = true,
+                                    leadingIcon = {
+                                        if (option.source.id == selectedDownloadSourceId) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                            )
+                                        }
+                                    },
                                     onClick = {
                                         selectedDownloadSourceId = option.source.id
                                         downloadMenuExpanded = false
@@ -953,13 +967,58 @@ private fun WorkshopLiquidTopBarCapsule(
     fillWidth: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val backdrop = LocalWorkshopBackdrop.current
+    val shape = Capsule()
+    val surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f)
+    val borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+
+    if (backdrop != null && !shouldReduceLiquidGlassEffects()) {
+        Row(
+            modifier = modifier
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { shape },
+                    effects = {
+                        vibrancy()
+                        blur(2.dp.toPx())
+                        lens(12.dp.toPx(), 24.dp.toPx())
+                    },
+                    onDrawSurface = {
+                        drawRect(surfaceColor)
+                    },
+                )
+                .border(width = 1.dp, color = borderColor, shape = shape)
+                .clip(shape)
+                .then(
+                    if (fillWidth) {
+                        Modifier.fillMaxWidth()
+                    } else {
+                        Modifier
+                    }
+                )
+                .heightIn(min = height)
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable(onClick = onClick)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = horizontalPadding, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+        return
+    }
+
     WorkshopLensBackdropSurface(
         modifier = modifier,
-        shape = Capsule(),
+        shape = shape,
         lensHeight = 8.dp,
         lensAmount = 16.dp,
-        surfaceColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
-        borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+        surfaceColor = surfaceColor,
+        borderColor = borderColor,
     ) {
         Row(
             modifier = (if (fillWidth) {
@@ -984,15 +1043,15 @@ private fun WorkshopLiquidTopBarCapsule(
 }
 
 @Composable
-private fun GameWorkshopMoreDropdownMenu(
+private fun BoxScope.GameWorkshopMoreDropdownMenu(
     expanded: Boolean,
     actions: WorkshopScreenActions,
 ) {
-    DropdownMenu(
+    WorkshopPopupMenu(
         expanded = expanded,
         onDismissRequest = actions.onDismissGameWorkshopMoreActions,
     ) {
-        DropdownMenuItem(
+        WorkshopPopupMenuItem(
             text = { Text("刷新列表") },
             leadingIcon = {
                 Icon(
@@ -1005,7 +1064,7 @@ private fun GameWorkshopMoreDropdownMenu(
                 actions.onSearchCurrentWorkshop()
             },
         )
-        DropdownMenuItem(
+        WorkshopPopupMenuItem(
             text = { Text("ID 下载") },
             leadingIcon = {
                 Icon(
@@ -1017,7 +1076,7 @@ private fun GameWorkshopMoreDropdownMenu(
                 actions.onOpenGameWorkshopDirectDownloadDialog()
             },
         )
-        DropdownMenuItem(
+        WorkshopPopupMenuItem(
             text = { Text("设置") },
             leadingIcon = {
                 Icon(
@@ -1169,7 +1228,7 @@ private fun WorkshopLiquidTopBarActionButton(
     badgeCount: Int = 0,
 ) {
     val backdrop = LocalWorkshopBackdrop.current
-    if (backdrop == null) {
+    if (backdrop == null || shouldReduceLiquidGlassEffects()) {
         WorkshopLiquidTopBarCapsule(
             modifier = modifier,
             onClick = onClick,
