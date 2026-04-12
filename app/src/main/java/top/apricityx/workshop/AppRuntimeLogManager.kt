@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import androidx.core.content.FileProvider
 import com.elvishew.xlog.LogConfiguration
 import com.elvishew.xlog.XLog
@@ -263,6 +264,7 @@ object AppRuntimeLogManager {
             exportBundleToLegacyDownloads(application, bundleFile)
         }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun exportBundleToMediaStore(
         application: Application,
         bundleFile: File,
