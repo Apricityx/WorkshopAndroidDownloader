@@ -100,6 +100,16 @@ class DownloadSettingsRepository(context: Context) {
         prefs.edit().putBoolean(KEY_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP, value).apply()
     }
 
+    fun isExperimentalWorkshopDirectAccessEnabled(): Boolean =
+        prefs.getBoolean(
+            KEY_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED,
+            DEFAULT_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED,
+        )
+
+    fun setExperimentalWorkshopDirectAccessEnabled(value: Boolean) {
+        prefs.edit().putBoolean(KEY_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED, value).apply()
+    }
+
     fun getLastUpdateCheckAtMs(): Long =
         prefs.getLong(KEY_LAST_UPDATE_CHECK_AT_MS, 0L)
 
@@ -149,6 +159,8 @@ class DownloadSettingsRepository(context: Context) {
         private const val KEY_PREFERRED_UPDATE_SOURCE_ID = "preferred_update_source_id"
         private const val KEY_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP =
             "allow_steam_authenticated_cleartext_http"
+        private const val KEY_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED =
+            "experimental_workshop_direct_access_enabled"
         private const val KEY_LAST_UPDATE_CHECK_AT_MS = "last_update_check_at_ms"
         private const val KEY_LAST_KNOWN_REMOTE_TAG = "last_known_remote_tag"
         private const val KEY_LAST_SUCCESSFUL_METADATA_SOURCE_ID = "last_successful_metadata_source_id"
@@ -165,6 +177,7 @@ class DownloadSettingsRepository(context: Context) {
         const val MAX_MOD_UPDATE_CONCURRENT_CHECKS = 10
         const val DEFAULT_AUTO_CHECK_UPDATES_ENABLED = true
         const val DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP = false
+        const val DEFAULT_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED = true
         val DEFAULT_THEME_MODE: AppThemeMode = AppThemeMode.FollowSystem
         val DEFAULT_FRONTEND_MODE: AppFrontendMode = AppFrontendMode.LiquidGlass
         val DEFAULT_STEAM_LANGUAGE_PREFERENCE: SteamLanguagePreference = SteamLanguagePreference.SimplifiedChinese

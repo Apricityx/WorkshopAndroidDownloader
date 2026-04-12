@@ -71,6 +71,7 @@ import top.apricityx.workshop.ui.theme.workshopListContentPadding
 fun GameWorkshopScreen(
     state: GameWorkshopUiState,
     modStatusResolver: WorkshopModStatusResolver,
+    isBrowsingUnauthenticated: Boolean,
     onSearchQueryChange: (String) -> Unit,
     onSortOptionSelected: (WorkshopBrowseSortOption) -> Unit,
     onTimeWindowSelected: (WorkshopBrowseTimeWindow) -> Unit,
@@ -175,6 +176,23 @@ fun GameWorkshopScreen(
                     onSortOptionSelected = onSortOptionSelected,
                     onTimeWindowSelected = onTimeWindowSelected,
                 )
+            }
+        }
+
+        if (isBrowsingUnauthenticated) {
+            item {
+                WorkshopPanelCard {
+                    Text(
+                        text = "当前处于未登录状态",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "当前只能保证看到公开可见的搜索结果，部分搜索内容可能不会出现；部分模组需要先登录已购买该游戏的 Steam 账号后才能下载。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 

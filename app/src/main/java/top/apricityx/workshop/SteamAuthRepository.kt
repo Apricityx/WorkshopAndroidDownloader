@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.Cookie
+import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -70,6 +71,9 @@ sealed interface SteamSignInStep {
 class SteamAuthRepository(context: Context) {
     private val appContext = context.applicationContext
     private val steamClientIdentity = SteamClientIdentity(appContext)
+    private val settingsRepository = DownloadSettingsRepository(appContext)
+    private val experimentalWorkshopDirectAccessRuntime =
+        createExperimentalWorkshopDirectAccessRuntime(appContext.filesDir)
     private val json = Json { ignoreUnknownKeys = true }
     private val authMutex = Mutex()
     private val tokenMutex = Mutex()
@@ -85,7 +89,18 @@ class SteamAuthRepository(context: Context) {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
     }
-    private val httpClient by lazy { OkHttpClient.Builder().applyDefaultHttpTimeouts().build() }
+    private val httpClient by lazy {
+        OkHttpClient.Builder()
+            .applyDefaultHttpTimeouts()
+            .applyAppNetworkLogging("steam-auth")
+            .hostnameVerifier(experimentalWorkshopDirectAccessRuntime.hostnameVerifier)
+            .addExperimentalWorkshopDirectAccess(
+                runtime = experimentalWorkshopDirectAccessRuntime,
+                enabledProvider = settingsRepository::isExperimentalWorkshopDirectAccessEnabled,
+                steamCookieJar = CookieJar.NO_COOKIES,
+            )
+            .build()
+    }
     private val directoryClient by lazy { SteamDirectoryClient(httpClient) }
     private val authenticationClient by lazy {
         SteamAuthenticationClient(

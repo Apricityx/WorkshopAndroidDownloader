@@ -17,6 +17,7 @@ class DownloadCenterTaskFinalizer(
     private val workshopDetailRepository = WorkshopDetailRepository(
         client = OkHttpClient.Builder()
             .applyDefaultHttpTimeouts()
+            .applyAppNetworkLogging("download-finalizer")
             .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
             .build(),
         languagePreferenceProvider = settingsRepository::getSteamLanguagePreference,

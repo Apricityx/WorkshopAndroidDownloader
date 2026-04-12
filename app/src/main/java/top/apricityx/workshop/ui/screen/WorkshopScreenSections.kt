@@ -548,6 +548,7 @@ private fun WorkshopScreenScene(
                     GameWorkshopScreen(
                         state = workshopState,
                         modStatusResolver = modStatusResolver,
+                        isBrowsingUnauthenticated = state.settingsState.steamAuthState.isBrowsingUnauthenticated,
                         onSearchQueryChange = actions.onUpdateWorkshopSearchQuery,
                         onSortOptionSelected = actions.onUpdateWorkshopSort,
                         onTimeWindowSelected = actions.onUpdateWorkshopTimeWindow,
@@ -625,8 +626,9 @@ private fun WorkshopScreenScene(
                     onUpdateSteamGuardCode = actions.onUpdateSteamGuardCode,
                     onSwitchSteamLoginInputMode = actions.onSwitchSteamLoginInputMode,
                     onSubmitSteamLogin = actions.onSubmitSteamLogin,
-                    onOpenSteamLoginDebugLog = actions.onOpenSteamLoginDebugLog,
-                    onShareSteamLoginDebugLog = actions.onShareSteamLoginDebugLog,
+                    onOpenRuntimeLog = actions.onOpenRuntimeLog,
+                    onShareRuntimeLogBundle = actions.onShareRuntimeLogBundle,
+                    onExportRuntimeLogBundle = actions.onExportRuntimeLogBundle,
                     onSwitchToAnonymousSteamAccount = actions.onSwitchToAnonymousSteamAccount,
                     onSetActiveSteamAccount = actions.onSetActiveSteamAccount,
                     onReauthenticateSteamAccount = actions.onReauthenticateSteamAccount,
@@ -643,6 +645,7 @@ private fun WorkshopScreenScene(
                     onConcurrentTaskCountChange = actions.onUpdateConcurrentDownloadTaskCountInput,
                     onModUpdateConcurrentCheckCountChange = actions.onUpdateModUpdateConcurrentCheckCountInput,
                     onAllowSteamAuthenticatedCleartextHttpChanged = actions.onUpdateAllowSteamAuthenticatedCleartextHttp,
+                    onExperimentalWorkshopDirectAccessChanged = actions.onUpdateExperimentalWorkshopDirectAccess,
                     onSave = actions.onSaveDownloadSettings,
                     modifier = Modifier.fillMaxSize(),
                 )

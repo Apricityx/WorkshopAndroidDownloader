@@ -32,7 +32,6 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val workshopViewModel: WorkshopViewModel by viewModels { WorkshopViewModel.Factory }
     private val downloadDebugLogManager by lazy { DownloadDebugLogManager(application) }
-    private val steamLoginDebugLogManager by lazy { SteamLoginDebugLogManager(application) }
     private var pendingDownloadItems: List<WorkshopBrowseItem> = emptyList()
     private var pendingDownloadItemKeys by mutableStateOf<Set<WorkshopModKey>>(emptySet())
     private var downloadDependencyWarningDialogState: DownloadDependencyWarningDialogState? by mutableStateOf(null)
@@ -252,46 +251,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun openSteamLoginDebugLog() {
-        val file = steamLoginDebugLogManager.latestShareableFile()
-        if (file == null) {
-            Toast.makeText(this, "登录日志还没有生成", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val intent = WorkshopFileOpenManager.createOpenFileIntent(file)
-        if (intent == null) {
-            Toast.makeText(this, "暂无可打开登录日志", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        launchIntent(
-            intent = intent,
-            notFoundMessage = "没有找到可打开这个登录日志的应用",
-            failureMessage = "打开登录日志失败",
-        )
-    }
-
-    private fun shareSteamLoginDebugLog() {
-        val file = steamLoginDebugLogManager.latestShareableFile()
-        if (file == null) {
-            Toast.makeText(this, "登录日志还没有生成", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val intent = WorkshopFileShareManager.createShareFileIntent(file)
-        if (intent == null) {
-            Toast.makeText(this, "暂无可分享登录日志", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        launchIntent(
-            intent = intent,
-            notFoundMessage = "没有找到可分享登录日志的应用",
-            failureMessage = "分享登录日志失败",
-        )
-    }
-
     private fun shareRuntimeAppLog() {
         val file = AppRuntimeLogManager.shareableLatestLogFile(application)
         if (file == null) {
@@ -310,6 +269,61 @@ class MainActivity : ComponentActivity() {
             notFoundMessage = "没有找到可分享运行日志的应用",
             failureMessage = "分享运行日志失败",
         )
+    }
+
+    private fun openRuntimeAppLog() {
+        val file = AppRuntimeLogManager.shareableLatestLogFile(application)
+        if (file == null) {
+            Toast.makeText(this, "运行日志还没有生成", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = WorkshopFileOpenManager.createOpenFileIntent(file)
+        if (intent == null) {
+            Toast.makeText(this, "暂无可打开运行日志", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        launchIntent(
+            intent = intent,
+            notFoundMessage = "没有找到可打开运行日志的应用",
+            failureMessage = "打开运行日志失败",
+        )
+    }
+
+    private fun shareRuntimeLogBundle() {
+        lifecycleScope.launch {
+            val file = AppRuntimeLogManager.shareableLogBundle(application)
+            if (file == null) {
+                Toast.makeText(this@MainActivity, "日志包生成失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val intent = WorkshopFileShareManager.createShareFileIntent(file)
+            if (intent == null) {
+                Toast.makeText(this@MainActivity, "暂无可分享日志包", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            launchIntent(
+                intent = intent,
+                notFoundMessage = "没有找到可分享日志包的应用",
+                failureMessage = "分享日志包失败",
+            )
+        }
+    }
+
+    private fun exportRuntimeLogBundle() {
+        lifecycleScope.launch {
+            val file = AppRuntimeLogManager.exportLogBundle(application)
+            if (file == null) {
+                Toast.makeText(this@MainActivity, "导出日志包失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            Toast.makeText(
+                this@MainActivity,
+                "日志包已导出到 ${file.userVisiblePath}",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
     }
 
     private fun applySystemNightMode(themeMode: AppThemeMode) {
@@ -401,8 +415,9 @@ class MainActivity : ComponentActivity() {
             onUpdateSteamGuardCode = workshopViewModel::updateSteamGuardCode,
             onSwitchSteamLoginInputMode = workshopViewModel::switchSteamLoginInputMode,
             onSubmitSteamLogin = workshopViewModel::submitSteamLogin,
-            onOpenSteamLoginDebugLog = ::openSteamLoginDebugLog,
-            onShareSteamLoginDebugLog = ::shareSteamLoginDebugLog,
+            onOpenRuntimeLog = ::openRuntimeAppLog,
+            onShareRuntimeLogBundle = ::shareRuntimeLogBundle,
+            onExportRuntimeLogBundle = ::exportRuntimeLogBundle,
             onSwitchToAnonymousSteamAccount = workshopViewModel::switchToAnonymousSteamAccount,
             onSetActiveSteamAccount = workshopViewModel::setActiveSteamAccount,
             onReauthenticateSteamAccount = workshopViewModel::reauthenticateSteamAccount,
@@ -424,6 +439,7 @@ class MainActivity : ComponentActivity() {
             onUpdateConcurrentDownloadTaskCountInput = workshopViewModel::updateConcurrentDownloadTaskCountInput,
             onUpdateModUpdateConcurrentCheckCountInput = workshopViewModel::updateModUpdateConcurrentCheckCountInput,
             onUpdateAllowSteamAuthenticatedCleartextHttp = workshopViewModel::updateAllowSteamAuthenticatedCleartextHttp,
+            onUpdateExperimentalWorkshopDirectAccess = workshopViewModel::updateExperimentalWorkshopDirectAccess,
             onSaveDownloadSettings = workshopViewModel::saveDownloadSettings,
             onUpdateAddGameSearchQuery = workshopViewModel::updateAddGameSearchQuery,
             onSearchGames = workshopViewModel::searchGames,

@@ -11,7 +11,10 @@ import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
+import okhttp3.ConnectionPool
+import java.util.concurrent.TimeUnit
 import top.apricityx.workshop.SteamLanguagePreference
 import top.apricityx.workshop.WorkshopBrowseSortOption
 import top.apricityx.workshop.WorkshopBrowseTimeWindow
@@ -19,6 +22,7 @@ import top.apricityx.workshop.steam.protocol.SteamPublishedFileQueryResult
 
 class WorkshopBrowseRepository(
     private val client: OkHttpClient,
+    private val detailClient: OkHttpClient = createWorkshopBrowseDetailClient(client),
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val baseUrl: HttpUrl = "https://steamcommunity.com/".toHttpUrl(),
     private val detailBaseUrl: HttpUrl = "https://api.steampowered.com/".toHttpUrl(),
@@ -94,7 +98,7 @@ class WorkshopBrowseRepository(
             )
             .build()
 
-        client.newCall(request).execute().use { response ->
+        detailClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 error("Workshop detail request failed: ${response.code}")
             }
@@ -123,6 +127,16 @@ class WorkshopBrowseRepository(
         const val USER_AGENT = "WorkshopOnAndroid/1.0"
     }
 }
+
+internal fun createWorkshopBrowseDetailClient(baseClient: OkHttpClient): OkHttpClient =
+    baseClient.newBuilder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .writeTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .connectionPool(ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
+        .build()
 
 internal object WorkshopBrowseParser {
     private val itemBlockRegex = Regex(

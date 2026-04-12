@@ -9,7 +9,6 @@ kotlin {
 }
 
 dependencies {
-    api(libs.protobuf.kotlin.lite)
     api(libs.protobuf.javalite)
     implementation(platform(libs.okhttpBom))
     implementation(libs.coroutines.core)
@@ -32,9 +31,6 @@ protobuf {
         all().configureEach {
             builtins {
                 maybeCreate("java").apply {
-                    option("lite")
-                }
-                maybeCreate("kotlin").apply {
                     option("lite")
                 }
             }

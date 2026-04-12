@@ -2,7 +2,6 @@ package top.apricityx.workshop
 
 import android.app.Application
 import android.app.KeyguardManager
-import com.elvishew.xlog.XLog.Log
 import android.os.UserManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -33,6 +32,7 @@ import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MultipartBody
@@ -64,7 +64,6 @@ class WorkshopViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
     private val steamAuthRepository = SteamAuthRepository(application)
-    private val steamLoginDebugLogManager = SteamLoginDebugLogManager(application)
     private val baiduTranslationCredentialsRepository = BaiduTranslationCredentialsRepository(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val steamWebCookieJar = SteamWebSessionCookieJar(
@@ -76,9 +75,13 @@ class WorkshopViewModel(
         },
         sessionScopeProvider = steamAuthRepository::activeAccountId,
     )
+    private val experimentalWorkshopDirectAccessRuntime =
+        createExperimentalWorkshopDirectAccessRuntime(application.filesDir)
     private val httpClient = OkHttpClient.Builder()
         .applyDefaultHttpTimeouts()
+        .applyAppNetworkLogging("workshop-web")
         .cookieJar(steamWebCookieJar)
+        .hostnameVerifier(experimentalWorkshopDirectAccessRuntime.hostnameVerifier)
         .addInterceptor(
             SteamAuthenticatedCleartextInterceptor(
                 hasAuthenticatedSteamSession = {
@@ -89,6 +92,11 @@ class WorkshopViewModel(
             ),
         )
         .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
+        .addExperimentalWorkshopDirectAccess(
+            runtime = experimentalWorkshopDirectAccessRuntime,
+            enabledProvider = settingsRepository::isExperimentalWorkshopDirectAccessEnabled,
+            steamCookieJar = steamWebCookieJar,
+        )
         .build()
     private val gameRepository = SteamGameRepository(
         client = httpClient,
@@ -218,9 +226,11 @@ class WorkshopViewModel(
         val currentFrontendMode = settingsRepository.getFrontendMode()
         val currentSteamLanguagePreference = settingsRepository.getSteamLanguagePreference()
         val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
+        val experimentalWorkshopDirectAccessEnabled =
+            settingsRepository.isExperimentalWorkshopDirectAccessEnabled()
+        val application = getApplication<Application>()
         val currentSteamAuthState = steamAuthRepository.loadSnapshot().toUiState(
             loginDialogState = _uiState.value.settingsState.steamAuthState.loginDialogState,
-            latestLoginDebugLogPath = currentSteamLoginDebugLogPath(),
         )
         _uiState.update { state ->
             state.copy(
@@ -237,6 +247,7 @@ class WorkshopViewModel(
                     selectedFrontendMode = currentFrontendMode,
                     selectedSteamLanguagePreference = currentSteamLanguagePreference,
                     allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
+                    experimentalWorkshopDirectAccessEnabled = experimentalWorkshopDirectAccessEnabled,
                     baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
                     steamAuthState = currentSteamAuthState,
                     autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
@@ -244,6 +255,8 @@ class WorkshopViewModel(
                     availableUpdateSources = UpdateSource.userSelectableSources(),
                     currentVersionText = BuildConfig.VERSION_NAME,
                     updateStatusSummary = buildUpdateStatusSummary(),
+                    runtimeLogDirectoryPath = AppRuntimeLogManager.logDirectoryPath(application),
+                    latestRuntimeLogPath = AppRuntimeLogManager.latestLogPath(application),
                     message = null,
                 ),
                 baiduTranslationApiKeyState = state.baiduTranslationApiKeyState.copy(
@@ -496,6 +509,27 @@ class WorkshopViewModel(
                     "已允许带 Steam 登录态的 HTTP 请求，请仅在可信网络环境下使用。"
                 } else {
                     "已禁止带 Steam 登录态的 HTTP 请求。"
+                },
+            )
+        }
+    }
+
+    fun updateExperimentalWorkshopDirectAccess(enabled: Boolean) {
+        settingsRepository.setExperimentalWorkshopDirectAccessEnabled(enabled)
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    experimentalWorkshopDirectAccessEnabled = enabled,
+                    message = null,
+                ),
+            )
+        }
+        viewModelScope.launch {
+            _toastMessages.emit(
+                if (enabled) {
+                    "已开启实验性创意工坊直连策略，如果存在问题，请导出一份日志发给开发者。"
+                } else {
+                    "已关闭实验性创意工坊直连策略。"
                 },
             )
         }
@@ -1964,8 +1998,7 @@ class WorkshopViewModel(
     }
 
     private fun applyAdbDownloadCommand(command: AdbDownloadCommand) {
-        Log.i(
-            WorkshopAppContract.logTag,
+        workshopLogInfo(
             "ADB command received appId=${command.appIdText} publishedFileId=${command.publishedFileIdText} autoStart=${command.autoStart}",
         )
 
@@ -1975,7 +2008,7 @@ class WorkshopViewModel(
 
         val validationError = WorkshopInputValidator.validate(command.appIdText, command.publishedFileIdText)
         if (validationError != null) {
-            Log.w(WorkshopAppContract.logTag, "ADB command rejected: $validationError")
+            workshopLogWarn("ADB command rejected: $validationError")
             return
         }
 
@@ -1996,36 +2029,33 @@ class WorkshopViewModel(
                 ),
             ),
         )
-        Log.i(
-            WorkshopAppContract.logTag,
+        workshopLogInfo(
             "ADB download task enqueued count=$enqueued appId=$appId publishedFileId=$publishedFileId",
         )
     }
 
     private fun applyAdbWorkshopSearchProbeCommand(command: AdbWorkshopSearchProbeCommand) {
-        Log.i(
-            WorkshopAppContract.logTag,
+        workshopLogInfo(
             "ADB workshop search probe received appId=${command.appIdText} searchQuery=${command.searchQuery} expectedPublishedFileId=${command.expectedPublishedFileIdText.ifBlank { "-" }}",
         )
 
         val appId = command.appIdText.toUIntOrNull()
         if (appId == null) {
-            Log.w(WorkshopAppContract.logTag, "ADB workshop search probe rejected: invalid appId=${command.appIdText}")
+            workshopLogWarn("ADB workshop search probe rejected: invalid appId=${command.appIdText}")
             return
         }
         val expectedPublishedFileId = command.expectedPublishedFileIdText
             .takeIf(String::isNotBlank)
             ?.toULongOrNull()
         if (command.expectedPublishedFileIdText.isNotBlank() && expectedPublishedFileId == null) {
-            Log.w(
-                WorkshopAppContract.logTag,
+            workshopLogWarn(
                 "ADB workshop search probe rejected: invalid expectedPublishedFileId=${command.expectedPublishedFileIdText}",
             )
             return
         }
         val normalizedQuery = command.searchQuery.trim()
         if (normalizedQuery.isBlank()) {
-            Log.w(WorkshopAppContract.logTag, "ADB workshop search probe rejected: empty search query")
+            workshopLogWarn("ADB workshop search probe rejected: empty search query")
             return
         }
 
@@ -2047,13 +2077,11 @@ class WorkshopViewModel(
                 val expectedFound = expectedPublishedFileId?.let { publishedFileId ->
                     page.items.any { item -> item.publishedFileId == publishedFileId }
                 }
-                Log.i(
-                    WorkshopAppContract.logTag,
+                workshopLogInfo(
                     "ADB workshop search probe result appId=$appId query=$normalizedQuery itemCount=${page.items.size} hasNext=${page.hasNextPage} expectedId=${expectedPublishedFileId ?: "-"} expectedFound=${expectedFound ?: "n/a"} topItems=$topItems",
                 )
             }.onFailure { error ->
-                Log.w(
-                    WorkshopAppContract.logTag,
+                workshopLogWarn(
                     "ADB workshop search probe failed appId=$appId query=$normalizedQuery errorType=${error.javaClass.simpleName} errorMessage=${error.message}",
                     error,
                 )
@@ -2298,6 +2326,10 @@ class WorkshopViewModel(
                     )
                 }
             }.onFailure { error ->
+                workshopLogWarn(
+                    "Workshop browse failed appId=${game.appId} page=$page query=${searchQuery.trim()} directAccess=${settingsRepository.isExperimentalWorkshopDirectAccessEnabled()} error=${error::class.java.simpleName}:${error.message}",
+                    error,
+                )
                 val showConnectionErrorState = error.isWorkshopConnectionFailure()
                 _uiState.update { state ->
                     val current = state.gameWorkshopState ?: return@update state
@@ -2570,25 +2602,21 @@ class WorkshopViewModel(
 
     private fun ensureSteamLoginAttempt(dialog: SteamLoginDialogUiState): String {
         activeSteamLoginAttemptId?.let { return it }
-        val attemptId = steamLoginDebugLogManager.startAttempt(
-            mode = dialog.inputMode,
-            dialogMode = dialog.mode,
-            accountNameHint = dialog.username,
-            targetAccountId = dialog.targetAccountId,
-        )
+        val attemptId = UUID.randomUUID().toString()
         activeSteamLoginAttemptId = attemptId
-        val logPath = steamLoginDebugLogManager.logFilePath(attemptId)
-        steamLoginDebugLogManager.append(
-            attemptId,
-            "UI: started Steam login attempt mode=${dialog.mode.name} inputMode=${dialog.inputMode.name} challenge=${dialog.challengeType?.name ?: "None"}.",
+        appendSteamLoginDebugLine(
+            "UI: started Steam login attempt mode=${dialog.mode.name} inputMode=${dialog.inputMode.name} " +
+                "challenge=${dialog.challengeType?.name ?: "None"} accountHint=${dialog.username.maskSteamLoginValue()} " +
+                "targetAccountPresent=${dialog.targetAccountId != null}.",
         )
-        updateSteamLoginDebugLogPath(logPath)
         return attemptId
     }
 
     private fun appendSteamLoginDebugLine(line: String) {
         val attemptId = activeSteamLoginAttemptId ?: return
-        steamLoginDebugLogManager.append(attemptId, line)
+        runCatching {
+            workshopLogInfo("STEAM_LOGIN id=$attemptId $line")
+        }
     }
 
     private fun appendSteamLoginFailure(
@@ -2596,48 +2624,30 @@ class WorkshopViewModel(
         error: Throwable,
     ) {
         val attemptId = activeSteamLoginAttemptId ?: return
-        steamLoginDebugLogManager.appendError(attemptId, summary, error)
+        runCatching {
+            workshopLogWarn("STEAM_LOGIN id=$attemptId $summary", error)
+        }
         activeSteamLoginAttemptId = null
-        updateSteamLoginDebugLogPath(steamLoginDebugLogManager.logFilePath(attemptId))
     }
 
     private fun finishSteamLoginAttempt(summary: String? = null) {
         val attemptId = activeSteamLoginAttemptId ?: return
-        summary?.let { steamLoginDebugLogManager.append(attemptId, it) }
-        activeSteamLoginAttemptId = null
-        updateSteamLoginDebugLogPath(steamLoginDebugLogManager.logFilePath(attemptId))
-    }
-
-    private fun updateSteamLoginDebugLogPath(path: String? = currentSteamLoginDebugLogPath()) {
-        _uiState.update { state ->
-            state.copy(
-                settingsState = state.settingsState.copy(
-                    steamAuthState = state.settingsState.steamAuthState.copy(
-                        latestLoginDebugLogPath = path,
-                    ),
-                ),
-            )
+        summary?.let {
+            runCatching {
+                workshopLogInfo("STEAM_LOGIN id=$attemptId $it")
+            }
         }
+        activeSteamLoginAttemptId = null
     }
-
-    private fun currentSteamLoginDebugLogPath(): String? =
-        activeSteamLoginAttemptId
-            ?.let(steamLoginDebugLogManager::logFilePath)
-            ?: _uiState.value.settingsState.steamAuthState.latestLoginDebugLogPath
-            ?: steamLoginDebugLogManager.latestLogPath()
 
     private fun syncSteamAuthState(
         message: String? = _uiState.value.settingsState.message,
         loginDialogState: SteamLoginDialogUiState? = _uiState.value.settingsState.steamAuthState.loginDialogState,
-        latestLoginDebugLogPath: String? = currentSteamLoginDebugLogPath(),
     ) {
         _uiState.update { state ->
             state.copy(
                 settingsState = state.settingsState.copy(
-                    steamAuthState = steamAuthRepository.loadSnapshot().toUiState(
-                        loginDialogState = loginDialogState,
-                        latestLoginDebugLogPath = latestLoginDebugLogPath,
-                    ),
+                    steamAuthState = steamAuthRepository.loadSnapshot().toUiState(loginDialogState = loginDialogState),
                     message = message,
                 ),
             )
@@ -2781,15 +2791,13 @@ class WorkshopViewModel(
                     ),
                 )
             }.onFailure { error ->
-                Log.w(
-                    WorkshopAppContract.logTag,
+                workshopLogWarn(
                     "Workshop authenticated published-file query failed; falling back to community browse appId=$appId page=$page query=$searchQuery language=$publishedFileLanguage error=${error.message}",
                     error,
                 )
             }.getOrNull()
             if (authenticatedResult != null) {
-                Log.i(
-                    WorkshopAppContract.logTag,
+                workshopLogInfo(
                     "Workshop search using authenticated published-file query appId=$appId page=$page query=$searchQuery language=$publishedFileLanguage total=${authenticatedResult.total} returned=${authenticatedResult.items.size}",
                 )
                 return authenticatedResult.toWorkshopBrowsePage(
@@ -2830,8 +2838,7 @@ class WorkshopViewModel(
         val appContext = getApplication<Application>()
         val keyguardManager = appContext.getSystemService(KeyguardManager::class.java)
         val userManager = appContext.getSystemService(UserManager::class.java)
-        Log.i(
-            WorkshopAppContract.logTag,
+        workshopLogInfo(
             "Steam web session prime start accountIdPresent=${accountId != null} hasAuthenticatedSession=$hasAuthenticatedSteamSession deviceLocked=${keyguardManager?.isDeviceLocked} userUnlocked=${userManager?.isUserUnlocked}",
         )
         if (!hasAuthenticatedSteamSession) {
@@ -2849,8 +2856,7 @@ class WorkshopViewModel(
                 runCatching {
                     primeSteamWebSessionUrl(url)
                 }.onFailure { error ->
-                    Log.w(
-                        WorkshopAppContract.logTag,
+                    workshopLogWarn(
                         "Steam web session prime skipped for host=${url.host} error=${error.message}",
                     )
                 }
@@ -2883,8 +2889,7 @@ class WorkshopViewModel(
             .sortedWith(compareBy({ it.name }, { it.domain }, { it.path }))
             .joinToString(",") { cookie -> "${cookie.name}@${cookie.domain}${cookie.path}" }
             .ifBlank { "-" }
-        Log.i(
-            WorkshopAppContract.logTag,
+        workshopLogInfo(
             "Steam web cookies[$label] host=${url.host} count=${steamWebCookieJar.loadForRequest(url).size} entries=$cookieSummary",
         )
     }
@@ -2942,8 +2947,7 @@ class WorkshopViewModel(
                 error("Steam finalizelogin request failed: ${response.code}")
             }
             val payloadSummary = summarizeSteamFinalizeLoginPayload(payload)
-            Log.i(
-                WorkshopAppContract.logTag,
+            workshopLogInfo(
                 "Steam finalizelogin response status=${response.code} contentType=${response.body?.contentType()} summary=$payloadSummary",
             )
             parseSteamFinalizeLoginResponse(payload)
@@ -2951,8 +2955,7 @@ class WorkshopViewModel(
         val finalizedSteamId = finalizeLoginResponse.steamId
             ?.takeIf(String::isNotBlank)
             ?: webLoginContext.steamId.toString().also {
-                Log.w(
-                    WorkshopAppContract.logTag,
+                workshopLogWarn(
                     "Steam finalizelogin response did not include steamID; falling back to authenticated account steamId.",
                 )
             }
@@ -2965,8 +2968,7 @@ class WorkshopViewModel(
             val transferUrl = runCatching { transferInfo.url.toHttpUrl() }
                 .getOrElse { error ->
                     allTransfersSucceeded = false
-                    Log.w(
-                        WorkshopAppContract.logTag,
+                    workshopLogWarn(
                         "Steam transfer-login returned an invalid transfer URL: ${transferInfo.url}",
                         error,
                     )
@@ -2992,8 +2994,7 @@ class WorkshopViewModel(
                 val payload = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     allTransfersSucceeded = false
-                    Log.w(
-                        WorkshopAppContract.logTag,
+                    workshopLogWarn(
                         "Steam transfer-login failed for ${transferUrl.host} with status=${response.code}.",
                     )
                     return@use
@@ -3004,14 +3005,12 @@ class WorkshopViewModel(
                     .joinToString(",")
                     .ifBlank { "-" }
                 val transferResult = parseSteamSetTokenResult(payload)
-                Log.i(
-                    WorkshopAppContract.logTag,
+                workshopLogInfo(
                     "Steam transfer-login response host=${transferUrl.host} status=${response.code} result=${transferResult ?: "blank"} setCookieNames=$responseCookies",
                 )
                 if (transferResult != null && transferResult != 1) {
                     allTransfersSucceeded = false
-                    Log.w(
-                        WorkshopAppContract.logTag,
+                    workshopLogWarn(
                         "Steam transfer-login returned result=$transferResult for ${transferUrl.host}.",
                     )
                 }
@@ -3282,6 +3281,9 @@ class WorkshopViewModel(
         val savedBaiduCredentials = baiduTranslationCredentialsRepository.getCredentials()
         val hasSavedBaiduCredentials = savedBaiduCredentials.isConfigured()
         val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
+        val experimentalWorkshopDirectAccessEnabled =
+            settingsRepository.isExperimentalWorkshopDirectAccessEnabled()
+        val application = getApplication<Application>()
         return WorkshopUiState(
             themeMode = themeMode,
             frontendMode = frontendMode,
@@ -3302,15 +3304,16 @@ class WorkshopViewModel(
                 selectedFrontendMode = frontendMode,
                 selectedSteamLanguagePreference = steamLanguagePreference,
                 allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
+                experimentalWorkshopDirectAccessEnabled = experimentalWorkshopDirectAccessEnabled,
                 baiduTranslationApiKeyConfigured = hasSavedBaiduCredentials,
-                steamAuthState = steamAuthRepository.loadSnapshot().toUiState(
-                    latestLoginDebugLogPath = steamLoginDebugLogManager.latestLogPath(),
-                ),
+                steamAuthState = steamAuthRepository.loadSnapshot().toUiState(),
                 autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
                 preferredUpdateSource = settingsRepository.getPreferredUpdateSource(),
                 availableUpdateSources = UpdateSource.userSelectableSources(),
                 currentVersionText = BuildConfig.VERSION_NAME,
                 updateStatusSummary = buildUpdateStatusSummary(),
+                runtimeLogDirectoryPath = AppRuntimeLogManager.logDirectoryPath(application),
+                latestRuntimeLogPath = AppRuntimeLogManager.latestLogPath(application),
             ),
             baiduTranslationApiKeyState = BaiduTranslationApiKeyUiState(
                 appIdInput = savedBaiduCredentials.appId,
@@ -3409,10 +3412,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
-
-
-
 
 
 

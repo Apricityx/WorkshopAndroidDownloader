@@ -79,8 +79,9 @@ fun SettingsScreen(
     onUpdateSteamGuardCode: (String) -> Unit,
     onSwitchSteamLoginInputMode: (SteamLoginInputMode) -> Unit,
     onSubmitSteamLogin: () -> Unit,
-    onOpenSteamLoginDebugLog: () -> Unit,
-    onShareSteamLoginDebugLog: () -> Unit,
+    onOpenRuntimeLog: () -> Unit,
+    onShareRuntimeLogBundle: () -> Unit,
+    onExportRuntimeLogBundle: () -> Unit,
     onSwitchToAnonymousSteamAccount: () -> Unit,
     onSetActiveSteamAccount: (String) -> Unit,
     onReauthenticateSteamAccount: (String) -> Unit,
@@ -97,6 +98,7 @@ fun SettingsScreen(
     onConcurrentTaskCountChange: (String) -> Unit,
     onModUpdateConcurrentCheckCountChange: (String) -> Unit,
     onAllowSteamAuthenticatedCleartextHttpChanged: (Boolean) -> Unit,
+    onExperimentalWorkshopDirectAccessChanged: (Boolean) -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -150,33 +152,11 @@ fun SettingsScreen(
                     Text("切回匿名")
                 }
             }
-
-            state.steamAuthState.latestLoginDebugLogPath?.takeIf(String::isNotBlank)?.let { logPath ->
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "最近一次登录日志",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = logPath,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        WorkshopOutlinedButton(onClick = onOpenSteamLoginDebugLog) {
-                            Text("查看登录日志")
-                        }
-                        WorkshopOutlinedButton(onClick = onShareSteamLoginDebugLog) {
-                            Text("分享登录日志")
-                        }
-                    }
-                }
-            }
+            Text(
+                "Steam 登录过程摘要会直接写入运行日志；需要排查时，请在下方“日志”区域查看、分享或导出。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             if (state.steamAuthState.accounts.isEmpty()) {
                 Text(
@@ -234,6 +214,50 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+            }
+
+            SettingsSectionCard {
+            Text("日志", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "如果下载器工作时出现问题，建议导出日志包并发送到邮箱：Apricityx@qq.com",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+//            Text(
+//                text = "日志目录：${state.runtimeLogDirectoryPath.ifBlank { "未初始化" }}",
+//                style = MaterialTheme.typography.bodySmall,
+//                color = MaterialTheme.colorScheme.onSurfaceVariant,
+//            )
+//            Text(
+//                text = "最近一份运行日志：${state.latestRuntimeLogPath ?: "还没有生成"}",
+//                style = MaterialTheme.typography.bodySmall,
+//                color = MaterialTheme.colorScheme.onSurfaceVariant,
+//                maxLines = 3,
+//                overflow = TextOverflow.Ellipsis,
+//            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                WorkshopOutlinedButton(
+                    onClick = onOpenRuntimeLog,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("查看最新日志")
+                }
+                WorkshopOutlinedButton(
+                    onClick = onShareRuntimeLogBundle,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("分享日志包")
+                }
+            }
+            WorkshopButton(
+                onClick = onExportRuntimeLogBundle,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("导出日志包")
             }
             }
 
@@ -414,6 +438,28 @@ fun SettingsScreen(
                 )
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("实验性创意工坊直连", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "按一些 Steam 社区转发规则访问创意工坊，以实现无需加速器裸连创意工坊的体验。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                WorkshopSwitch(
+                    checked = state.experimentalWorkshopDirectAccessEnabled,
+                    onCheckedChange = onExperimentalWorkshopDirectAccessChanged,
+                )
+            }
+
             SettingsDiscreteSlider(
                 title = "单任务线程数",
                 value = sliderSettingValue(
@@ -532,9 +578,6 @@ fun SettingsScreen(
             onGuardCodeChange = onUpdateSteamGuardCode,
             onSwitchInputMode = onSwitchSteamLoginInputMode,
             onSubmit = onSubmitSteamLogin,
-            latestLoginDebugLogPath = state.steamAuthState.latestLoginDebugLogPath,
-            onOpenSteamLoginDebugLog = onOpenSteamLoginDebugLog,
-            onShareSteamLoginDebugLog = onShareSteamLoginDebugLog,
         )
     }
 }
@@ -784,9 +827,6 @@ private fun SteamLoginDialog(
     onGuardCodeChange: (String) -> Unit,
     onSwitchInputMode: (SteamLoginInputMode) -> Unit,
     onSubmit: () -> Unit,
-    latestLoginDebugLogPath: String?,
-    onOpenSteamLoginDebugLog: () -> Unit,
-    onShareSteamLoginDebugLog: () -> Unit,
 ) {
     val isTokenMode = state.inputMode == SteamLoginInputMode.RefreshToken
     val isConfirmationChallenge = state.challengeType.isSteamConfirmationChallenge()
@@ -969,29 +1009,11 @@ private fun SteamLoginDialog(
                 tone = MessageTone.Error,
             )
         }
-
-        latestLoginDebugLogPath
-            ?.takeIf(String::isNotBlank)
-            ?.let { logPath ->
-                Text(
-                    text = "最近一次登录日志：$logPath",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    WorkshopOutlinedButton(onClick = onOpenSteamLoginDebugLog) {
-                        Text("查看登录日志")
-                    }
-                    WorkshopOutlinedButton(onClick = onShareSteamLoginDebugLog) {
-                        Text("分享登录日志")
-                    }
-                }
-            }
+        Text(
+            text = "登录过程摘要会写入运行日志，可在设置页日志区域导出日志包。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

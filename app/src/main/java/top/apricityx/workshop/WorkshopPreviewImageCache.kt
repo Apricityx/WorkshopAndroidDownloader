@@ -6,11 +6,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import top.apricityx.workshop.steam.protocol.newDefaultOkHttpClient
+import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
 
 class WorkshopPreviewImageCache(
     application: Application,
-    private val client: OkHttpClient = newDefaultOkHttpClient(),
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .applyDefaultHttpTimeouts()
+        .applyAppNetworkLogging("preview-cache")
+        .build(),
 ) {
     private val previewRoot = File(application.filesDir, "mod-library/previews")
 

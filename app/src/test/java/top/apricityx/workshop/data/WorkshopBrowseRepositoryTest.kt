@@ -2,7 +2,9 @@ package top.apricityx.workshop.data
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
+import java.io.IOException
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.After
@@ -143,6 +145,52 @@ class WorkshopBrowseRepositoryTest {
         assertThat(detailRequest.url.encodedPath).isEqualTo("/workshop/browse/")
         assertThat(fileSizeRequest.url.encodedPath).isEqualTo("/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
         assertThat(requireNotNull(fileSizeRequest.body).utf8()).contains("publishedfileids%5B0%5D=3677098410")
+    }
+
+    @Test
+    fun browseGameWorkshop_returns_items_when_file_size_lookup_fails() = runBlocking {
+        repository = WorkshopBrowseRepository(
+            client = OkHttpClient(),
+            detailClient = OkHttpClient.Builder()
+                .addInterceptor { throw IOException("detail lookup failed") }
+                .build(),
+            baseUrl = server.url("/"),
+            detailBaseUrl = server.url("/"),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                <div class="workshopItem">
+                    <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3677098410&searchtext=" class="ugc" data-appid="646570" data-publishedfileid="3677098410">
+                        <div id="sharedfile_3677098410" class="workshopItemPreviewHolder ">
+                            <img class="workshopItemPreviewImage " src="https://example.com/skip.png">
+                        </div>
+                    </a>
+                    <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3677098410&searchtext=" class="item_link"><div class="workshopItemTitle ellipsis">Skip The Spire</div></a>
+                    <div class="workshopItemAuthorName ellipsis">by&nbsp;<a class="workshop_author_link" href="https://steamcommunity.com/id/test/myworkshopfiles/?appid=646570">apricity</a></div>
+                </div>
+                """.trimIndent(),
+            ),
+        )
+
+        val result = repository.browseGameWorkshop(
+            appId = 646570u,
+            searchQuery = "",
+        )
+
+        assertThat(result.items).hasSize(1)
+        assertThat(result.items[0].fileSizeBytes).isNull()
+        assertThat(server.requestCount).isEqualTo(1)
+    }
+
+    @Test
+    fun createWorkshopBrowseDetailClient_uses_short_http1_profile() {
+        val detailClient = createWorkshopBrowseDetailClient(OkHttpClient())
+
+        assertThat(detailClient.connectTimeoutMillis).isEqualTo(5_000)
+        assertThat(detailClient.readTimeoutMillis).isEqualTo(8_000)
+        assertThat(detailClient.callTimeoutMillis).isEqualTo(8_000)
+        assertThat(detailClient.protocols).containsExactly(Protocol.HTTP_1_1)
     }
 }
 

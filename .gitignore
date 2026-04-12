@@ -9,3 +9,4 @@ captures/
 /scripts/export-release-apk.bat
 /scripts/export-release-apk.ps1
 /.codex_tmp/*
+/.codex-temp/*

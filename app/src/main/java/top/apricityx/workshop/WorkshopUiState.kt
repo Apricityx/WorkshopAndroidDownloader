@@ -232,6 +232,8 @@ data class SettingsUiState(
         DownloadSettingsRepository.DEFAULT_STEAM_LANGUAGE_PREFERENCE,
     val allowSteamAuthenticatedCleartextHttp: Boolean =
         DownloadSettingsRepository.DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP,
+    val experimentalWorkshopDirectAccessEnabled: Boolean =
+        DownloadSettingsRepository.DEFAULT_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED,
     val baiduTranslationApiKeyConfigured: Boolean = false,
     val steamAuthState: SteamAuthUiState = SteamAuthUiState(),
     val autoCheckUpdatesEnabled: Boolean = DownloadSettingsRepository.DEFAULT_AUTO_CHECK_UPDATES_ENABLED,
@@ -241,6 +243,8 @@ data class SettingsUiState(
     val updateStatusSummary: String = "尚未执行过更新检查。",
     val updateCheckInProgress: Boolean = false,
     val updatePromptState: UpdatePromptState? = null,
+    val runtimeLogDirectoryPath: String = "",
+    val latestRuntimeLogPath: String? = null,
     val message: String? = null,
 )
 
@@ -258,10 +262,10 @@ data class BaiduTranslationApiKeyUiState(
 data class SteamAuthUiState(
     val accounts: List<SteamAccountSummary> = emptyList(),
     val activeAccountId: String? = null,
+    val isBrowsingUnauthenticated: Boolean = true,
     val statusSummary: String =
         "当前浏览账号：匿名。未登录时只能保证公开可见内容，部分成人内容或需要年龄确认的条目可能不会出现。",
     val loginDialogState: SteamLoginDialogUiState? = null,
-    val latestLoginDebugLogPath: String? = null,
 )
 
 enum class SteamLoginInputMode {
@@ -372,12 +376,12 @@ fun ModLibraryFilterState.hasActiveFilters(): Boolean =
 
 fun SteamAccountsSnapshot.toUiState(
     loginDialogState: SteamLoginDialogUiState? = null,
-    latestLoginDebugLogPath: String? = null,
 ): SteamAuthUiState =
     activeAccount.let { currentActiveAccount ->
         SteamAuthUiState(
             accounts = accounts,
             activeAccountId = activeAccountId,
+            isBrowsingUnauthenticated = currentActiveAccount?.requiresReauthentication != false,
             statusSummary = if (currentActiveAccount != null) {
                 if (currentActiveAccount.requiresReauthentication) {
                     "当前浏览账号：${currentActiveAccount.accountName}。该账号需要重新认证，浏览将自动回退到匿名可见性。"
@@ -388,7 +392,6 @@ fun SteamAccountsSnapshot.toUiState(
                 "当前浏览账号：匿名。未登录时只能保证公开可见内容，部分成人内容或需要年龄确认的条目可能不会出现。"
             },
             loginDialogState = loginDialogState,
-            latestLoginDebugLogPath = latestLoginDebugLogPath,
         )
     }
 

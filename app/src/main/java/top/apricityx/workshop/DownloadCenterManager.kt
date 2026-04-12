@@ -326,6 +326,7 @@ class DownloadCenterManager private constructor(
         }
         val taskClient = OkHttpClient.Builder()
             .applyDefaultHttpTimeouts()
+            .applyAppNetworkLogging("download-task")
             .cookieJar(
                 SteamWebSessionCookieJar(
                     projectedCookiesProvider = { url ->
