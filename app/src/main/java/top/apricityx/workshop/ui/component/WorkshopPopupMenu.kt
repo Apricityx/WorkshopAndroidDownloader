@@ -22,12 +22,14 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -414,27 +416,30 @@ private fun LiquidPopupMenuSurface(
             WorkshopPopupLightBorderAlpha
         },
     )
+    val contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
 
-    Column(
-        modifier = modifier
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { WorkshopPopupShape },
-                effects = {
-                    vibrancy()
-                    blur(WorkshopPopupBlurRadius.toPx())
-                    lens(WorkshopPopupLensHeight.toPx(), WorkshopPopupLensAmount.toPx())
-                },
-                onDrawSurface = {
-                    drawRect(surfaceColor)
-                },
-            )
-            .clip(WorkshopPopupShape)
-            .border(width = 1.dp, color = borderColor, shape = WorkshopPopupShape)
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        content = content,
-    )
+    CompositionLocalProvider(LocalContentColor provides contentColor) {
+        Column(
+            modifier = modifier
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { WorkshopPopupShape },
+                    effects = {
+                        vibrancy()
+                        blur(WorkshopPopupBlurRadius.toPx())
+                        lens(WorkshopPopupLensHeight.toPx(), WorkshopPopupLensAmount.toPx())
+                    },
+                    onDrawSurface = {
+                        drawRect(surfaceColor)
+                    },
+                )
+                .clip(WorkshopPopupShape)
+                .border(width = 1.dp, color = borderColor, shape = WorkshopPopupShape)
+                .padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -455,20 +460,23 @@ private fun PlainPopupMenuSurface(
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
     }
+    val contentColor = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
 
-    Surface(
-        modifier = modifier,
-        shape = shape,
-        color = surfaceColor,
-        border = BorderStroke(1.dp, borderColor),
-        tonalElevation = if (liquidEnabled) 0.dp else 4.dp,
-        shadowElevation = if (liquidEnabled) 0.dp else 6.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            content = content,
-        )
+    CompositionLocalProvider(LocalContentColor provides contentColor) {
+        Surface(
+            modifier = modifier,
+            shape = shape,
+            color = surfaceColor,
+            border = BorderStroke(1.dp, borderColor),
+            tonalElevation = if (liquidEnabled) 0.dp else 4.dp,
+            shadowElevation = if (liquidEnabled) 0.dp else 6.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                content = content,
+            )
+        }
     }
 }
 
