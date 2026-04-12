@@ -27,6 +27,7 @@ import top.apricityx.workshop.steam.protocol.SteamPublishedFileQuery
 import top.apricityx.workshop.steam.protocol.SteamPublishedFileQueryResult
 import top.apricityx.workshop.steam.protocol.SteamWebAccessTokens
 import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
+import top.apricityx.workshop.steam.protocol.applySteamHttpCompatibility
 import java.util.UUID
 import java.io.IOException
 import java.security.SecureRandom
@@ -92,6 +93,7 @@ class SteamAuthRepository(context: Context) {
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .applyDefaultHttpTimeouts()
+            .applySteamHttpCompatibility()
             .applyAppNetworkLogging("steam-auth")
             .hostnameVerifier(experimentalWorkshopDirectAccessRuntime.hostnameVerifier)
             .addExperimentalWorkshopDirectAccess(

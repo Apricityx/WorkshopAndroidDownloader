@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
+import top.apricityx.workshop.steam.protocol.applySteamHttpCompatibility
 import top.apricityx.workshop.workshop.DownloadEvent
 import top.apricityx.workshop.workshop.DownloadState
 import top.apricityx.workshop.workshop.WorkshopDownloadEngine
@@ -326,6 +327,7 @@ class DownloadCenterManager private constructor(
         }
         val taskClient = OkHttpClient.Builder()
             .applyDefaultHttpTimeouts()
+            .applySteamHttpCompatibility()
             .applyAppNetworkLogging("download-task")
             .cookieJar(
                 SteamWebSessionCookieJar(

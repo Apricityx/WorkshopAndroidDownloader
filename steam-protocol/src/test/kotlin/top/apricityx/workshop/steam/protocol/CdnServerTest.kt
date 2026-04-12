@@ -5,16 +5,17 @@ import org.junit.Test
 
 class CdnServerTest {
     @Test
-    fun `optional https support follows reference client and uses http only`() {
+    fun `optional https support prefers https and keeps http fallback`() {
         val server = testServer(httpsSupport = "optional")
 
         assertThat(server.supportsHttps).isTrue()
         assertThat(server.requiresHttps).isFalse()
-        assertThat(server.secureScheme).isEqualTo("http")
-        assertThat(server.port).isEqualTo(80)
+        assertThat(server.secureScheme).isEqualTo("https")
+        assertThat(server.port).isEqualTo(443)
         assertThat(server.requestEndpoints()).containsExactly(
+            CdnRequestEndpoint(scheme = "https", port = 443),
             CdnRequestEndpoint(scheme = "http", port = 80),
-        )
+        ).inOrder()
     }
 
     @Test

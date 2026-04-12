@@ -13,7 +13,7 @@ class SteamAuthenticatedCleartextInterceptor(
         if (
             !request.url.isHttps &&
             hasAuthenticatedSteamSession() &&
-            request.url.host.isSteamAuthenticatedTrafficDomain() &&
+            request.url.host.isSteamWebAuthenticatedTrafficDomain() &&
             !allowAuthenticatedCleartextHttpProvider()
         ) {
             throw SteamAuthenticatedCleartextBlockedException(request.url.host)
@@ -28,14 +28,11 @@ class SteamAuthenticatedCleartextBlockedException(
     "当前设置禁止带 Steam 登录态的明文 HTTP 请求：$host。可在设置里开启后重试。",
 )
 
-internal fun String.isSteamAuthenticatedTrafficDomain(): Boolean {
+internal fun String.isSteamWebAuthenticatedTrafficDomain(): Boolean {
     val host = lowercase()
     return host.matchesDomainSuffix("steamcommunity.com") ||
         host.matchesDomainSuffix("steampowered.com") ||
-        host.matchesDomainSuffix("steamcontent.com") ||
-        host.matchesDomainSuffix("steam.clngaa.com") ||
-        host.matchesDomainSuffix("dl.eccdnx.com") ||
-        host.matchesDomainSuffix("pphimalayanrt.com")
+        host.matchesDomainSuffix("steamcontent.com")
 }
 
 private fun String.matchesDomainSuffix(suffix: String): Boolean =

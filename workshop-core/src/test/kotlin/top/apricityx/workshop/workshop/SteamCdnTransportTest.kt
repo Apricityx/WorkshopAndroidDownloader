@@ -89,6 +89,25 @@ class SteamCdnTransportTest {
         assertThat(url.encodedQuery).isEqualTo("token=abc")
     }
 
+    @Test
+    fun `buildRequestUrl prefers https endpoint when cdn advertises optional https`() {
+        val server = testServer(
+            host = "origin.example.net",
+            httpsSupport = "optional",
+        )
+
+        val url = transport.buildRequestUrl(
+            server = server,
+            endpoint = server.requestEndpoints().first(),
+            path = "depot/646570/manifest/1/5/999",
+            query = null,
+            proxyServer = null,
+        )
+
+        assertThat(url.scheme).isEqualTo("https")
+        assertThat(url.port).isEqualTo(443)
+    }
+
     private fun testServer(
         host: String,
         vHost: String = host,

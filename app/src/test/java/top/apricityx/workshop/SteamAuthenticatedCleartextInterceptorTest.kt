@@ -49,12 +49,12 @@ class SteamAuthenticatedCleartextInterceptorTest {
             allowAuthenticatedCleartextHttp = true,
         )
 
-        client.newCall(Request.Builder().url(steamHttpUrl("st.dl.eccdnx.com")).build()).execute().use { response ->
+        client.newCall(Request.Builder().url(steamHttpUrl("api.steampowered.com")).build()).execute().use { response ->
             assertThat(response.isSuccessful).isTrue()
         }
 
         val request = server.takeRequest()
-        assertThat(request.url.host).isEqualTo("st.dl.eccdnx.com")
+        assertThat(request.url.host).isEqualTo("api.steampowered.com")
     }
 
     @Test
@@ -71,6 +71,22 @@ class SteamAuthenticatedCleartextInterceptorTest {
 
         val request = server.takeRequest()
         assertThat(request.url.host).isEqualTo("dl.steam.clngaa.com")
+    }
+
+    @Test
+    fun allows_cdn_cleartext_requests_when_authenticated_session_is_present() {
+        server.enqueue(MockResponse.Builder().code(200).body("ok").build())
+        val client = testClient(
+            hasAuthenticatedSteamSession = true,
+            allowAuthenticatedCleartextHttp = false,
+        )
+
+        client.newCall(Request.Builder().url(steamHttpUrl("st.dl.eccdnx.com")).build()).execute().use { response ->
+            assertThat(response.isSuccessful).isTrue()
+        }
+
+        val request = server.takeRequest()
+        assertThat(request.url.host).isEqualTo("st.dl.eccdnx.com")
     }
 
     private fun testClient(

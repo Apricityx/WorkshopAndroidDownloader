@@ -40,6 +40,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import top.apricityx.workshop.steam.protocol.DEFAULT_HTTP_TIMEOUT_SECONDS
 import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
+import top.apricityx.workshop.steam.protocol.applySteamHttpCompatibility
 import top.apricityx.workshop.steam.protocol.SteamPublishedFileQuery
 import top.apricityx.workshop.steam.protocol.STEAM_PUBLISHED_FILE_QUERY_TYPE_RANKED_BY_TEXT_SEARCH
 import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
@@ -79,6 +80,7 @@ class WorkshopViewModel(
         createExperimentalWorkshopDirectAccessRuntime(application.filesDir)
     private val httpClient = OkHttpClient.Builder()
         .applyDefaultHttpTimeouts()
+        .applySteamHttpCompatibility()
         .applyAppNetworkLogging("workshop-web")
         .cookieJar(steamWebCookieJar)
         .hostnameVerifier(experimentalWorkshopDirectAccessRuntime.hostnameVerifier)
@@ -3412,7 +3414,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
 
 
 
