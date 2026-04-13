@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color.Companion.Unspecified
 import top.apricityx.workshop.ui.component.liquid.LiquidButton
 import top.apricityx.workshop.ui.component.liquid.LiquidSlider
 import top.apricityx.workshop.ui.component.liquid.LiquidToggle
+import top.apricityx.workshop.ui.theme.isLiteLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.LocalWorkshopBackdrop
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.shouldReduceLiquidGlassEffects
@@ -276,11 +277,13 @@ private fun WorkshopLiteAdaptiveButton(
     enabled: Boolean,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    val useBlackTextForTintedButtons = isLiteLiquidGlassFrontendEnabled() && !isDark
     val contentColor = when (variant) {
-        WorkshopButtonVariant.Primary -> Color.White
+        WorkshopButtonVariant.Primary -> if (useBlackTextForTintedButtons) Color.Black else Color.White
         WorkshopButtonVariant.Secondary -> MaterialTheme.colorScheme.onSurface
         WorkshopButtonVariant.Ghost -> MaterialTheme.colorScheme.onSurfaceVariant
-        WorkshopButtonVariant.Destructive -> Color.White
+        WorkshopButtonVariant.Destructive -> if (useBlackTextForTintedButtons) Color.Black else Color.White
     }
     val tintColor = when (variant) {
         WorkshopButtonVariant.Primary -> MaterialTheme.colorScheme.primary
