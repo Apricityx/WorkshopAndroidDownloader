@@ -386,10 +386,18 @@ class DownloadCenterManager private constructor(
                     is DownloadEvent.LogAppended -> appendTaskLog(task.id, event.line)
 
                     is DownloadEvent.Progress -> {
-                        val speedBytes = calculateSpeedBytesPerSecond(task.id, event.writtenBytes)
+                        val currentTask = _uiState.value.tasks.firstOrNull { it.id == task.id } ?: return@collect
+                        val progressUpdate = calculateProgressDisplayUpdate(
+                            taskId = task.id,
+                            currentProgress = currentTask.progress,
+                            event = event,
+                        )
+                        if (!progressUpdate.shouldEmit) {
+                            return@collect
+                        }
                         updateTask(task.id) { current ->
                             current.copy(
-                                progress = current.progress.merge(event, speedBytes),
+                                progress = current.progress.merge(event, progressUpdate.speedBytesPerSecond),
                                 updatedAtMillis = System.currentTimeMillis(),
                             )
                         }
@@ -594,24 +602,24 @@ class DownloadCenterManager private constructor(
         }
     }
 
-    private fun calculateSpeedBytesPerSecond(
+    private fun calculateProgressDisplayUpdate(
         taskId: String,
-        writtenBytes: Long,
-    ): Long? {
+        currentProgress: DownloadCenterProgressSnapshot,
+        event: DownloadEvent.Progress,
+    ): ProgressDisplayUpdate {
         val now = System.currentTimeMillis()
         synchronized(progressSamples) {
-            val previous = progressSamples[taskId]
-            progressSamples[taskId] = ProgressRateSample(writtenBytes = writtenBytes, timestampMillis = now)
-            if (previous == null || now <= previous.timestampMillis || writtenBytes < previous.writtenBytes) {
-                return null
-            }
-
-            val bytesDelta = writtenBytes - previous.writtenBytes
-            val timeDelta = now - previous.timestampMillis
-            if (bytesDelta <= 0L || timeDelta <= 0L) {
-                return null
-            }
-            return (bytesDelta * 1000L) / timeDelta
+            val update = computeProgressDisplayUpdate(
+                previous = progressSamples[taskId],
+                currentProgress = currentProgress,
+                event = event,
+                nowMillis = now,
+                minUiUpdateIntervalMillis = MIN_PROGRESS_UI_UPDATE_INTERVAL_MILLIS,
+                minSpeedSampleIntervalMillis = MIN_SPEED_SAMPLE_INTERVAL_MILLIS,
+                speedSmoothingPercent = SPEED_SMOOTHING_PERCENT,
+            )
+            progressSamples[taskId] = update.nextSample
+            return update
         }
     }
 
@@ -688,15 +696,13 @@ class DownloadCenterManager private constructor(
         val boundAccountName: String = "匿名",
     )
 
-    private data class ProgressRateSample(
-        val writtenBytes: Long,
-        val timestampMillis: Long,
-    )
-
     companion object {
         private const val MAX_LOG_LINES = 160
         private const val PERSIST_DEBOUNCE_MILLIS = 250L
         private const val RUNNER_POLL_INTERVAL_MILLIS = 250L
+        private const val MIN_PROGRESS_UI_UPDATE_INTERVAL_MILLIS = 250L
+        private const val MIN_SPEED_SAMPLE_INTERVAL_MILLIS = 1200L
+        private const val SPEED_SMOOTHING_PERCENT = 25
 
         @Volatile
         private var instance: DownloadCenterManager? = null
@@ -706,6 +712,107 @@ class DownloadCenterManager private constructor(
                 instance ?: DownloadCenterManager(application).also { instance = it }
             }
     }
+}
+
+internal data class ProgressRateSample(
+    val lastObservedWrittenBytes: Long,
+    val lastObservedTimestampMillis: Long,
+    val lastUiUpdateTimestampMillis: Long,
+    val speedAnchorWrittenBytes: Long,
+    val speedAnchorTimestampMillis: Long,
+    val speedBytesPerSecond: Long? = null,
+)
+
+internal data class ProgressDisplayUpdate(
+    val nextSample: ProgressRateSample,
+    val shouldEmit: Boolean,
+    val speedBytesPerSecond: Long?,
+)
+
+internal fun computeProgressDisplayUpdate(
+    previous: ProgressRateSample?,
+    currentProgress: DownloadCenterProgressSnapshot,
+    event: DownloadEvent.Progress,
+    nowMillis: Long,
+    minUiUpdateIntervalMillis: Long = 250L,
+    minSpeedSampleIntervalMillis: Long = 1200L,
+    speedSmoothingPercent: Int = 25,
+): ProgressDisplayUpdate {
+    val shouldResetSample =
+        previous == null ||
+            event.writtenBytes < previous.lastObservedWrittenBytes ||
+            nowMillis <= previous.lastObservedTimestampMillis
+    if (shouldResetSample) {
+        val nextSample = ProgressRateSample(
+            lastObservedWrittenBytes = event.writtenBytes,
+            lastObservedTimestampMillis = nowMillis,
+            lastUiUpdateTimestampMillis = nowMillis,
+            speedAnchorWrittenBytes = event.writtenBytes,
+            speedAnchorTimestampMillis = nowMillis,
+        )
+        return ProgressDisplayUpdate(
+            nextSample = nextSample,
+            shouldEmit = true,
+            speedBytesPerSecond = null,
+        )
+    }
+
+    var smoothedSpeedBytesPerSecond = previous.speedBytesPerSecond
+    var speedAnchorWrittenBytes = previous.speedAnchorWrittenBytes
+    var speedAnchorTimestampMillis = previous.speedAnchorTimestampMillis
+    val speedBytesDelta = event.writtenBytes - previous.speedAnchorWrittenBytes
+    val speedTimeDelta = nowMillis - previous.speedAnchorTimestampMillis
+    if (speedBytesDelta > 0L && speedTimeDelta >= minSpeedSampleIntervalMillis) {
+        val instantSpeedBytesPerSecond = (speedBytesDelta * 1000L) / speedTimeDelta
+        smoothedSpeedBytesPerSecond = smoothSpeedBytesPerSecond(
+            previous = previous.speedBytesPerSecond,
+            current = instantSpeedBytesPerSecond,
+            smoothingPercent = speedSmoothingPercent,
+        )
+        speedAnchorWrittenBytes = event.writtenBytes
+        speedAnchorTimestampMillis = nowMillis
+    }
+
+    val eventTotalBytes = event.totalBytes
+    val hasProgressMetadataChange =
+        event.totalBytes != null && event.totalBytes != currentProgress.totalBytes ||
+            event.totalChunks != null && event.totalChunks != currentProgress.totalChunks ||
+            event.totalFiles != null && event.totalFiles != currentProgress.totalFiles
+    val reachedKnownEnd = eventTotalBytes != null && eventTotalBytes > 0L && event.writtenBytes >= eventTotalBytes
+    val shouldEmit =
+        hasProgressMetadataChange ||
+            reachedKnownEnd ||
+            nowMillis - previous.lastUiUpdateTimestampMillis >= minUiUpdateIntervalMillis
+
+    val nextSample = ProgressRateSample(
+        lastObservedWrittenBytes = event.writtenBytes,
+        lastObservedTimestampMillis = nowMillis,
+        lastUiUpdateTimestampMillis = if (shouldEmit) nowMillis else previous.lastUiUpdateTimestampMillis,
+        speedAnchorWrittenBytes = speedAnchorWrittenBytes,
+        speedAnchorTimestampMillis = speedAnchorTimestampMillis,
+        speedBytesPerSecond = smoothedSpeedBytesPerSecond,
+    )
+    return ProgressDisplayUpdate(
+        nextSample = nextSample,
+        shouldEmit = shouldEmit,
+        speedBytesPerSecond = smoothedSpeedBytesPerSecond,
+    )
+}
+
+internal fun smoothSpeedBytesPerSecond(
+    previous: Long?,
+    current: Long,
+    smoothingPercent: Int = 25,
+): Long {
+    val boundedPercent = smoothingPercent.coerceIn(0, 100)
+    if (previous == null || boundedPercent == 100) {
+        return current
+    }
+    if (boundedPercent == 0) {
+        return previous
+    }
+    val retainedPercent = 100 - boundedPercent
+    return ((previous * retainedPercent) + (current * boundedPercent)) / 100L
 }
 
 private fun buildSessionConnector(

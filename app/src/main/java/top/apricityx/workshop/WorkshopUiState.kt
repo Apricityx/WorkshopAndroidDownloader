@@ -268,6 +268,14 @@ data class SteamAuthUiState(
     val loginDialogState: SteamLoginDialogUiState? = null,
 )
 
+data class SteamAccountListItemUiState(
+    val accountId: String? = null,
+    val accountName: String,
+    val isActive: Boolean,
+    val statusText: String,
+    val canManage: Boolean,
+)
+
 enum class SteamLoginInputMode {
     Credentials,
     RefreshToken,
@@ -393,6 +401,34 @@ fun SteamAccountsSnapshot.toUiState(
             },
             loginDialogState = loginDialogState,
         )
+    }
+
+fun SteamAuthUiState.accountListItems(): List<SteamAccountListItemUiState> =
+    buildList {
+        add(
+            SteamAccountListItemUiState(
+                accountName = "匿名",
+                isActive = activeAccountId == null,
+                statusText = if (activeAccountId == null) "当前浏览账号" else "匿名浏览",
+                canManage = false,
+            ),
+        )
+        accounts.forEach { account ->
+            add(
+                SteamAccountListItemUiState(
+                    accountId = account.accountId,
+                    accountName = account.accountName,
+                    isActive = account.isActive,
+                    statusText = when {
+                        account.requiresReauthentication ->
+                            "需要重新认证，浏览会回退到匿名，新下载也会被阻止。"
+                        account.isActive -> "当前浏览账号"
+                        else -> "已保存账号"
+                    },
+                    canManage = true,
+                ),
+            )
+        }
     }
 
 fun SteamGuardChallengeType?.isSteamConfirmationChallenge(): Boolean =

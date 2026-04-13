@@ -47,6 +47,7 @@ import top.apricityx.workshop.SettingsUiState
 import top.apricityx.workshop.SteamLoginDialogMode
 import top.apricityx.workshop.SteamLoginInputMode
 import top.apricityx.workshop.SteamLanguagePreference
+import top.apricityx.workshop.accountListItems
 import top.apricityx.workshop.canSwitchSteamLoginInputMode
 import top.apricityx.workshop.displayName
 import top.apricityx.workshop.isSteamConfirmationChallenge
@@ -54,7 +55,6 @@ import top.apricityx.workshop.steam.protocol.SteamGuardChallengeType
 import top.apricityx.workshop.update.UpdateSource
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.WorkshopButton
-import top.apricityx.workshop.ui.component.WorkshopDialog
 import top.apricityx.workshop.ui.component.WorkshopMessageBanner
 import top.apricityx.workshop.ui.component.WorkshopOutlinedButton
 import top.apricityx.workshop.ui.component.WorkshopOutlinedTextField
@@ -63,6 +63,7 @@ import top.apricityx.workshop.ui.component.WorkshopPopupMenuItem
 import top.apricityx.workshop.ui.component.WorkshopSlider
 import top.apricityx.workshop.ui.component.WorkshopSwitch
 import top.apricityx.workshop.ui.component.WorkshopTextButton
+import top.apricityx.workshop.ui.component.WorkshopTransparentGlassDialog
 import top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled
 import top.apricityx.workshop.ui.theme.workshopChromePadding
 import kotlinx.coroutines.delay
@@ -133,88 +134,72 @@ fun SettingsScreen(
                 .workshopChromePadding(topExtra = 16.dp, bottomExtra = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            val steamAccountItems = state.steamAuthState.accountListItems()
+            val selectedSteamAccount = steamAccountItems.firstOrNull { it.isActive } ?: steamAccountItems.first()
             SettingsSectionCard {
-            Text("Steam 账号", style = MaterialTheme.typography.titleLarge)
-            Text(
-                state.steamAuthState.statusSummary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                Text("Steam 账号", style = MaterialTheme.typography.titleLarge)
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                WorkshopButton(onClick = onOpenSteamLoginDialog) {
-                    Text("添加账号")
-                }
-                WorkshopOutlinedButton(onClick = onSwitchToAnonymousSteamAccount) {
-                    Text("切回匿名")
-                }
-            }
-            Text(
-                "Steam 登录过程摘要会直接写入运行日志；需要排查时，请在下方“日志”区域查看、分享或导出。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            if (state.steamAuthState.accounts.isEmpty()) {
-                Text(
-                    "当前没有已保存的 Steam 账号。",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    state.steamAuthState.accounts.forEach { account ->
-                        val statusText = when {
-                            account.requiresReauthentication ->
-                                "需要重新认证，浏览会回退到匿名，新下载也会被阻止。"
-                            account.isActive -> "当前浏览账号"
-                            else -> "已保存账号"
-                        }
-                        SettingsSectionCard {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                                ) {
-                                    Text(
-                                        text = account.accountName,
-                                        style = MaterialTheme.typography.titleMedium.copy(lineHeight = 22.sp),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = statusText,
-                                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    if (!account.isActive) {
-                                        WorkshopOutlinedButton(onClick = { onSetActiveSteamAccount(account.accountId) }) {
-                                            Text("设为当前")
-                                        }
-                                    }
-                                    SteamAccountActionsButton(
-                                        onReauthenticate = { onReauthenticateSteamAccount(account.accountId) },
-                                        onRemove = { onRemoveSteamAccount(account.accountId) },
-                                    )
-                                }
-                            }
-                        }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WorkshopButton(
+                        onClick = onOpenSteamLoginDialog,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("添加账号")
+                    }
+                    if (selectedSteamAccount.accountId != null) {
+                        SteamAccountActionsButton(
+                            modifier = Modifier.weight(1f),
+                            onReauthenticate = { onReauthenticateSteamAccount(selectedSteamAccount.accountId) },
+                            onRemove = { onRemoveSteamAccount(selectedSteamAccount.accountId) },
+                        )
                     }
                 }
-            }
+//            Text(
+//                "Steam 登录过程摘要会直接写入运行日志；需要排查时，请在下方“日志”区域查看、分享或导出。",
+//                style = MaterialTheme.typography.bodySmall,
+//                color = MaterialTheme.colorScheme.onSurfaceVariant,
+//            )
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "当前账号",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    SettingsChoiceDropdown(
+                        selectedOption = selectedSteamAccount,
+                        options = steamAccountItems,
+                        optionLabel = { it.accountName },
+                        onOptionSelected = { account ->
+                            account.accountId?.let(onSetActiveSteamAccount)
+                                ?: onSwitchToAnonymousSteamAccount()
+                        },
+                    )
+
+                    if (state.steamAuthState.accounts.isEmpty()) {
+                        Text(
+                            "当前没有已保存的 Steam 账号。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    if (selectedSteamAccount.accountId == null) {
+                        WorkshopMessageBanner(
+                            message = "当前处于匿名浏览状态，部分需要登录、年龄确认或受可见性限制的内容可能不会显示。",
+                            tone = MessageTone.Info,
+                        )
+                    } else {
+                        Text(
+                            text = selectedSteamAccount.statusText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             SettingsSectionCard {
@@ -366,20 +351,18 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            SettingsChoiceDropdown(
-                selectedOption = state.preferredUpdateSource,
-                options = state.availableUpdateSources,
-                optionLabel = { it.displayName },
-                onOptionSelected = onPreferredUpdateSourceSelected,
-            )
-
-            Text("当前版本：${state.currentVersionText}", style = MaterialTheme.typography.bodyMedium)
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                SettingsChoiceDropdown(
+                    selectedOption = state.preferredUpdateSource,
+                    options = state.availableUpdateSources,
+                    optionLabel = { it.displayName },
+                    onOptionSelected = onPreferredUpdateSourceSelected,
+                    modifier = Modifier.weight(1f),
+                )
                 WorkshopButton(
                     onClick = onManualCheckUpdates,
                     enabled = !state.updateCheckInProgress,
@@ -400,6 +383,8 @@ fun SettingsScreen(
                 }
             }
 
+            Text("当前版本：${state.currentVersionText}", style = MaterialTheme.typography.bodyMedium)
+
             Text("最近检查结果", style = MaterialTheme.typography.titleMedium)
             Text(
                 text = state.updateStatusSummary.ifBlank { "尚未执行过更新检查。" },
@@ -411,7 +396,7 @@ fun SettingsScreen(
             SettingsSectionCard {
             Text("下载与检查设置", style = MaterialTheme.typography.titleLarge)
             Text(
-                "单任务线程数影响模组分块下载；同时下载任务数影响下载中心里并行跑的任务数量；并发检查数影响模组库检查更新时同时发起的工坊详情请求数量。",
+                "线程数越大，下载速度越快，但对手机性能影响越大。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -774,13 +759,17 @@ private fun <T> SettingsChoiceDropdown(
 
 @Composable
 private fun SteamAccountActionsButton(
+    modifier: Modifier = Modifier,
     onReauthenticate: () -> Unit,
     onRemove: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Box {
-        WorkshopOutlinedButton(onClick = { expanded = true }) {
+    Box(modifier = modifier) {
+        WorkshopOutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Text("操作")
         }
         WorkshopPopupMenu(
@@ -831,7 +820,7 @@ private fun SteamLoginDialog(
     val isTokenMode = state.inputMode == SteamLoginInputMode.RefreshToken
     val isConfirmationChallenge = state.challengeType.isSteamConfirmationChallenge()
 
-    WorkshopDialog(
+    WorkshopTransparentGlassDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
