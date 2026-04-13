@@ -34,12 +34,48 @@ internal val SteamStoreWattToolkitRouteProfile = WattToolkitRouteProfile(
     bootstrapForwardTargets = listOf("steamstore.rmbgame.net"),
 )
 
+internal val GithubApiWattToolkitRouteProfile = WattToolkitRouteProfile(
+    name = "github-api",
+    cacheFileName = "watt-github-api-route-cache.json",
+    supportedHosts = setOf("api.github.com"),
+    bootstrapForwardTargets = listOf("githubapi.rmbgame.net"),
+)
+
+internal val GithubWebWattToolkitRouteProfile = WattToolkitRouteProfile(
+    name = "github-web",
+    cacheFileName = "watt-github-web-route-cache.json",
+    supportedHosts = setOf("github.com"),
+    bootstrapForwardTargets = emptyList(),
+)
+
+internal val GithubUserContentWattToolkitRouteProfile = WattToolkitRouteProfile(
+    name = "githubusercontent",
+    cacheFileName = "watt-githubusercontent-route-cache.json",
+    supportedHosts = setOf(
+        "raw.github.com",
+        "raw.githubusercontent.com",
+        "githubusercontent.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+    ),
+    bootstrapForwardTargets = emptyList(),
+)
+
 internal val DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS: Set<String> = SteamCommunityWattToolkitRouteProfile.supportedHosts
 internal val DEFAULT_WATT_TOOLKIT_STEAM_STORE_ROUTE_HOSTS: Set<String> = SteamStoreWattToolkitRouteProfile.supportedHosts
+internal val DEFAULT_WATT_TOOLKIT_GITHUB_API_ROUTE_HOSTS: Set<String> = GithubApiWattToolkitRouteProfile.supportedHosts
+internal val DEFAULT_WATT_TOOLKIT_GITHUB_WEB_ROUTE_HOSTS: Set<String> = GithubWebWattToolkitRouteProfile.supportedHosts
+internal val DEFAULT_WATT_TOOLKIT_GITHUB_USERCONTENT_ROUTE_HOSTS: Set<String> = GithubUserContentWattToolkitRouteProfile.supportedHosts
 
 private val defaultExperimentalWorkshopDirectAccessProfiles = listOf(
     SteamCommunityWattToolkitRouteProfile,
     SteamStoreWattToolkitRouteProfile,
+)
+
+private val defaultExperimentalGithubDirectAccessProfiles = listOf(
+    GithubApiWattToolkitRouteProfile,
+    GithubWebWattToolkitRouteProfile,
+    GithubUserContentWattToolkitRouteProfile,
 )
 
 internal data class ExperimentalWorkshopDirectAccessRuntime(
@@ -116,3 +152,53 @@ internal fun defaultBootstrapRouteForProfile(routeProfile: WattToolkitRouteProfi
                 ignoreSslCertVerification = true,
             )
         }
+
+internal data class ExperimentalGithubDirectAccessRuntime(
+    val resolvers: List<WattToolkitWorkshopRouteResolver>,
+    val hostnameVerifier: HostnameVerifier,
+    val directHttpClient: OkHttpClient,
+)
+
+internal fun createExperimentalGithubDirectAccessRuntime(
+    filesDir: File,
+    routeProfiles: List<WattToolkitRouteProfile> = defaultExperimentalGithubDirectAccessProfiles,
+): ExperimentalGithubDirectAccessRuntime {
+    val resolvers = routeProfiles.map { routeProfile ->
+        WattToolkitWorkshopRouteResolver(
+            routeProfile = routeProfile,
+            routeStore = createFileBackedWattToolkitWorkshopRouteStore(
+                filesDir = filesDir,
+                routeProfile = routeProfile,
+            ),
+        )
+    }
+    val hostnameVerifier = WorkshopDirectHostnameVerifier { host ->
+        resolvers.any { resolver -> resolver.allowsUnsafeHostnameBypass(host) }
+    }
+    val directHttpClient = OkHttpClient.Builder()
+        .applyDefaultHttpTimeouts()
+        .applyAppNetworkLogging("github-update")
+        .hostnameVerifier(hostnameVerifier)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .build()
+    return ExperimentalGithubDirectAccessRuntime(
+        resolvers = resolvers,
+        hostnameVerifier = hostnameVerifier,
+        directHttpClient = directHttpClient,
+    )
+}
+
+internal fun OkHttpClient.Builder.addExperimentalGithubDirectAccess(
+    runtime: ExperimentalGithubDirectAccessRuntime,
+): OkHttpClient.Builder =
+    apply {
+        addInterceptor(
+            ExperimentalGithubDirectAccessInterceptor(
+                enabledProvider = { true },
+                routeResolvers = runtime.resolvers,
+                directCallFactory = runtime.directHttpClient,
+            ),
+        )
+    }

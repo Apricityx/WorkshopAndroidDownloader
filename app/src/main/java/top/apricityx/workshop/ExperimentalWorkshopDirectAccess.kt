@@ -146,6 +146,114 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
     }
 }
 
+internal class ExperimentalGithubDirectAccessInterceptor(
+    private val enabledProvider: () -> Boolean,
+    private val routeResolvers: List<WattToolkitWorkshopRouteResolver>,
+    private val directCallFactory: Call.Factory,
+    private val maxRedirects: Int = MAX_FOLLOW_UPS,
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (!enabledProvider() || routeResolvers.none { resolver -> resolver.supports(request.url.host) }) {
+            return chain.proceed(request)
+        }
+        return executeDirectAccessRequest(request)
+    }
+
+    private fun executeDirectAccessRequest(initialLogicalRequest: Request): Response {
+        var logicalRequest = initialLogicalRequest
+        var followUpCount = 0
+        while (true) {
+            val resolver = routeResolvers.firstOrNull { candidate -> candidate.supports(logicalRequest.url.host) }
+            val route = resolver?.resolveRouteForHost(logicalRequest.url.host)
+            if (resolver != null && route == null) {
+                workshopLogWarn(
+                    "Experimental GitHub direct access has no Watt route; falling back to original host=${logicalRequest.url.host}.",
+                )
+            }
+            val networkRequest = buildNetworkRequest(logicalRequest, route)
+            val response = directCallFactory.newCall(networkRequest).execute()
+            val redirectTarget = response.redirectTarget(logicalRequest.url, route)
+            if (redirectTarget == null) {
+                return response.newBuilder()
+                    .request(logicalRequest)
+                    .build()
+            }
+            if (followUpCount >= maxRedirects) {
+                response.close()
+                throw ProtocolException("Too many experimental GitHub direct-access redirects: $maxRedirects")
+            }
+            workshopLogInfo(
+                "Experimental GitHub direct access following redirect ${logicalRequest.url.host}${logicalRequest.url.encodedPath} -> ${redirectTarget.host}${redirectTarget.encodedPath}",
+            )
+            val nextLogicalRequest = buildRedirectRequest(
+                previousLogicalRequest = logicalRequest,
+                redirectUrl = redirectTarget,
+                responseCode = response.code,
+            )
+            response.close()
+            logicalRequest = nextLogicalRequest
+            followUpCount++
+        }
+    }
+
+    private fun buildNetworkRequest(
+        logicalRequest: Request,
+        route: WattToolkitWorkshopRoute?,
+    ): Request {
+        if (route == null) {
+            return logicalRequest
+        }
+        val logicalUrl = route.normalizeLogicalUrl(
+            url = logicalRequest.url,
+            fallbackLogicalHost = logicalRequest.url.host,
+        )
+        val shouldForward = route.matchesLogicalHost(logicalUrl.host)
+        val networkUrl = if (shouldForward) route.buildForwardedUrl(logicalUrl) else logicalUrl
+        if (shouldForward) {
+            workshopLogInfo(
+                "Experimental GitHub direct access rewriting ${logicalUrl.host}${logicalUrl.encodedPath} -> ${networkUrl.host}${networkUrl.encodedPath} ignoreSsl=${route.ignoreSslCertVerification}",
+            )
+        }
+        return logicalRequest.newBuilder()
+            .url(networkUrl)
+            .apply {
+                if (shouldForward) {
+                    header("Host", logicalUrl.host)
+                } else {
+                    removeHeader("Host")
+                }
+            }
+            .build()
+    }
+
+    private fun buildRedirectRequest(
+        previousLogicalRequest: Request,
+        redirectUrl: HttpUrl,
+        responseCode: Int,
+    ): Request {
+        val preserveBody = responseCode == HTTP_TEMP_REDIRECT || responseCode == HTTP_PERM_REDIRECT
+        val originalMethod = previousLogicalRequest.method
+        val redirectMethod = when {
+            preserveBody -> originalMethod
+            originalMethod == HTTP_METHOD_GET || originalMethod == HTTP_METHOD_HEAD -> originalMethod
+            else -> HTTP_METHOD_GET
+        }
+        val redirectBody: RequestBody? = if (redirectMethod == originalMethod) previousLogicalRequest.body else null
+        return previousLogicalRequest.newBuilder()
+            .url(redirectUrl)
+            .method(redirectMethod, redirectBody)
+            .apply {
+                if (redirectBody == null) {
+                    removeHeader("Transfer-Encoding")
+                    removeHeader("Content-Length")
+                    removeHeader("Content-Type")
+                }
+            }
+            .build()
+    }
+}
+
 internal class WorkshopDirectHostnameVerifier(
     private val defaultVerifier: HostnameVerifier = HttpsURLConnection.getDefaultHostnameVerifier(),
     private val unsafeHostBypassProvider: (String) -> Boolean,
@@ -524,7 +632,7 @@ private fun Throwable.isRetryableWattRouteFetchFailure(): Boolean =
 
 private fun Response.redirectTarget(
     logicalUrl: HttpUrl,
-    route: WattToolkitWorkshopRoute,
+    route: WattToolkitWorkshopRoute?,
 ): HttpUrl? {
     if (code !in REDIRECT_RESPONSE_CODES) {
         return null
@@ -534,10 +642,10 @@ private fun Response.redirectTarget(
         return null
     }
     return logicalUrl.resolve(location)?.let { resolvedUrl ->
-        route.normalizeLogicalUrl(
+        route?.normalizeLogicalUrl(
             url = resolvedUrl,
             fallbackLogicalHost = logicalUrl.host,
-        )
+        ) ?: resolvedUrl
     }
 }
 
@@ -574,6 +682,8 @@ private data class PersistedWattToolkitWorkshopRouteSnapshot(
 private data class WattAccelerateProject(
     @SerialName("MatchDomainNames")
     val matchDomainNames: String = "",
+    @SerialName("ListenDomainNames")
+    val listenDomainNames: String = "",
     @SerialName("ForwardDomainNames")
     val forwardDomainNames: String = "",
     @SerialName("ProxyType")
@@ -585,8 +695,13 @@ private data class WattAccelerateProject(
 )
 
 private fun WattAccelerateProject.parseLogicalHosts(): Set<String> =
-    matchDomainNames
-        .split(';')
+    parseHosts(matchDomainNames, listenDomainNames)
+
+private fun parseHosts(
+    vararg hostGroups: String,
+): Set<String> =
+    hostGroups.asSequence()
+        .flatMap { hosts -> hosts.split(';').asSequence() }
         .map(String::trim)
         .filter(String::isNotEmpty)
         .mapNotNull { match ->

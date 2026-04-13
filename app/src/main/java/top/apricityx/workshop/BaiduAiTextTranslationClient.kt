@@ -40,6 +40,7 @@ class BaiduAiTextTranslationClient(
         sourceLanguage: String,
         targetLanguage: String,
         credentials: BaiduTranslationCredentials,
+        reference: String? = null,
     ): String = withContext(Dispatchers.IO) {
         require(credentials.isConfigured()) {
             "请先在设置中配置百度大模型文本翻译的 AppID 和 API Key。"
@@ -49,12 +50,21 @@ class BaiduAiTextTranslationClient(
         if (normalizedText.isBlank()) {
             return@withContext normalizedText
         }
+        val normalizedReference = reference
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+
+        workshopLogInfo(
+            "BAIDU translationPrompt from=$sourceLanguage to=$targetLanguage reference=${normalizedReference ?: "<none>"}",
+        )
 
         val requestBody = buildJsonObject {
             put("appid", credentials.appId)
             put("from", sourceLanguage)
             put("to", targetLanguage)
             put("q", normalizedText)
+            put("model_type", MODEL_TYPE_LLM)
+            normalizedReference?.let { put("reference", it) }
         }.toString().toRequestBody(JSON_MEDIA_TYPE)
 
         val request = Request.Builder()
@@ -149,6 +159,7 @@ class BaiduAiTextTranslationClient(
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private const val MODEL_TYPE_LLM = "llm"
         private val PREFERRED_RESULT_KEYS = listOf(
             "dst",
             "translation",

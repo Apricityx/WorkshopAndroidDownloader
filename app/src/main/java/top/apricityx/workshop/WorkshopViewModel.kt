@@ -78,6 +78,8 @@ class WorkshopViewModel(
     )
     private val experimentalWorkshopDirectAccessRuntime =
         createExperimentalWorkshopDirectAccessRuntime(application.filesDir)
+    private val experimentalGithubDirectAccessRuntime =
+        createExperimentalGithubDirectAccessRuntime(application.filesDir)
     private val httpClient = OkHttpClient.Builder()
         .applyDefaultHttpTimeouts()
         .applySteamHttpCompatibility()
@@ -117,7 +119,10 @@ class WorkshopViewModel(
     private val modLibraryUpdateStateStore =
         ModLibraryUpdateStateStore(File(application.filesDir, "mod-library/update-state.json"))
     private val downloadCenterManager = DownloadCenterManager.getInstance(application)
-    private val updateService = WorkshopUpdateService(httpClient)
+    private val updateService = WorkshopUpdateService(
+        baseClient = httpClient,
+        directAccessRuntime = experimentalGithubDirectAccessRuntime,
+    )
     private val baiduAiTextTranslationClient = BaiduAiTextTranslationClient()
 
     private val _uiState = MutableStateFlow(createInitialUiState())
@@ -1750,6 +1755,10 @@ class WorkshopViewModel(
                 translateWithBaiduCredentials(
                     text = description,
                     credentials = credentials,
+                    reference = buildBaiduModDescriptionReference(
+                        modTitle = detailState.detail?.title ?: detailState.item.title,
+                        gameTitle = resolveGameTitleForTranslation(targetAppId).orEmpty(),
+                    ),
                 )
             }.onSuccess { translatedText ->
                 _uiState.update { state ->
@@ -1811,6 +1820,10 @@ class WorkshopViewModel(
                 translateWithBaiduCredentials(
                     text = description,
                     credentials = credentials,
+                    reference = buildBaiduModDescriptionReference(
+                        modTitle = selectedEntry.itemTitle,
+                        gameTitle = selectedEntry.gameTitle,
+                    ),
                 )
             }.onSuccess { translatedText ->
                 _uiState.update { state ->
@@ -1851,6 +1864,7 @@ class WorkshopViewModel(
         text: String,
         credentials: BaiduTranslationCredentials,
         targetLocale: Locale = Locale.getDefault(),
+        reference: String? = null,
     ): String {
         val normalizedText = text.trim()
         if (normalizedText.isBlank()) {
@@ -1868,6 +1882,7 @@ class WorkshopViewModel(
             sourceLanguage = BAIDU_AUTO_DETECT_LANGUAGE,
             targetLanguage = targetLanguage,
             credentials = credentials,
+            reference = reference,
         )
     }
 
@@ -2485,6 +2500,14 @@ class WorkshopViewModel(
             ?: _uiState.value.libraryGames.firstOrNull { game -> game.appId == appId }?.name
             ?: _uiState.value.modLibraryState.items.firstOrNull { group -> group.appId == appId }?.gameTitle
             ?: "Workshop"
+
+    private fun resolveGameTitleForTranslation(appId: UInt): String? =
+        _uiState.value.gameWorkshopState
+            ?.game
+            ?.takeIf { game -> game.appId == appId }
+            ?.name
+            ?: _uiState.value.libraryGames.firstOrNull { game -> game.appId == appId }?.name
+            ?: _uiState.value.modLibraryState.items.firstOrNull { group -> group.appId == appId }?.gameTitle
 
     private fun showAddGameMessage(message: String) {
         _uiState.update { state ->
@@ -3475,8 +3498,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
-
 
 
 

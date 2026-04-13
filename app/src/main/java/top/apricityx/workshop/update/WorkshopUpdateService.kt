@@ -9,15 +9,24 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import top.apricityx.workshop.BuildConfig
+import top.apricityx.workshop.ExperimentalGithubDirectAccessRuntime
+import top.apricityx.workshop.addExperimentalGithubDirectAccess
 import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
 
-class WorkshopUpdateService(
+internal class WorkshopUpdateService(
     baseClient: OkHttpClient,
+    directAccessRuntime: ExperimentalGithubDirectAccessRuntime? = null,
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     private val client = baseClient.newBuilder()
         .applyDefaultHttpTimeouts()
         .followRedirects(true)
+        .apply {
+            if (directAccessRuntime != null) {
+                hostnameVerifier(directAccessRuntime.hostnameVerifier)
+                addExperimentalGithubDirectAccess(directAccessRuntime)
+            }
+        }
         .build()
 
     suspend fun checkForUpdates(

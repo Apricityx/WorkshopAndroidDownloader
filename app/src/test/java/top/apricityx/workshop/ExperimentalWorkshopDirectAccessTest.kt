@@ -288,6 +288,54 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
+    fun routeResolver_matches_github_release_hosts_from_listen_domain_names() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "githubusercontent.com;raw.github.com",
+                              "ListenDomainNames": "raw.github.com;raw.githubusercontent.com;objects.githubusercontent.com;release-assets.githubusercontent.com",
+                              "ForwardDomainNames": "23.235.37.133",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ).build(),
+        )
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = GithubUserContentWattToolkitRouteProfile,
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+        )
+
+        val route = resolver.resolveRouteForHost("objects.githubusercontent.com")
+
+        assertThat(route).isEqualTo(
+            WattToolkitWorkshopRoute(
+                logicalHosts = setOf(
+                    "githubusercontent.com",
+                    "raw.github.com",
+                    "raw.githubusercontent.com",
+                    "objects.githubusercontent.com",
+                    "release-assets.githubusercontent.com",
+                ),
+                forwardTargets = listOf("23.235.37.133"),
+                ignoreSslCertVerification = true,
+            ),
+        )
+    }
+
+    @Test
     fun routeResolver_retries_transient_failures_before_succeeding() {
         apiServer.enqueue(
             MockResponse.Builder()
