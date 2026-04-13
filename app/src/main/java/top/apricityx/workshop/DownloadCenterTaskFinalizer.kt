@@ -2,9 +2,6 @@ package top.apricityx.workshop
 
 import android.app.Application
 import java.io.File
-import okhttp3.OkHttpClient
-import top.apricityx.workshop.data.WorkshopDetailRepository
-import top.apricityx.workshop.steam.protocol.applyDefaultHttpTimeouts
 import top.apricityx.workshop.workshop.DownloadedFileInfo
 
 class DownloadCenterTaskFinalizer(
@@ -13,16 +10,6 @@ class DownloadCenterTaskFinalizer(
     private val modLibraryRepository: ModLibraryRepository = ModLibraryRepository(application),
     private val previewImageCache: WorkshopPreviewImageCache = WorkshopPreviewImageCache(application),
 ) {
-    private val settingsRepository = DownloadSettingsRepository(application)
-    private val workshopDetailRepository = WorkshopDetailRepository(
-        client = OkHttpClient.Builder()
-            .applyDefaultHttpTimeouts()
-            .applyAppNetworkLogging("download-finalizer")
-            .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
-            .build(),
-        languagePreferenceProvider = settingsRepository::getSteamLanguagePreference,
-    )
-
     suspend fun finalizeSuccessfulDownload(
         task: DownloadCenterTaskUiState,
         stagingDir: File,
@@ -49,18 +36,13 @@ class DownloadCenterTaskFinalizer(
             log = log,
         )
         log("封面缓存阶段结束。previewImagePath=${previewImagePath ?: "<none>"}")
-        val changeNotes = loadChangeNotes(
-            task = task,
-            log = log,
-        )
-        log("更新日志阶段结束。length=${changeNotes.length}")
         syncModLibrary(
             task = task,
             itemTitle = resolvedItemTitle,
             description = metadata?.description.orEmpty(),
-            changeNotes = changeNotes,
             version = version,
             previewImagePath = previewImagePath,
+            previewImageUrl = metadata?.previewImageUrl.orEmpty(),
             exportedFiles = exportedFiles,
             log = log,
         )
@@ -95,32 +77,13 @@ class DownloadCenterTaskFinalizer(
         )
     }
 
-    private suspend fun loadChangeNotes(
-        task: DownloadCenterTaskUiState,
-        log: suspend (String) -> Unit,
-    ): String {
-        log("开始拉取模组更新日志。publishedFileId=${task.publishedFileId}")
-        return runCatching {
-            workshopDetailRepository.loadChangeNotesMarkdown(task.publishedFileId)
-        }.fold(
-            onSuccess = { markdown ->
-                log("模组更新日志拉取完成。length=${markdown.length}")
-                markdown
-            },
-            onFailure = { error ->
-                log("模组更新日志拉取失败：${error.summary()}")
-                ""
-            },
-        )
-    }
-
     private suspend fun syncModLibrary(
         task: DownloadCenterTaskUiState,
         itemTitle: String,
         description: String,
-        changeNotes: String,
         version: WorkshopModVersion,
         previewImagePath: String?,
+        previewImageUrl: String,
         exportedFiles: List<ExportedDownloadFile>,
         log: suspend (String) -> Unit,
     ) {
@@ -132,8 +95,8 @@ class DownloadCenterTaskFinalizer(
                 gameTitle = task.gameTitle,
                 itemTitle = itemTitle,
                 description = description,
-                changeNotes = changeNotes,
                 previewImagePath = previewImagePath,
+                previewImageUrl = previewImageUrl,
                 versionId = version.versionId,
                 versionUpdatedAtMillis = version.updatedAtMillis,
                 files = exportedFiles,

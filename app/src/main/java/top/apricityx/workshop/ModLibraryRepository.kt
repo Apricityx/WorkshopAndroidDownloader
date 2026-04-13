@@ -35,7 +35,9 @@ class ModLibraryRepository(
         itemTitle: String,
         description: String = "",
         changeNotes: String = "",
+        changeNotesFetched: Boolean = false,
         previewImagePath: String? = null,
+        previewImageUrl: String = "",
         versionId: String = LEGACY_MOD_VERSION_ID,
         versionUpdatedAtMillis: Long? = null,
         files: List<ExportedDownloadFile>,
@@ -52,8 +54,11 @@ class ModLibraryRepository(
                 gameTitle = gameTitle,
                 itemTitle = itemTitle,
                 description = description.ifBlank { existingEntry?.description.orEmpty() },
-                changeNotes = changeNotes.ifBlank { existingEntry?.changeNotes.orEmpty() },
+                changeNotes = changeNotes.takeIf { changeNotesFetched || it.isNotBlank() }
+                    ?: existingEntry?.changeNotes.orEmpty(),
+                changeNotesFetched = changeNotesFetched || existingEntry?.changeNotesFetched == true,
                 previewImagePath = previewImagePath ?: existingEntry?.previewImagePath?.takeIf(::isExistingFile),
+                previewImageUrl = previewImageUrl.ifBlank { existingEntry?.previewImageUrl.orEmpty() },
                 versionId = normalizedVersionId,
                 versionUpdatedAtMillis = versionUpdatedAtMillis,
                 storedAtMillis = nowMillis(),
@@ -64,6 +69,71 @@ class ModLibraryRepository(
             store.saveEntries(updated)
             updated
         }
+    }
+
+    suspend fun updateChangeNotes(
+        appId: UInt,
+        publishedFileId: ULong,
+        changeNotes: String,
+    ): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
+        store.withFileLock {
+            val updated = store.loadEntries()
+                .map { entry ->
+                    if (entry.appId == appId && entry.publishedFileId == publishedFileId) {
+                        entry.copy(
+                            changeNotes = changeNotes,
+                            changeNotesFetched = true,
+                        )
+                    } else {
+                        entry
+                    }
+                }
+                .sortedForDisplay()
+            store.saveEntries(updated)
+            updated
+        }
+    }
+
+    suspend fun updatePreviewImageMetadata(
+        appId: UInt,
+        publishedFileId: ULong,
+        previewImageUrl: String,
+        previewImagePath: String? = null,
+    ): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
+        store.withFileLock {
+            val updated = store.loadEntries()
+                .map { entry ->
+                    if (entry.appId == appId && entry.publishedFileId == publishedFileId) {
+                        entry.copy(
+                            previewImagePath = previewImagePath ?: entry.previewImagePath?.takeIf(::isExistingFile),
+                            previewImageUrl = previewImageUrl.ifBlank { entry.previewImageUrl },
+                        )
+                    } else {
+                        entry
+                    }
+                }
+                .sortedForDisplay()
+            store.saveEntries(updated)
+            updated
+        }
+    }
+
+    suspend fun cachePreviewImage(
+        appId: UInt,
+        publishedFileId: ULong,
+        previewImageUrl: String,
+    ): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
+        val cachedPath = previewImageCache.cachePreviewImage(
+            appId = appId,
+            publishedFileId = publishedFileId,
+            imageUrl = previewImageUrl,
+        )
+        updatePreviewImageMetadata(
+            appId = appId,
+            publishedFileId = publishedFileId,
+            previewImageUrl = previewImageUrl,
+            previewImagePath = cachedPath,
+        )
     }
 
     suspend fun deleteMod(entry: DownloadedModEntry): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
@@ -152,7 +222,9 @@ internal fun mergeIndexedAndLocalMods(
                 itemTitle = existing?.itemTitle ?: local.itemTitle.orEmpty().ifBlank { "模组 ${local.publishedFileId}" },
                 description = existing?.description.orEmpty(),
                 changeNotes = existing?.changeNotes.orEmpty(),
+                changeNotesFetched = existing?.changeNotesFetched ?: false,
                 previewImagePath = existing?.previewImagePath?.takeIf(::isExistingFile),
+                previewImageUrl = existing?.previewImageUrl.orEmpty(),
                 versionId = normalizeModVersionId(existing?.versionId ?: local.versionId),
                 versionUpdatedAtMillis = existing?.versionUpdatedAtMillis ?: local.versionUpdatedAtMillis,
                 storedAtMillis = existing?.storedAtMillis

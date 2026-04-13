@@ -1188,16 +1188,19 @@ class WorkshopViewModel(
             )
         }
         navigateTo(WorkshopScreenDestination.ModDetail)
+        ensureModDetailPreviewCached(entry)
     }
 
     fun openModLibraryChangeNotes(group: DownloadedModGroup) {
         val targetGroupKey = group.modGroupKey()
-        val cachedMarkdown = _uiState.value.modLibraryState.changeNotesDialogState
+        val dialogMarkdown = _uiState.value.modLibraryState.changeNotesDialogState
             ?.takeIf { dialogState -> dialogState.group.matches(group) }
             ?.markdown
-            ?.takeIf(String::isNotBlank)
-            ?: group.changeNotes
-        val shouldLoad = cachedMarkdown.isBlank()
+            .orEmpty()
+        val cachedMarkdown = dialogMarkdown.takeIf(String::isNotBlank)
+            ?: group.changeNotes.takeIf { group.changeNotesFetched }
+            .orEmpty()
+        val shouldLoad = !group.changeNotesFetched && dialogMarkdown.isBlank()
 
         _uiState.update { state ->
             val resolvedGroup = state.modLibraryState.items.firstOrNull { it.matches(group) } ?: group
@@ -1223,14 +1226,24 @@ class WorkshopViewModel(
                     detailRepository.loadChangeNotesMarkdown(group.publishedFileId)
                 }
             }.onSuccess { markdown ->
+                val updatedEntries = runCatching {
+                    modLibraryRepository.updateChangeNotes(
+                        appId = group.appId,
+                        publishedFileId = group.publishedFileId,
+                        changeNotes = markdown,
+                    )
+                }.getOrNull()
                 _uiState.update { state ->
-                    val dialogState = state.modLibraryState.changeNotesDialogState ?: return@update state
+                    val nextState = updatedEntries?.let { entries ->
+                        applyModLibraryEntries(state, entries)
+                    } ?: state
+                    val dialogState = nextState.modLibraryState.changeNotesDialogState ?: return@update nextState
                     if (dialogState.group.modGroupKey() != targetGroupKey) {
-                        return@update state
+                        return@update nextState
                     }
-                    val resolvedGroup = state.modLibraryState.items.firstOrNull { it.matches(group) } ?: dialogState.group
-                    state.copy(
-                        modLibraryState = state.modLibraryState.copy(
+                    val resolvedGroup = nextState.modLibraryState.items.firstOrNull { it.matches(group) } ?: dialogState.group
+                    nextState.copy(
+                        modLibraryState = nextState.modLibraryState.copy(
                             changeNotesDialogState = dialogState.copy(
                                 group = resolvedGroup,
                                 markdown = markdown,
@@ -1269,6 +1282,54 @@ class WorkshopViewModel(
                     changeNotesDialogState = null,
                 ),
             )
+        }
+    }
+
+    private fun ensureModDetailPreviewCached(group: DownloadedModGroup) {
+        if (group.previewImagePath?.let(::File)?.isFile == true) {
+            return
+        }
+        val appId = group.appId
+        val publishedFileId = group.publishedFileId
+        viewModelScope.launch {
+            val resolvedPreviewUrl = runCatching {
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    group.previewImageUrl.takeIf(String::isNotBlank)
+                        ?: detailRepository.loadWorkshopItemDetail(
+                            item = group.latestVersion().toWorkshopBrowseItem(),
+                            includeChangeNotes = false,
+                        ).previewImageUrl
+                }
+            }.getOrNull()
+                ?.trim()
+                .orEmpty()
+            if (resolvedPreviewUrl.isBlank()) {
+                return@launch
+            }
+
+            val urlUpdatedEntries = if (group.previewImageUrl.isBlank()) {
+                runCatching {
+                    modLibraryRepository.updatePreviewImageMetadata(
+                        appId = appId,
+                        publishedFileId = publishedFileId,
+                        previewImageUrl = resolvedPreviewUrl,
+                    )
+                }.getOrNull()
+            } else {
+                null
+            }
+            if (urlUpdatedEntries != null) {
+                _uiState.update { state -> applyModLibraryEntries(state, urlUpdatedEntries) }
+            }
+
+            val cachedEntries = runCatching {
+                modLibraryRepository.cachePreviewImage(
+                    appId = appId,
+                    publishedFileId = publishedFileId,
+                    previewImageUrl = resolvedPreviewUrl,
+                )
+            }.getOrNull() ?: return@launch
+            _uiState.update { state -> applyModLibraryEntries(state, cachedEntries) }
         }
     }
 
@@ -3383,7 +3444,7 @@ private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
         publishedFileId = publishedFileId,
         title = itemTitle,
         authorName = "",
-        previewImageUrl = "",
+        previewImageUrl = previewImageUrl,
         descriptionSnippet = description,
     )
 
@@ -3414,8 +3475,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
-
 
 
 

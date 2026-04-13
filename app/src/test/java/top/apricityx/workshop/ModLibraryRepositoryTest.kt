@@ -16,7 +16,9 @@ class ModLibraryRepositoryTest {
                 gameTitle = "Slay the Spire",
                 itemTitle = "Skip The Spire",
                 description = "Indexed description",
+                changeNotesFetched = true,
                 previewImagePath = previewFile.absolutePath,
+                previewImageUrl = "https://cdn.example.com/skip.webp",
                 versionId = "updated-1772900923",
                 versionUpdatedAtMillis = 1_772_900_923_000L,
                 storedAtMillis = 100L,
@@ -53,7 +55,9 @@ class ModLibraryRepositoryTest {
         assertThat(merged[1].gameTitle).isEqualTo("Slay the Spire")
         assertThat(merged[1].itemTitle).isEqualTo("Skip The Spire")
         assertThat(merged[1].description).isEqualTo("Indexed description")
+        assertThat(merged[1].changeNotesFetched).isTrue()
         assertThat(merged[1].previewImagePath).isEqualTo(previewFile.absolutePath)
+        assertThat(merged[1].previewImageUrl).isEqualTo("https://cdn.example.com/skip.webp")
         assertThat(merged[1].files.map(ExportedDownloadFile::relativePath)).containsExactly("mods/Skip The Spire.jar")
         previewFile.delete()
     }

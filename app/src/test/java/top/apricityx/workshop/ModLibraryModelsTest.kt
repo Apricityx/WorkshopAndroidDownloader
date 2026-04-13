@@ -14,7 +14,9 @@ class ModLibraryModelsTest {
                 itemTitle = "Skip The Spire",
                 description = "Latest description",
                 changeNotes = "### Update: latest",
+                changeNotesFetched = true,
                 previewImagePath = "D:/covers/latest.webp",
+                previewImageUrl = "https://cdn.example.com/latest.webp",
                 versionId = "updated-2",
                 versionUpdatedAtMillis = 2_000L,
                 storedAtMillis = 2_000L,
@@ -51,7 +53,9 @@ class ModLibraryModelsTest {
         assertThat(grouped[0].modGroupKey()).isEqualTo("646570-3677098410")
         assertThat(grouped[0].description).isEqualTo("Latest description")
         assertThat(grouped[0].changeNotes).isEqualTo("### Update: latest")
+        assertThat(grouped[0].changeNotesFetched).isTrue()
         assertThat(grouped[0].previewImagePath).isEqualTo("D:/covers/latest.webp")
+        assertThat(grouped[0].previewImageUrl).isEqualTo("https://cdn.example.com/latest.webp")
         assertThat(grouped[0].versions.map(DownloadedModEntry::versionId))
             .containsExactly("updated-2", "updated-1")
             .inOrder()

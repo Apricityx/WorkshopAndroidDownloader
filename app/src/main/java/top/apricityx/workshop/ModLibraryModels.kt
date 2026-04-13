@@ -11,7 +11,9 @@ data class DownloadedModEntry(
     val itemTitle: String,
     val description: String = "",
     val changeNotes: String = "",
+    val changeNotesFetched: Boolean = false,
     val previewImagePath: String? = null,
+    val previewImageUrl: String = "",
     val versionId: String = LEGACY_MOD_VERSION_ID,
     val versionUpdatedAtMillis: Long? = null,
     val storedAtMillis: Long,
@@ -38,7 +40,9 @@ data class DownloadedModGroup(
     val itemTitle: String,
     val description: String = "",
     val changeNotes: String = "",
+    val changeNotesFetched: Boolean = false,
     val previewImagePath: String? = null,
+    val previewImageUrl: String = "",
     val versions: List<DownloadedModEntry>,
 ) {
     internal val cachedLatestVersion: DownloadedModEntry by lazy(LazyThreadSafetyMode.NONE) {
@@ -146,9 +150,14 @@ fun List<DownloadedModEntry>.groupedForDisplay(): List<DownloadedModGroup> =
                     .mapNotNull { it.changeNotes.takeIf(String::isNotBlank) }
                     .firstOrNull()
                     .orEmpty(),
+                changeNotesFetched = sortedVersions.any(DownloadedModEntry::changeNotesFetched),
                 previewImagePath = sortedVersions
                     .mapNotNull { it.previewImagePath?.takeIf(String::isNotBlank) }
                     .firstOrNull(),
+                previewImageUrl = sortedVersions
+                    .mapNotNull { it.previewImageUrl.takeIf(String::isNotBlank) }
+                    .firstOrNull()
+                    .orEmpty(),
                 versions = sortedVersions,
             )
         }

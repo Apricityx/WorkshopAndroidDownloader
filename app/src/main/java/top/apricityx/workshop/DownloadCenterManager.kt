@@ -36,6 +36,8 @@ class DownloadCenterManager private constructor(
     private val settingsRepository = DownloadSettingsRepository(application)
     private val steamAuthRepository = SteamAuthRepository(application)
     private val steamClientIdentity = SteamClientIdentity(application)
+    private val experimentalWorkshopDirectAccessRuntime =
+        createExperimentalWorkshopDirectAccessRuntime(application.filesDir)
     private val store = DownloadCenterStore(File(application.filesDir, "download-center/tasks.json"))
     private val _uiState = MutableStateFlow(
         DownloadCenterUiState(tasks = recoverPersistedTasks(store.loadTasks())),
@@ -325,20 +327,20 @@ class DownloadCenterManager private constructor(
             debugLogManager.append(task.id, message)
             return
         }
+        val steamWebCookieJar = SteamWebSessionCookieJar(
+            projectedCookiesProvider = { url ->
+                steamAuthRepository.blockingProjectedCookiesFor(
+                    url = url,
+                    accountId = task.boundAccountId,
+                )
+            },
+        )
         val taskClient = OkHttpClient.Builder()
             .applyDefaultHttpTimeouts()
             .applySteamHttpCompatibility()
             .applyAppNetworkLogging("download-task")
-            .cookieJar(
-                SteamWebSessionCookieJar(
-                    projectedCookiesProvider = { url ->
-                        steamAuthRepository.blockingProjectedCookiesFor(
-                            url = url,
-                            accountId = task.boundAccountId,
-                        )
-                    },
-                ),
-            )
+            .cookieJar(steamWebCookieJar)
+            .hostnameVerifier(experimentalWorkshopDirectAccessRuntime.hostnameVerifier)
             .addInterceptor(
                 SteamAuthenticatedCleartextInterceptor(
                     hasAuthenticatedSteamSession = { accountSession != null },
@@ -346,6 +348,11 @@ class DownloadCenterManager private constructor(
                 ),
             )
             .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
+            .addExperimentalWorkshopDirectAccess(
+                runtime = experimentalWorkshopDirectAccessRuntime,
+                enabledProvider = settingsRepository::isExperimentalWorkshopDirectAccessEnabled,
+                steamCookieJar = steamWebCookieJar,
+            )
             .build()
         val engine = WorkshopDownloadEngine.createDefault(
             client = taskClient,
