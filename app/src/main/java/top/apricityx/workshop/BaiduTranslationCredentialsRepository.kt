@@ -1,21 +1,15 @@
 package top.apricityx.workshop
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 
 class BaiduTranslationCredentialsRepository(context: Context) {
     private val appContext = context.applicationContext
     private val prefs by lazy {
-        val masterKey = MasterKey.Builder(appContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            appContext,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        createEncryptedPrefsOrFallback(
+            context = appContext,
+            encryptedPrefsName = PREFS_NAME,
+            fallbackPrefsName = FALLBACK_PREFS_NAME,
+            storageLabel = "Baidu translation credentials",
         )
     }
 
@@ -47,6 +41,7 @@ class BaiduTranslationCredentialsRepository(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "baidu_translation_credentials"
+        private const val FALLBACK_PREFS_NAME = "baidu_translation_credentials_fallback"
         private const val KEY_APP_ID = "app_id"
         private const val KEY_API_KEY = "api_key"
     }

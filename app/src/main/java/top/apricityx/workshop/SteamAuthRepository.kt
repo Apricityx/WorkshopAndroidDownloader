@@ -1,8 +1,6 @@
 package top.apricityx.workshop
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -79,15 +77,11 @@ class SteamAuthRepository(context: Context) {
     private val authMutex = Mutex()
     private val tokenMutex = Mutex()
     private val prefs by lazy {
-        val masterKey = MasterKey.Builder(appContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            appContext,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        createEncryptedPrefsOrFallback(
+            context = appContext,
+            encryptedPrefsName = PREFS_NAME,
+            fallbackPrefsName = FALLBACK_PREFS_NAME,
+            storageLabel = "Steam authentication state",
         )
     }
     private val httpClient by lazy {
@@ -605,6 +599,7 @@ class SteamAuthRepository(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "steam_accounts_secure"
+        private const val FALLBACK_PREFS_NAME = "steam_accounts_secure_fallback"
         private const val KEY_ACCOUNTS_JSON = "accounts_json"
         private const val TOKEN_REFRESH_WINDOW_SECONDS = 15 * 60L
 
