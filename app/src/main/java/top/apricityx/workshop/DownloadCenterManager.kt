@@ -35,6 +35,8 @@ class DownloadCenterManager private constructor(
     private val taskFinalizer = DownloadCenterTaskFinalizer(application)
     private val settingsRepository = DownloadSettingsRepository(application)
     private val steamAuthRepository = SteamAuthRepository(application)
+    private val steamAppOwnershipRepository =
+        SteamAppOwnershipRepository(application, steamAuthRepository, settingsRepository)
     private val steamClientIdentity = SteamClientIdentity(application)
     private val experimentalWorkshopDirectAccessRuntime =
         createExperimentalWorkshopDirectAccessRuntime(application.filesDir)
@@ -471,19 +473,28 @@ class DownloadCenterManager private constructor(
                     }
 
                     is DownloadEvent.Failed -> {
+                        val message = resolveDownloadFailureMessage(
+                            task = task,
+                            rawMessage = event.message,
+                        )
                         clearProgressSample(task.id)
                         updateTask(task.id) {
                             it.copy(
                                 status = DownloadCenterTaskStatus.Failed,
                                 phase = DownloadState.Failed,
-                                errorMessage = event.message,
+                                errorMessage = message,
                                 progress = it.progress.copy(speedBytesPerSecond = null),
-                                logs = (it.logs + event.message).takeLast(MAX_LOG_LINES),
+                                logs = (it.logs + message).takeLast(MAX_LOG_LINES),
                                 updatedAtMillis = System.currentTimeMillis(),
                             )
                         }
-                        Log.e(WorkshopAppContract.logTag, "Download failed ${event.message}")
-                        debugLogManager.append(task.id, "Download failed: ${event.message}")
+                        Log.e(WorkshopAppContract.logTag, "Download failed $message")
+                        if (message != event.message) {
+                            debugLogManager.append(task.id, "Download failed (raw): ${event.message}")
+                            debugLogManager.append(task.id, "Download failed (user-visible): $message")
+                        } else {
+                            debugLogManager.append(task.id, "Download failed: $message")
+                        }
                     }
                 }
             }
@@ -688,6 +699,26 @@ class DownloadCenterManager private constructor(
 
     private fun stagingDirFor(task: DownloadCenterTaskUiState): File =
         File(application.filesDir, "workshop/${task.appId}/${task.publishedFileId}")
+
+    private suspend fun resolveDownloadFailureMessage(
+        task: DownloadCenterTaskUiState,
+        rawMessage: String,
+    ): String {
+        val ownershipStatus = if (task.boundAccountId != null && rawMessage.contains("Steam CDN request failed: 401")) {
+            steamAppOwnershipRepository.ownershipStatus(
+                accountId = task.boundAccountId,
+                appId = task.appId,
+            )
+        } else {
+            SteamAppOwnershipStatus.Unknown
+        }
+        return formatDownloadFailureMessage(
+            rawMessage = rawMessage,
+            gameTitle = task.gameTitle,
+            hasBoundAccount = task.boundAccountId != null,
+            ownershipStatus = ownershipStatus,
+        )
+    }
 
     data class QueueTarget(
         val publishedFileId: ULong,

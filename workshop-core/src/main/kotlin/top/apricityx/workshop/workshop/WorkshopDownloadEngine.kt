@@ -72,9 +72,10 @@ class WorkshopDownloadEngine(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            send(DownloadEvent.LogAppended("Download failed: ${error.message ?: error::class.simpleName}"))
+            val failureMessage = error.userVisibleDownloadFailureMessage()
+            send(DownloadEvent.LogAppended("Download failed: $failureMessage"))
             send(DownloadEvent.StateChanged(DownloadState.Failed))
-            send(DownloadEvent.Failed(error.message ?: "Download failed"))
+            send(DownloadEvent.Failed(failureMessage))
         }
     }
 

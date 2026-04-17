@@ -158,7 +158,7 @@ private fun DownloadTaskCard(
                         text = task.summaryText(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = if (task.status == DownloadCenterTaskStatus.Failed) 3 else 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
