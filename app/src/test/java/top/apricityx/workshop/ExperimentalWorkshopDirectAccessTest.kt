@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import java.io.File
 import java.io.IOException
 import java.net.InetAddress
+import java.net.ServerSocket
 import java.nio.file.Files
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -415,6 +416,58 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
+    fun routeResolver_refreshRouteForHost_clears_persisted_route_before_fetching_replacement() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com;www.steamcommunity.com",
+                              "ForwardDomainNames": "fresh.steamcommunity.rmbgame.net",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ).build(),
+        )
+        val persistedRoute = WattToolkitWorkshopRoute(
+            logicalHosts = DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS,
+            forwardTargets = listOf("stale.steamcommunity.rmbgame.net"),
+            ignoreSslCertVerification = true,
+        )
+        val store = FakeWattToolkitWorkshopRouteStore(
+            persisted = PersistedWattToolkitWorkshopRoute(
+                route = persistedRoute,
+                cachedAtMs = 1_000L,
+            ),
+        )
+        val resolver = WattToolkitWorkshopRouteResolver(
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            routeStore = store,
+            nowProvider = { 2_000L },
+            sleepProvider = { _ -> },
+        )
+
+        assertThat(resolver.resolveSteamCommunityRoute()).isEqualTo(persistedRoute)
+
+        val refreshed = resolver.refreshRouteForHost("steamcommunity.com")
+
+        assertThat(refreshed?.forwardTargets).containsExactly("fresh.steamcommunity.rmbgame.net")
+        assertThat(store.clearCount).isEqualTo(1)
+        assertThat(store.currentPersisted?.route).isEqualTo(refreshed)
+    }
+
+    @Test
     fun routeResolver_uses_builtin_bootstrap_route_when_fetch_fails_without_cache() {
         val resolver = WattToolkitWorkshopRouteResolver(
             routeProfile = SteamCommunityWattToolkitRouteProfile,
@@ -525,20 +578,125 @@ class ExperimentalWorkshopDirectAccessTest {
         assertThat(route.shouldBypassHostnameVerification("steamcommunity.com")).isFalse()
     }
 
+    @Test
+    fun interceptor_retries_with_refreshed_watt_route_after_direct_access_failure() {
+        val unavailablePort = ServerSocket(0).use { serverSocket -> serverSocket.localPort }
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com;www.steamcommunity.com",
+                              "ForwardDomainNames": "http://steamcommunity.rmbgame.net:$unavailablePort",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ).build(),
+        )
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com;www.steamcommunity.com",
+                              "ForwardDomainNames": "http://steamcommunity.rmbgame.net:${forwardedServer.port}",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ).build(),
+        )
+        forwardedServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body("ok")
+                .build(),
+        )
+
+        val dns = Dns { listOf(InetAddress.getByName("127.0.0.1")) }
+        val store = FakeWattToolkitWorkshopRouteStore()
+        val routeResolver = WattToolkitWorkshopRouteResolver(
+            client = OkHttpClient.Builder().dns(dns).build(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            routeStore = store,
+            sleepProvider = { _ -> },
+        )
+        val directClient = OkHttpClient.Builder()
+            .dns(dns)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+        val client = OkHttpClient.Builder()
+            .dns(dns)
+            .addInterceptor(
+                ExperimentalWorkshopDirectAccessInterceptor(
+                    enabledProvider = { true },
+                    routeResolver = routeResolver,
+                    steamCookieJar = SteamWebSessionCookieJar(),
+                    directCallFactory = directClient,
+                ),
+            )
+            .build()
+
+        client.newCall(
+            Request.Builder()
+                .url("http://steamcommunity.com/workshop/browse/?appid=646570&searchtext=basemod".toHttpUrl())
+                .build(),
+        ).execute().use { response ->
+            assertThat(response.isSuccessful).isTrue()
+            assertThat(response.request.url.host).isEqualTo("steamcommunity.com")
+        }
+
+        assertThat(apiServer.requestCount).isEqualTo(2)
+        assertThat(store.clearCount).isEqualTo(1)
+        val forwardedRequest = forwardedServer.takeRequest()
+        assertThat(forwardedRequest.url.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(forwardedRequest.headers["Host"]).isEqualTo("steamcommunity.com")
+    }
+
     private class FakeWattToolkitWorkshopRouteStore(
         private val persisted: PersistedWattToolkitWorkshopRoute? = null,
     ) : WattToolkitWorkshopRouteStore {
         var loadCount: Int = 0
             private set
+        var clearCount: Int = 0
+            private set
+        var currentPersisted: PersistedWattToolkitWorkshopRoute? = persisted
+            private set
         val saved: MutableList<PersistedWattToolkitWorkshopRoute> = mutableListOf()
 
         override fun load(): PersistedWattToolkitWorkshopRoute? {
             loadCount++
-            return persisted
+            return currentPersisted
         }
 
         override fun save(route: PersistedWattToolkitWorkshopRoute) {
+            currentPersisted = route
             saved += route
+        }
+
+        override fun clear() {
+            clearCount++
+            currentPersisted = null
         }
     }
 }

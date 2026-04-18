@@ -50,7 +50,40 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
             )
             return chain.proceed(request)
         }
-        return executeDirectAccessRequest(request, route)
+        return executeDirectAccessRequestWithRouteRefresh(
+            initialLogicalRequest = request,
+            originalLogicalHost = originalUrl.host,
+            route = route,
+        )
+    }
+
+    private fun executeDirectAccessRequestWithRouteRefresh(
+        initialLogicalRequest: Request,
+        originalLogicalHost: String,
+        route: WattToolkitWorkshopRoute,
+    ): Response {
+        return try {
+            executeDirectAccessRequest(initialLogicalRequest, route)
+        } catch (error: IOException) {
+            if (!error.isRetryableDirectAccessRouteRefreshFailure()) {
+                throw error
+            }
+            workshopLogWarn(
+                "Experimental workshop direct access failed for host=$originalLogicalHost; clearing cached Watt route and fetching a fresh route before retrying: ${error::class.java.simpleName}:${error.message}",
+                error,
+            )
+            val refreshedRoute = routeResolver.refreshRouteForHost(originalLogicalHost)
+                ?: throw error
+            workshopLogInfo(
+                "Experimental workshop direct access retrying host=$originalLogicalHost with refreshed Watt route forward=${refreshedRoute.forwardTargets.joinToString(";")}",
+            )
+            try {
+                executeDirectAccessRequest(initialLogicalRequest, refreshedRoute)
+            } catch (refreshedError: IOException) {
+                refreshedError.addSuppressed(error)
+                throw refreshedError
+            }
+        }
     }
 
     private fun executeDirectAccessRequest(
@@ -328,14 +361,7 @@ internal class WattToolkitWorkshopRouteResolver(
             .getOrNull()
         synchronized(lock) {
             if (fetched != null) {
-                cachedRoute = fetched
-                cachedAtMs = now
-                routeStore.save(
-                    PersistedWattToolkitWorkshopRoute(
-                        route = fetched,
-                        cachedAtMs = now,
-                    ),
-                )
+                persistResolvedRouteLocked(fetched, now)
                 workshopLogInfo(
                     "Experimental workshop direct access resolved Watt route forward=${fetched.forwardTargets.joinToString(";")} ignoreSsl=${fetched.ignoreSslCertVerification}",
                 )
@@ -370,6 +396,35 @@ internal class WattToolkitWorkshopRouteResolver(
         }
     }
 
+    fun refreshRouteForHost(host: String): WattToolkitWorkshopRoute? {
+        val normalizedHost = host.lowercase()
+        if (normalizedHost !in normalizedSupportedHosts) {
+            return null
+        }
+        synchronized(lock) {
+            clearCachedRouteLocked()
+        }
+        val now = nowProvider()
+        val fetched = runCatching(::fetchSupportedRouteWithRetries)
+            .onFailure { error ->
+                workshopLogWarn(
+                    "Experimental workshop direct access failed to refresh Watt route for host=$normalizedHost: ${error.message}",
+                    error,
+                )
+            }
+            .getOrNull()
+            ?.takeIf { route -> route.matchesLogicalHost(normalizedHost) }
+        synchronized(lock) {
+            if (fetched != null) {
+                persistResolvedRouteLocked(fetched, now)
+                workshopLogInfo(
+                    "Experimental workshop direct access refreshed Watt route forward=${fetched.forwardTargets.joinToString(";")} ignoreSsl=${fetched.ignoreSslCertVerification}",
+                )
+            }
+            return fetched
+        }
+    }
+
     private fun restorePersistedRouteLocked(now: Long) {
         if (persistedRouteLoaded) {
             return
@@ -381,6 +436,27 @@ internal class WattToolkitWorkshopRouteResolver(
         workshopLogInfo(
             "Experimental workshop direct access restored persisted Watt route ageMs=${(now - persisted.cachedAtMs).coerceAtLeast(0L)} forward=${persisted.route.forwardTargets.joinToString(";")}",
         )
+    }
+
+    private fun persistResolvedRouteLocked(
+        route: WattToolkitWorkshopRoute,
+        cachedAtMs: Long,
+    ) {
+        cachedRoute = route
+        this.cachedAtMs = cachedAtMs
+        routeStore.save(
+            PersistedWattToolkitWorkshopRoute(
+                route = route,
+                cachedAtMs = cachedAtMs,
+            ),
+        )
+    }
+
+    private fun clearCachedRouteLocked() {
+        cachedRoute = null
+        cachedAtMs = 0L
+        persistedRouteLoaded = true
+        routeStore.clear()
     }
 
     private fun fetchSupportedRouteWithRetries(): WattToolkitWorkshopRoute {
@@ -535,12 +611,16 @@ internal interface WattToolkitWorkshopRouteStore {
     fun load(): PersistedWattToolkitWorkshopRoute?
 
     fun save(route: PersistedWattToolkitWorkshopRoute)
+
+    fun clear()
 }
 
 internal object NoOpWattToolkitWorkshopRouteStore : WattToolkitWorkshopRouteStore {
     override fun load(): PersistedWattToolkitWorkshopRoute? = null
 
     override fun save(route: PersistedWattToolkitWorkshopRoute) = Unit
+
+    override fun clear() = Unit
 }
 
 internal class FileBackedWattToolkitWorkshopRouteStore(
@@ -592,6 +672,16 @@ internal class FileBackedWattToolkitWorkshopRouteStore(
             workshopLogWarn("Experimental workshop direct access failed to persist Watt route: ${error.message}", error)
         }
     }
+
+    override fun clear() {
+        runCatching {
+            if (file.exists() && !file.delete()) {
+                error("Failed to delete ${file.absolutePath}")
+            }
+        }.onFailure { error ->
+            workshopLogWarn("Experimental workshop direct access failed to clear persisted Watt route: ${error.message}", error)
+        }
+    }
 }
 
 internal data class PersistedWattToolkitWorkshopRoute(
@@ -629,6 +719,9 @@ private fun CookieJar.saveForwardedResponse(
 
 private fun Throwable.isRetryableWattRouteFetchFailure(): Boolean =
     this is IOException || cause?.isRetryableWattRouteFetchFailure() == true
+
+private fun Throwable.isRetryableDirectAccessRouteRefreshFailure(): Boolean =
+    this is IOException || cause?.isRetryableDirectAccessRouteRefreshFailure() == true
 
 private fun Response.redirectTarget(
     logicalUrl: HttpUrl,
