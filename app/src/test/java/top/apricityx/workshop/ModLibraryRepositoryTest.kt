@@ -116,6 +116,44 @@ class ModLibraryRepositoryTest {
     }
 
     @Test
+    fun shouldDeletePreviewAfterRemovingEntry_returnsFalse_whenOtherVersionsStillRemain() {
+        val removedEntry = downloadedEntry(
+            versionId = "updated-1772900923",
+            previewImagePath = "D:/covers/skip.webp",
+        )
+        val remainingEntries = listOf(
+            downloadedEntry(
+                versionId = "updated-1772901999",
+                previewImagePath = "D:/covers/skip.webp",
+            ),
+        )
+
+        val shouldDelete = shouldDeletePreviewAfterRemovingEntry(removedEntry, remainingEntries)
+
+        assertThat(shouldDelete).isFalse()
+    }
+
+    @Test
+    fun shouldDeletePreviewAfterRemovingEntry_returnsTrue_whenNoVersionsRemain() {
+        val removedEntry = downloadedEntry(
+            versionId = "updated-1772900923",
+            previewImagePath = "D:/covers/skip.webp",
+        )
+        val remainingEntries = listOf(
+            downloadedEntry(
+                appId = 480u,
+                publishedFileId = 999uL,
+                versionId = "updated-1772901999",
+                previewImagePath = "D:/covers/example.webp",
+            ),
+        )
+
+        val shouldDelete = shouldDeletePreviewAfterRemovingEntry(removedEntry, remainingEntries)
+
+        assertThat(shouldDelete).isTrue()
+    }
+
+    @Test
     fun deleteFileAndEmptyParents_removes_empty_mod_directory_when_file_already_deleted() {
         val root = Files.createTempDirectory("mod-library-delete").toFile()
         val workshopRoot = File(root, "workshop")
@@ -161,5 +199,21 @@ class ModLibraryRepositoryTest {
         modifiedEpochMillis = modifiedAt,
         contentUri = "content://downloads/$modifiedAt",
         userVisiblePath = "Download/workshop/Example Game/Example Mod/updated-1772900923/$relativePath",
+    )
+
+    private fun downloadedEntry(
+        appId: UInt = 646570u,
+        publishedFileId: ULong = 3677098410uL,
+        versionId: String,
+        previewImagePath: String? = null,
+    ) = DownloadedModEntry(
+        appId = appId,
+        publishedFileId = publishedFileId,
+        gameTitle = "Slay the Spire",
+        itemTitle = "Skip The Spire",
+        previewImagePath = previewImagePath,
+        versionId = versionId,
+        storedAtMillis = 1_000L,
+        files = listOf(sampleFile("mods/$versionId.jar", 1_000L)),
     )
 }

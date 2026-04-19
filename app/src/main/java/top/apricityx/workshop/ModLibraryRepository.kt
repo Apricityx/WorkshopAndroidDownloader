@@ -138,9 +138,9 @@ class ModLibraryRepository(
 
     suspend fun deleteMod(entry: DownloadedModEntry): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
         store.withFileLock {
+            val currentEntries = store.loadEntries()
             localDataSource.deleteModFiles(entry)
-            previewImageCache.deleteCachedPreview(entry.previewImagePath)
-            val remainingIndexedEntries = store.loadEntries().filterNot {
+            val remainingIndexedEntries = currentEntries.filterNot {
                 it.matches(entry.appId, entry.publishedFileId, entry.versionId)
             }
             val synced = mergeIndexedAndLocalMods(
@@ -148,6 +148,9 @@ class ModLibraryRepository(
                 localMods = localDataSource.listLocalMods(remainingIndexedEntries),
                 nowMillis = nowMillis,
             )
+            if (shouldDeletePreviewAfterRemovingEntry(entry, synced)) {
+                previewImageCache.deleteCachedPreview(entry.previewImagePath)
+            }
             store.saveEntries(synced)
             synced
         }
@@ -261,6 +264,15 @@ private fun entryIdentityKey(
 
 private fun isExistingFile(path: String): Boolean =
     File(path).isFile
+
+internal fun shouldDeletePreviewAfterRemovingEntry(
+    removedEntry: DownloadedModEntry,
+    remainingEntries: List<DownloadedModEntry>,
+): Boolean =
+    remainingEntries.none {
+        it.appId == removedEntry.appId &&
+            it.publishedFileId == removedEntry.publishedFileId
+    }
 
 internal fun deleteFileAndEmptyParents(file: File) {
     if (file.exists()) {
