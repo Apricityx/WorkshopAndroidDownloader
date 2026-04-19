@@ -119,6 +119,7 @@ internal fun OkHttpClient.Builder.addExperimentalWorkshopDirectAccess(
     runtime: ExperimentalWorkshopDirectAccessRuntime,
     enabledProvider: () -> Boolean,
     steamCookieJar: CookieJar,
+    fallbackNoticeSink: SteamDirectAccessFallbackNoticeSink = NoOpSteamDirectAccessFallbackNoticeSink,
 ): OkHttpClient.Builder =
     apply {
         runtime.resolvers.forEach { resolver ->
@@ -128,6 +129,7 @@ internal fun OkHttpClient.Builder.addExperimentalWorkshopDirectAccess(
                     routeResolver = resolver,
                     steamCookieJar = steamCookieJar,
                     directCallFactory = runtime.directHttpClient,
+                    fallbackNoticeSink = fallbackNoticeSink,
                 ),
             )
         }

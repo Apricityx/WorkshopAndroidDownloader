@@ -352,7 +352,11 @@ class DownloadCenterManager private constructor(
             .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
             .addExperimentalWorkshopDirectAccess(
                 runtime = experimentalWorkshopDirectAccessRuntime,
-                enabledProvider = settingsRepository::isExperimentalWorkshopDirectAccessEnabled,
+                enabledProvider = {
+                    ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(
+                        settingsRepository.isExperimentalWorkshopDirectAccessEnabled(),
+                    )
+                },
                 steamCookieJar = steamWebCookieJar,
             )
             .build()

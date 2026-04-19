@@ -386,6 +386,7 @@ class MainActivity : ComponentActivity() {
             onUpdateModLibrarySortOption = workshopViewModel::updateModLibrarySortOption,
             onClearModLibraryFilters = workshopViewModel::clearModLibraryFilters,
             onDismissUsageNotice = workshopViewModel::dismissUsageNoticeDialog,
+            onDismissSteamDirectAccessFallbackDialog = workshopViewModel::dismissSteamDirectAccessFallbackDialog,
             onRequestRemoveGame = workshopViewModel::requestRemoveGame,
             onConfirmRemoveGame = workshopViewModel::confirmRemoveGame,
             onDismissRemoveGame = workshopViewModel::dismissRemoveGameDialog,

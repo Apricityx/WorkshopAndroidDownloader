@@ -98,8 +98,13 @@ class WorkshopViewModel(
         .addInterceptor(SteamLanguageInterceptor(settingsRepository::getSteamLanguagePreference))
         .addExperimentalWorkshopDirectAccess(
             runtime = experimentalWorkshopDirectAccessRuntime,
-            enabledProvider = settingsRepository::isExperimentalWorkshopDirectAccessEnabled,
+            enabledProvider = {
+                ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(
+                    settingsRepository.isExperimentalWorkshopDirectAccessEnabled(),
+                )
+            },
             steamCookieJar = steamWebCookieJar,
+            fallbackNoticeSink = ExperimentalWorkshopDirectAccessFallbackNotifier,
         )
         .build()
     private val gameRepository = SteamGameRepository(
@@ -157,6 +162,21 @@ class WorkshopViewModel(
                 }
                 if (shouldRefreshModLibrary) {
                     refreshModLibrary(showLoading = false)
+                }
+            }
+        }
+        viewModelScope.launch {
+            ExperimentalWorkshopDirectAccessFallbackNotifier.events.collect {
+                _uiState.update { state ->
+                    if (state.steamDirectAccessFallbackDialogState != null) {
+                        state
+                    } else {
+                        state.copy(
+                            steamDirectAccessFallbackDialogState = SteamDirectAccessFallbackDialogUiState(
+                                message = STEAM_DIRECT_ACCESS_FALLBACK_DIALOG_MESSAGE,
+                            ),
+                        )
+                    }
                 }
             }
         }
@@ -534,7 +554,11 @@ class WorkshopViewModel(
         viewModelScope.launch {
             _toastMessages.emit(
                 if (enabled) {
-                    "已开启实验性创意工坊直连策略，如果存在问题，请导出一份日志发给开发者。"
+                    if (ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessDisabledForCurrentProcess()) {
+                        "已开启实验性创意工坊直连策略，但当前会话已禁用 Watt 链路，重启应用后生效。"
+                    } else {
+                        "已开启实验性创意工坊直连策略，如果存在问题，请导出一份日志发给开发者。"
+                    }
                 } else {
                     "已关闭实验性创意工坊直连策略。"
                 },
@@ -755,6 +779,12 @@ class WorkshopViewModel(
         settingsRepository.setUsageNoticeAcknowledged()
         _uiState.update { state ->
             state.copy(showUsageNoticeDialog = false)
+        }
+    }
+
+    fun dismissSteamDirectAccessFallbackDialog() {
+        _uiState.update { state ->
+            state.copy(steamDirectAccessFallbackDialogState = null)
         }
     }
 
@@ -2405,7 +2435,11 @@ class WorkshopViewModel(
                 }
             }.onFailure { error ->
                 workshopLogWarn(
-                    "Workshop browse failed appId=${game.appId} page=$page query=${searchQuery.trim()} directAccess=${settingsRepository.isExperimentalWorkshopDirectAccessEnabled()} error=${error::class.java.simpleName}:${error.message}",
+                    "Workshop browse failed appId=${game.appId} page=$page query=${searchQuery.trim()} directAccess=${
+                        ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(
+                            settingsRepository.isExperimentalWorkshopDirectAccessEnabled(),
+                        )
+                    } error=${error::class.java.simpleName}:${error.message}",
                     error,
                 )
                 val showConnectionErrorState = error.isWorkshopConnectionFailure()
@@ -3349,6 +3383,8 @@ class WorkshopViewModel(
         private const val REQUEST_TIMEOUT_MESSAGE = "加载超时，请开启加速器或科学上网后重试。"
         private const val WORKSHOP_CONNECTION_FAILURE_MESSAGE =
             "啊哦，加载超时，您的网络环境可能不支持直连创意工坊，请开启加速器加速 steam 或科学上网后重试。"
+        private const val STEAM_DIRECT_ACCESS_FALLBACK_DIALOG_MESSAGE =
+            "您的网络环境不支持使用 Steam 加速链路，请使用加速器后重试。\n\n当前已自动回退到 Steam 原始链路。"
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -3498,10 +3534,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
-
-
-
 
 
 

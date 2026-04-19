@@ -189,6 +189,10 @@ data class ModLibraryUiState(
     val errorMessage: String? = null,
 )
 
+data class SteamDirectAccessFallbackDialogUiState(
+    val message: String,
+)
+
 data class WorkshopUiState(
     val currentScreen: WorkshopScreenDestination = WorkshopScreenDestination.GameLibrary,
     val previousScreen: WorkshopScreenDestination = WorkshopScreenDestination.GameLibrary,
@@ -204,6 +208,7 @@ data class WorkshopUiState(
     val pendingRenameMod: DownloadedModGroup? = null,
     val renameModTitleInput: String = "",
     val showUsageNoticeDialog: Boolean = false,
+    val steamDirectAccessFallbackDialogState: SteamDirectAccessFallbackDialogUiState? = null,
     val addGameState: AddGameUiState = AddGameUiState(),
     val gameWorkshopState: GameWorkshopUiState? = null,
     val workshopItemDetailState: WorkshopItemDetailUiState? = null,

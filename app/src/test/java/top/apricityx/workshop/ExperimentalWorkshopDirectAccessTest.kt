@@ -25,6 +25,7 @@ class ExperimentalWorkshopDirectAccessTest {
 
     @Before
     fun setUp() {
+        ExperimentalWorkshopDirectAccessFallbackNotifier.resetForTesting()
         apiServer = MockWebServer()
         forwardedServer = MockWebServer()
         apiServer.start()
@@ -35,6 +36,7 @@ class ExperimentalWorkshopDirectAccessTest {
     fun tearDown() {
         apiServer.close()
         forwardedServer.close()
+        ExperimentalWorkshopDirectAccessFallbackNotifier.resetForTesting()
     }
 
     @Test
@@ -671,6 +673,119 @@ class ExperimentalWorkshopDirectAccessTest {
         val forwardedRequest = forwardedServer.takeRequest()
         assertThat(forwardedRequest.url.encodedPath).isEqualTo("/workshop/browse/")
         assertThat(forwardedRequest.headers["Host"]).isEqualTo("steamcommunity.com")
+    }
+
+    @Test
+    fun interceptor_notifies_and_falls_back_to_original_request_when_refreshed_route_still_fails() {
+        val unavailablePort = ServerSocket(0).use { serverSocket -> serverSocket.localPort }
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com;www.steamcommunity.com",
+                              "ForwardDomainNames": "http://steamcommunity.rmbgame.net:$unavailablePort",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ).build(),
+        )
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com;www.steamcommunity.com",
+                              "ForwardDomainNames": "http://steamcommunity.rmbgame.net:$unavailablePort",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ).build(),
+        )
+        forwardedServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body("fallback-ok")
+                .build(),
+        )
+
+        val dns = Dns { listOf(InetAddress.getByName("127.0.0.1")) }
+        val store = FakeWattToolkitWorkshopRouteStore()
+        var fallbackNoticeCount = 0
+        val routeResolver = WattToolkitWorkshopRouteResolver(
+            client = OkHttpClient.Builder().dns(dns).build(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            routeStore = store,
+            sleepProvider = { _ -> },
+        )
+        val directClient = OkHttpClient.Builder()
+            .dns(dns)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+        val client = OkHttpClient.Builder()
+            .dns(dns)
+            .addInterceptor(
+                ExperimentalWorkshopDirectAccessInterceptor(
+                    enabledProvider = { true },
+                    routeResolver = routeResolver,
+                    steamCookieJar = SteamWebSessionCookieJar(),
+                    directCallFactory = directClient,
+                    fallbackNoticeSink = SteamDirectAccessFallbackNoticeSink { fallbackNoticeCount++ },
+                ),
+            )
+            .build()
+        val originalUrl =
+            "http://steamcommunity.com:${forwardedServer.port}/workshop/browse/?appid=646570&searchtext=basemod".toHttpUrl()
+
+        client.newCall(Request.Builder().url(originalUrl).build()).execute().use { response ->
+            assertThat(response.isSuccessful).isTrue()
+            assertThat(response.request.url).isEqualTo(originalUrl)
+        }
+
+        assertThat(apiServer.requestCount).isEqualTo(2)
+        assertThat(store.clearCount).isEqualTo(1)
+        assertThat(fallbackNoticeCount).isEqualTo(1)
+        val fallbackRequest = forwardedServer.takeRequest()
+        assertThat(fallbackRequest.url.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(fallbackRequest.url.queryParameter("appid")).isEqualTo("646570")
+        assertThat(fallbackRequest.url.queryParameter("searchtext")).isEqualTo("basemod")
+    }
+
+    @Test
+    fun fallbackNotifier_disables_direct_access_for_current_process_after_first_fallback() {
+        assertThat(ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(userEnabled = true)).isTrue()
+        assertThat(
+            ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessDisabledForCurrentProcess(),
+        ).isFalse()
+
+        ExperimentalWorkshopDirectAccessFallbackNotifier.onFallbackToOriginalSteamRoute()
+
+        assertThat(ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(userEnabled = true)).isFalse()
+        assertThat(
+            ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessDisabledForCurrentProcess(),
+        ).isTrue()
+        assertThat(ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(userEnabled = false)).isFalse()
     }
 
     private class FakeWattToolkitWorkshopRouteStore(

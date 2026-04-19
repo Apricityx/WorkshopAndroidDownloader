@@ -73,6 +73,7 @@ data class WorkshopScreenActions(
     val onUpdateModLibrarySortOption: (top.apricityx.workshop.ModLibrarySortOption) -> Unit,
     val onClearModLibraryFilters: () -> Unit,
     val onDismissUsageNotice: () -> Unit,
+    val onDismissSteamDirectAccessFallbackDialog: () -> Unit,
     val onRequestRemoveGame: (SteamGame) -> Unit,
     val onConfirmRemoveGame: () -> Unit,
     val onDismissRemoveGame: () -> Unit,

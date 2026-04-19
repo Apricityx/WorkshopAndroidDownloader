@@ -92,7 +92,11 @@ class SteamAuthRepository(context: Context) {
             .hostnameVerifier(experimentalWorkshopDirectAccessRuntime.hostnameVerifier)
             .addExperimentalWorkshopDirectAccess(
                 runtime = experimentalWorkshopDirectAccessRuntime,
-                enabledProvider = settingsRepository::isExperimentalWorkshopDirectAccessEnabled,
+                enabledProvider = {
+                    ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(
+                        settingsRepository.isExperimentalWorkshopDirectAccessEnabled(),
+                    )
+                },
                 steamCookieJar = CookieJar.NO_COOKIES,
             )
             .build()

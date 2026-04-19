@@ -196,6 +196,22 @@ private fun WorkshopDialogs(
         return
     }
 
+    val steamDirectAccessFallbackDialogState = state.steamDirectAccessFallbackDialogState
+    if (steamDirectAccessFallbackDialogState != null) {
+        WorkshopDialog(
+            onDismissRequest = actions.onDismissSteamDirectAccessFallbackDialog,
+            title = { Text("Steam 加速链路不可用") },
+            buttons = {
+                WorkshopButton(onClick = actions.onDismissSteamDirectAccessFallbackDialog) {
+                    Text("我知道了")
+                }
+            },
+        ) {
+            Text(steamDirectAccessFallbackDialogState.message)
+        }
+        return
+    }
+
     val updatePrompt = state.settingsState.updatePromptState
     val modLibraryChangeNotesDialogState = state.modLibraryState.changeNotesDialogState
     val pendingRemoveGame = state.pendingRemoveGame

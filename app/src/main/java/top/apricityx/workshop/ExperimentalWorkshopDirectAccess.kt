@@ -34,6 +34,7 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
     private val routeResolver: WattToolkitWorkshopRouteResolver,
     private val steamCookieJar: CookieJar,
     private val directCallFactory: Call.Factory,
+    private val fallbackNoticeSink: SteamDirectAccessFallbackNoticeSink = NoOpSteamDirectAccessFallbackNoticeSink,
     private val maxRedirects: Int = MAX_FOLLOW_UPS,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -50,11 +51,20 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
             )
             return chain.proceed(request)
         }
-        return executeDirectAccessRequestWithRouteRefresh(
-            initialLogicalRequest = request,
-            originalLogicalHost = originalUrl.host,
-            route = route,
-        )
+        return try {
+            executeDirectAccessRequestWithRouteRefresh(
+                initialLogicalRequest = request,
+                originalLogicalHost = originalUrl.host,
+                route = route,
+            )
+        } catch (error: IOException) {
+            workshopLogWarn(
+                "Experimental workshop direct access exhausted Watt route refresh for host=${originalUrl.host}; falling back to original Steam host: ${error::class.java.simpleName}:${error.message}",
+                error,
+            )
+            fallbackNoticeSink.onFallbackToOriginalSteamRoute()
+            chain.proceed(request)
+        }
     }
 
     private fun executeDirectAccessRequestWithRouteRefresh(
