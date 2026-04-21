@@ -2,6 +2,8 @@ package top.apricityx.workshop.data
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.IOException
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -180,6 +182,71 @@ class WorkshopBrowseRepositoryTest {
 
         assertThat(result.items).hasSize(1)
         assertThat(result.items[0].fileSizeBytes).isNull()
+        assertThat(server.requestCount).isEqualTo(1)
+    }
+
+    @Test
+    fun browseGameWorkshop_usesFileSizeFromSsrRenderContextWithoutDetailLookup() = runBlocking {
+        val queryData = """
+            {
+              "mutations": [],
+              "queries": [
+                {
+                  "state": {
+                    "data": {
+                      "public_data": {
+                        "steamid": "76561198000000001",
+                        "persona_name": "apricity"
+                      }
+                    }
+                  },
+                  "queryKey": ["PlayerLinkDetails", "76561198000000001"]
+                },
+                {
+                  "state": {
+                    "data": {
+                      "current_page": 1,
+                      "total_pages": 1,
+                      "total_count": 1,
+                      "results": [
+                        {
+                          "publishedfileid": "3677098410",
+                          "creator": "76561198000000001",
+                          "consumer_appid": 646570,
+                          "preview_url": "https://example.com/skip.png",
+                          "title": "Skip The Spire",
+                          "short_description": "A fun mod",
+                          "file_size": "123456"
+                        }
+                      ]
+                    }
+                  },
+                  "queryKey": ["workshop_browse", 646570, "trend"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val renderContext = """{"queryData":${Json.encodeToString(queryData)}}"""
+        server.enqueue(
+            mockResponse(
+                """
+                <html>
+                <head>
+                    <script>window.SSR.renderContext=JSON.parse(${Json.encodeToString(renderContext)});</script>
+                </head>
+                <body></body>
+                </html>
+                """.trimIndent(),
+            ),
+        )
+
+        val result = repository.browseGameWorkshop(
+            appId = 646570u,
+            searchQuery = "",
+        )
+
+        assertThat(result.items).hasSize(1)
+        assertThat(result.items[0].fileSizeBytes).isEqualTo(123456L)
         assertThat(server.requestCount).isEqualTo(1)
     }
 

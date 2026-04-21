@@ -3,6 +3,9 @@ package top.apricityx.workshop.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -81,7 +84,7 @@ class WorkshopBrowseRepository(
     }
 
     private fun loadFileSizes(items: List<WorkshopBrowseItem>): Map<ULong, Long> {
-        if (items.isEmpty()) {
+        if (items.isEmpty() || items.all { it.fileSizeBytes != null }) {
             return emptyMap()
         }
 
@@ -163,6 +166,10 @@ internal object WorkshopBrowseParser {
         """SharedFileBindMouseHover\(\s*"sharedfile_(\d+)"\s*,\s*false\s*,\s*(\{.*?\})\s*\);""",
         setOf(RegexOption.DOT_MATCHES_ALL),
     )
+    private val ssrRenderContextRegex = Regex(
+        """window\.SSR\.renderContext=JSON\.parse\("(.+?)"\);""",
+        setOf(RegexOption.DOT_MATCHES_ALL),
+    )
 
     fun parse(
         payload: String,
@@ -205,13 +212,133 @@ internal object WorkshopBrowseParser {
         val hasNextPage = payload.contains("""&p=${page + 1}""") &&
             payload.contains("""class='pagebtn'""")
 
-        return WorkshopBrowsePage(
+        val legacyPage = WorkshopBrowsePage(
             items = items,
             page = page,
             hasNextPage = hasNextPage,
         )
+        if (legacyPage.items.isNotEmpty() || legacyPage.hasNextPage) {
+            return legacyPage
+        }
+        return parseSsrRenderContext(payload = payload, fallbackPage = legacyPage, json = json)
     }
+
+    private fun parseSsrRenderContext(
+        payload: String,
+        fallbackPage: WorkshopBrowsePage,
+        json: Json,
+    ): WorkshopBrowsePage {
+        val encodedRenderContext = ssrRenderContextRegex.find(payload)?.groupValues?.getOrNull(1) ?: return fallbackPage
+        val renderContext = decodeJsonStringLiteral(encodedRenderContext, json) ?: return fallbackPage
+        val renderContextObject = runCatching {
+            json.parseToJsonElement(renderContext) as? JsonObject
+        }.getOrNull() ?: return fallbackPage
+        val queryData = runCatching {
+            renderContextObject.stringValueOrNull("queryData")
+        }.getOrNull() ?: return fallbackPage
+        val queryEntries = runCatching {
+            json.parseToJsonElement(queryData)
+                .asJsonObject()
+                ?.arrayValueOrNull("queries")
+                .orEmpty()
+        }.getOrNull() ?: return fallbackPage
+
+        val creatorNames = buildMap {
+            queryEntries.forEach { entry ->
+                val queryObject = entry.asJsonObject() ?: return@forEach
+                val queryKey = queryObject.arrayValueOrNull("queryKey").orEmpty()
+                val keyName = queryKey.firstOrNull()?.stringContentOrNull()
+                if (keyName != "PlayerLinkDetails") {
+                    return@forEach
+                }
+                val steamId = queryKey.getOrNull(1)?.stringContentOrNull() ?: return@forEach
+                val personaName = queryObject.objectValue("state")
+                    ?.objectValue("data")
+                    ?.objectValue("public_data")
+                    ?.stringValueOrNull("persona_name")
+                    .orEmpty()
+                if (personaName.isNotBlank()) {
+                    put(steamId, personaName)
+                }
+            }
+        }
+
+        val browseData = queryEntries.firstNotNullOfOrNull { entry ->
+            entry.asJsonObject()
+                ?.objectValue("state")
+                ?.objectValue("data")
+                ?.takeIf { data ->
+                    data.intValueOrNull("current_page") != null &&
+                        data.intValueOrNull("total_pages") != null &&
+                        data.arrayValueOrNull("results") != null
+                }
+        } ?: return fallbackPage
+
+        val currentPage = browseData.intValueOrNull("current_page") ?: fallbackPage.page
+        val totalPages = browseData.intValueOrNull("total_pages") ?: currentPage
+        val items = browseData.arrayValueOrNull("results")
+            .orEmpty()
+            .mapNotNull { result ->
+                val item = result.asJsonObject() ?: return@mapNotNull null
+                val publishedFileId = item.ulongValueOrNull("publishedfileid")
+                    ?: return@mapNotNull null
+                val appId = item.uintValueOrNull("consumer_appid")
+                    ?: return@mapNotNull null
+                val creatorSteamId = item.stringValueOrNull("creator")
+                WorkshopBrowseItem(
+                    appId = appId,
+                    publishedFileId = publishedFileId,
+                    previewImageUrl = item.stringValueOrNull("preview_url").orEmpty(),
+                    title = item.stringValueOrNull("title").orEmpty(),
+                    authorName = creatorSteamId?.let(creatorNames::get).orEmpty(),
+                    descriptionSnippet = item.stringValueOrNull("short_description").orEmpty(),
+                    fileSizeBytes = item.longValueOrNull("file_size"),
+                )
+            }
+
+        return WorkshopBrowsePage(
+            items = items,
+            page = currentPage,
+            hasNextPage = currentPage < totalPages,
+        )
+    }
+
+    private fun decodeJsonStringLiteral(
+        encoded: String,
+        json: Json,
+    ): String? =
+        runCatching {
+            json.parseToJsonElement(""""$encoded"""")
+                .jsonPrimitive
+                .content
+        }.getOrNull()
 }
+
+private fun JsonElement?.asJsonObject(): JsonObject? = this as? JsonObject
+
+private fun JsonElement?.stringContentOrNull(): String? =
+    (this as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+
+private fun JsonObject.objectValue(key: String): JsonObject? =
+    this[key] as? JsonObject
+
+private fun JsonObject.arrayValueOrNull(key: String): JsonArray? =
+    this[key] as? JsonArray
+
+private fun JsonObject.stringValueOrNull(key: String): String? =
+    this[key].stringContentOrNull()
+
+private fun JsonObject.intValueOrNull(key: String): Int? =
+    stringValueOrNull(key)?.toIntOrNull()
+
+private fun JsonObject.longValueOrNull(key: String): Long? =
+    stringValueOrNull(key)?.toLongOrNull()
+
+private fun JsonObject.uintValueOrNull(key: String): UInt? =
+    stringValueOrNull(key)?.toUIntOrNull()
+
+private fun JsonObject.ulongValueOrNull(key: String): ULong? =
+    stringValueOrNull(key)?.toULongOrNull()
 
 internal fun SteamPublishedFileQueryResult.toWorkshopBrowsePage(page: Int, pageSize: Int): WorkshopBrowsePage =
     WorkshopBrowsePage(

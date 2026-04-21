@@ -2,6 +2,7 @@ package top.apricityx.workshop.data
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import org.junit.Test
 
 class WorkshopBrowseParserTest {
@@ -61,5 +62,124 @@ class WorkshopBrowseParserTest {
         assertThat(page.items[0].title).isEqualTo("手柄振动支持")
         assertThat(page.items[0].authorName).isEqualTo("Apricityx_")
         assertThat(page.items[0].descriptionSnippet).isEqualTo("中文描述")
+    }
+
+    @Test
+    fun parse_extractsWorkshopItemsFromSsrRenderContext() {
+        val queryData = """
+            {
+              "mutations": [],
+              "queries": [
+                {
+                  "state": {
+                    "data": {
+                      "public_data": {
+                        "steamid": "76561198000000001",
+                        "persona_name": "apricity"
+                      }
+                    }
+                  },
+                  "queryKey": ["PlayerLinkDetails", "76561198000000001"]
+                },
+                {
+                  "state": {
+                    "data": {
+                      "current_page": 2,
+                      "total_pages": 4,
+                      "total_count": 120,
+                      "results": [
+                        {
+                          "publishedfileid": "3677098410",
+                          "creator": "76561198000000001",
+                          "consumer_appid": 646570,
+                          "preview_url": "https://example.com/skip.png",
+                          "title": "Skip The Spire",
+                          "short_description": "A fun mod",
+                          "file_size": "123456"
+                        }
+                      ]
+                    }
+                  },
+                  "queryKey": ["workshop_browse", 646570, "trend"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val renderContext = """{"queryData":${Json.encodeToString(queryData)}}"""
+        val payload = """
+            <html>
+            <head>
+                <script>window.SSR.renderContext=JSON.parse(${Json.encodeToString(renderContext)});</script>
+            </head>
+            <body></body>
+            </html>
+        """.trimIndent()
+
+        val page = WorkshopBrowseParser.parse(payload, page = 1, json = json)
+
+        assertThat(page.page).isEqualTo(2)
+        assertThat(page.hasNextPage).isTrue()
+        assertThat(page.items).hasSize(1)
+        assertThat(page.items[0].publishedFileId).isEqualTo(3677098410uL)
+        assertThat(page.items[0].title).isEqualTo("Skip The Spire")
+        assertThat(page.items[0].authorName).isEqualTo("apricity")
+        assertThat(page.items[0].descriptionSnippet).isEqualTo("A fun mod")
+        assertThat(page.items[0].fileSizeBytes).isEqualTo(123456L)
+    }
+
+    @Test
+    fun parse_ignoresNonObjectQueryEntriesInSsrRenderContext() {
+        val queryData = """
+            {
+              "mutations": [],
+              "queries": [
+                [],
+                {
+                  "state": {
+                    "data": {
+                      "public_data": {
+                        "steamid": "76561198000000001",
+                        "persona_name": "apricity"
+                      }
+                    }
+                  },
+                  "queryKey": ["PlayerLinkDetails", "76561198000000001"]
+                },
+                {
+                  "state": {
+                    "data": {
+                      "current_page": 1,
+                      "total_pages": 1,
+                      "results": [
+                        {
+                          "publishedfileid": "3677098410",
+                          "creator": "76561198000000001",
+                          "consumer_appid": 646570,
+                          "title": "Skip The Spire",
+                          "short_description": "A fun mod"
+                        }
+                      ]
+                    }
+                  },
+                  "queryKey": ["workshop_browse", 646570, "trend"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val renderContext = """{"queryData":${Json.encodeToString(queryData)}}"""
+        val payload = """
+            <html>
+            <head>
+                <script>window.SSR.renderContext=JSON.parse(${Json.encodeToString(renderContext)});</script>
+            </head>
+            <body></body>
+            </html>
+        """.trimIndent()
+
+        val page = WorkshopBrowseParser.parse(payload, page = 1, json = json)
+
+        assertThat(page.items).hasSize(1)
+        assertThat(page.items[0].title).isEqualTo("Skip The Spire")
+        assertThat(page.items[0].authorName).isEqualTo("apricity")
     }
 }
