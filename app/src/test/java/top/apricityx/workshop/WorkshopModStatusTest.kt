@@ -63,6 +63,37 @@ class WorkshopModStatusTest {
             .isEqualTo(WorkshopModStatus.NotDownloaded)
     }
 
+    @Test
+    fun resolve_returnsNotDownloaded_whenModIsTrackedButHasNoStoredVersion() {
+        val resolver = buildWorkshopModStatusResolver(
+            downloadedGroups = listOf(
+                DownloadedModGroup(
+                    appId = 480u,
+                    publishedFileId = 1234uL,
+                    gameTitle = "Spacewar",
+                    itemTitle = "Tracked Mod",
+                    versions = listOf(
+                        DownloadedModEntry(
+                            appId = 480u,
+                            publishedFileId = 1234uL,
+                            gameTitle = "Spacewar",
+                            itemTitle = "Tracked Mod",
+                            versionId = "updated-2",
+                            versionUpdatedAtMillis = 2_000L,
+                            storedAtMillis = 2_000L,
+                            files = emptyList(),
+                            isTrackingOnly = true,
+                        ),
+                    ),
+                ),
+            ),
+            updateResults = emptyMap(),
+        )
+
+        assertThat(resolver.resolve(appId = 480u, publishedFileId = 1234uL))
+            .isEqualTo(WorkshopModStatus.NotDownloaded)
+    }
+
     private fun group(
         appId: UInt,
         publishedFileId: ULong,

@@ -460,6 +460,7 @@ class MainActivity : ComponentActivity() {
             onLoadPreviousWorkshopCommentsPage = workshopViewModel::loadPreviousWorkshopCommentsPage,
             onLoadNextWorkshopCommentsPage = workshopViewModel::loadNextWorkshopCommentsPage,
             onTranslateWorkshopItemDescription = workshopViewModel::translateWorkshopItemDescription,
+            onAddWorkshopItemToModLibrary = workshopViewModel::addWorkshopItemToModLibrary,
             onTranslateModLibraryDescription = workshopViewModel::translateModLibraryDescription,
             onDownloadSingleItem = ::requestDownloadSingleItem,
         )

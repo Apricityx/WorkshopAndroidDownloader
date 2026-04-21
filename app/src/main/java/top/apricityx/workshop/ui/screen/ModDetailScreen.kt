@@ -34,10 +34,13 @@ import top.apricityx.workshop.ModLibraryDescriptionTranslationUiState
 import top.apricityx.workshop.ModUpdateCheckResult
 import top.apricityx.workshop.ModUpdateCheckStatus
 import top.apricityx.workshop.formatBinaryFileSize
-import top.apricityx.workshop.latestVersion
+import top.apricityx.workshop.latestVersionOrNull
 import top.apricityx.workshop.modLibraryKey
 import top.apricityx.workshop.primaryFile
+import top.apricityx.workshop.storedVersions
 import top.apricityx.workshop.totalFileCount
+import top.apricityx.workshop.trackingEntryOrNull
+import top.apricityx.workshop.updateReferenceEntry
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ModPreviewImage
@@ -67,8 +70,9 @@ fun ModDetailScreen(
     onViewChangeNotes: (DownloadedModGroup) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val latestVersion = group.latestVersion()
-    val latestUpdateResult = updateResults[latestVersion.modLibraryKey()]
+    val latestVersion = group.latestVersionOrNull()
+    val trackingEntry = group.trackingEntryOrNull()
+    val latestUpdateResult = updateResults[group.updateReferenceEntry().modLibraryKey()]
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -89,7 +93,7 @@ fun ModDetailScreen(
                 previewImagePath = group.previewImagePath,
                 contentDescription = group.itemTitle,
             )
-            latestVersion.primaryFile()?.let { primaryFile ->
+            latestVersion?.primaryFile()?.let { primaryFile ->
                 Text(
                     text = "最新主文件：${primaryFile.relativePath}",
                     style = MaterialTheme.typography.bodyMedium,
@@ -115,6 +119,31 @@ fun ModDetailScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else if (group.versionCount() == 0) {
+                Text(
+                    text = "这个模组当前只加入了模组库，尚未保存任何版本。你仍然可以继续检查更新，或直接下载最新版本。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                trackingEntry?.let { entry ->
+                    WorkshopButton(
+                        onClick = { onUpdateMod(entry) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        CompositionLocalProvider(LocalContentColor provides Color.Black) {
+                            Text(
+                                text = "下载最新版本",
+                                color = Color.Black,
+                            )
+                        }
+                    }
+                    WorkshopDestructiveButton(
+                        onClick = { onRemoveMod(entry) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("删除该模组")
+                    }
+                }
             }
         }
 
@@ -183,7 +212,7 @@ fun ModDetailScreen(
             }
         }
 
-        group.versions.forEach { entry ->
+        group.storedVersions().forEach { entry ->
             ModVersionPanel(
                 entry = entry,
                 updateResult = updateResults[entry.modLibraryKey()],

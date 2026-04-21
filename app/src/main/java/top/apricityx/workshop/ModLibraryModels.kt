@@ -18,6 +18,7 @@ data class DownloadedModEntry(
     val versionUpdatedAtMillis: Long? = null,
     val storedAtMillis: Long,
     val files: List<ExportedDownloadFile>,
+    val isTrackingOnly: Boolean = false,
 ) {
     internal val cachedVersionLabel: String by lazy(LazyThreadSafetyMode.NONE) {
         formatModVersionLabel(
@@ -45,11 +46,19 @@ data class DownloadedModGroup(
     val previewImageUrl: String = "",
     val versions: List<DownloadedModEntry>,
 ) {
-    internal val cachedLatestVersion: DownloadedModEntry by lazy(LazyThreadSafetyMode.NONE) {
-        versions.first()
+    internal val cachedStoredVersions: List<DownloadedModEntry> by lazy(LazyThreadSafetyMode.NONE) {
+        versions.filterNot(DownloadedModEntry::isTrackingOnly)
     }
-    internal val cachedLatestVersionKey: String by lazy(LazyThreadSafetyMode.NONE) {
-        cachedLatestVersion.modLibraryKey()
+    internal val cachedTrackingEntry: DownloadedModEntry? by lazy(LazyThreadSafetyMode.NONE) {
+        versions.firstOrNull(DownloadedModEntry::isTrackingOnly)
+    }
+    internal val cachedUpdateReferenceEntry: DownloadedModEntry by lazy(LazyThreadSafetyMode.NONE) {
+        cachedStoredVersions.firstOrNull() ?: requireNotNull(cachedTrackingEntry) {
+            "DownloadedModGroup must contain at least one version or one tracking entry."
+        }
+    }
+    internal val cachedUpdateReferenceKey: String by lazy(LazyThreadSafetyMode.NONE) {
+        cachedUpdateReferenceEntry.modLibraryKey()
     }
     internal val normalizedGameTitle: String by lazy(LazyThreadSafetyMode.NONE) {
         gameTitle.lowercase()
@@ -58,7 +67,7 @@ data class DownloadedModGroup(
         itemTitle.lowercase()
     }
     internal val cachedTotalFileCount: Int by lazy(LazyThreadSafetyMode.NONE) {
-        versions.sumOf { it.files.size }
+        cachedStoredVersions.sumOf { it.files.size }
     }
     internal val cachedSearchIndex: String by lazy(LazyThreadSafetyMode.NONE) {
         buildString {
@@ -88,14 +97,32 @@ fun DownloadedModEntry.modGroupKey(): String =
 fun DownloadedModGroup.modGroupKey(): String =
     "${appId}-${publishedFileId}"
 
+fun DownloadedModEntry.isStoredVersion(): Boolean =
+    !isTrackingOnly
+
 fun DownloadedModGroup.latestVersion(): DownloadedModEntry =
-    cachedLatestVersion
+    cachedStoredVersions.first()
+
+fun DownloadedModGroup.latestVersionOrNull(): DownloadedModEntry? =
+    cachedStoredVersions.firstOrNull()
+
+fun DownloadedModGroup.updateReferenceEntry(): DownloadedModEntry =
+    cachedUpdateReferenceEntry
+
+fun DownloadedModGroup.trackingEntryOrNull(): DownloadedModEntry? =
+    cachedTrackingEntry
+
+fun DownloadedModGroup.hasStoredVersions(): Boolean =
+    cachedStoredVersions.isNotEmpty()
+
+fun DownloadedModGroup.storedVersions(): List<DownloadedModEntry> =
+    cachedStoredVersions
 
 fun DownloadedModGroup.primaryFile(): ExportedDownloadFile? =
-    latestVersion().primaryFile()
+    latestVersionOrNull()?.primaryFile()
 
 fun DownloadedModGroup.versionCount(): Int =
-    versions.size
+    cachedStoredVersions.size
 
 fun DownloadedModGroup.totalFileCount(): Int =
     cachedTotalFileCount
@@ -164,11 +191,14 @@ fun List<DownloadedModEntry>.groupedForDisplay(): List<DownloadedModGroup> =
         .sortedWith(downloadedModGroupDisplayComparator)
 
 fun List<DownloadedModGroup>.latestVersionsForUpdateCheck(): List<DownloadedModEntry> =
-    map(DownloadedModGroup::latestVersion)
+    map(DownloadedModGroup::updateReferenceEntry)
 
 fun List<DownloadedModGroup>.downloadedPublishedFileIds(appId: UInt? = null): Set<ULong> =
     asSequence()
-        .filter { group -> appId == null || group.appId == appId }
+        .filter { group ->
+            (appId == null || group.appId == appId) &&
+                group.hasStoredVersions()
+        }
         .map(DownloadedModGroup::publishedFileId)
         .toSet()
 
@@ -179,7 +209,7 @@ private val downloadedModEntryDisplayComparator =
         .thenBy { it.itemTitle.lowercase() }
 
 private val downloadedModGroupDisplayComparator =
-    compareByDescending<DownloadedModGroup> { it.latestVersion().storedAtMillis }
-        .thenByDescending { it.latestVersion().versionUpdatedAtMillis ?: Long.MIN_VALUE }
+    compareByDescending<DownloadedModGroup> { it.updateReferenceEntry().storedAtMillis }
+        .thenByDescending { it.updateReferenceEntry().versionUpdatedAtMillis ?: Long.MIN_VALUE }
         .thenBy { it.gameTitle.lowercase() }
         .thenBy { it.itemTitle.lowercase() }

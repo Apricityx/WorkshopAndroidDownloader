@@ -71,6 +71,7 @@ import top.apricityx.workshop.WorkshopUiState
 import top.apricityx.workshop.buildWorkshopModStatusResolver
 import top.apricityx.workshop.downloadedPublishedFileIds
 import top.apricityx.workshop.isLibraryRoot
+import top.apricityx.workshop.matches
 import top.apricityx.workshop.showsGameWorkshopMoreShortcut
 import top.apricityx.workshop.showsDownloadCenterShortcut
 import top.apricityx.workshop.showsSettingsShortcut
@@ -416,7 +417,15 @@ private fun WorkshopDialogs(
     if (pendingRemoveMod != null) {
         WorkshopDialog(
             onDismissRequest = actions.onDismissRemoveMod,
-            title = { Text("删除本地模组") },
+            title = {
+                Text(
+                    if (pendingRemoveMod.isTrackingOnly) {
+                        "从模组库移除"
+                    } else {
+                        "删除本地模组"
+                    },
+                )
+            },
             buttons = {
                 WorkshopOutlinedButton(onClick = actions.onDismissRemoveMod) {
                     Text("取消")
@@ -426,7 +435,13 @@ private fun WorkshopDialogs(
                 }
             },
         ) {
-            Text("确定要删除「${pendingRemoveMod.itemTitle}」的 ${pendingRemoveMod.versionLabel()} 本地文件吗？下载历史会保留。")
+            Text(
+                if (pendingRemoveMod.isTrackingOnly) {
+                    "确定要从模组库移除「${pendingRemoveMod.itemTitle}」吗？移除后将不再继续为它检查更新。"
+                } else {
+                    "确定要删除「${pendingRemoveMod.itemTitle}」的 ${pendingRemoveMod.versionLabel()} 本地文件吗？下载历史会保留。"
+                },
+            )
         }
     }
 }
@@ -583,12 +598,19 @@ private fun WorkshopScreenScene(
                     WorkshopItemDetailScreen(
                         state = detailState,
                         downloadedItemIds = downloadedItemIds,
+                        isInModLibrary = state.modLibraryState.items.any { group ->
+                            group.matches(
+                                appId = detailState.item.appId,
+                                publishedFileId = detailState.item.publishedFileId,
+                            )
+                        },
                         modStatus = modStatusResolver.resolve(detailState.item),
                         onRetry = actions.onRetryWorkshopItemDetail,
                         onRetryComments = actions.onRetryWorkshopCommentsPage,
                         onLoadPreviousCommentsPage = actions.onLoadPreviousWorkshopCommentsPage,
                         onLoadNextCommentsPage = actions.onLoadNextWorkshopCommentsPage,
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
+                        onAddToLibrary = { actions.onAddWorkshopItemToModLibrary(detailState.item) },
                         onDownload = actions.onDownloadSingleItem,
                         onOpenRequiredItem = actions.onOpenWorkshopItemDetail,
                         onOpenExternalUrl = actions.onOpenExternalUrl,

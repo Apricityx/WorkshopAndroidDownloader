@@ -147,6 +147,7 @@ data class WorkshopScreenActions(
     val onLoadPreviousWorkshopCommentsPage: () -> Unit,
     val onLoadNextWorkshopCommentsPage: () -> Unit,
     val onTranslateWorkshopItemDescription: () -> Unit,
+    val onAddWorkshopItemToModLibrary: (WorkshopBrowseItem) -> Unit,
     val onTranslateModLibraryDescription: () -> Unit,
     val onDownloadSingleItem: (WorkshopBrowseItem) -> Unit,
 )

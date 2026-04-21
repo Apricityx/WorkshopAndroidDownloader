@@ -73,7 +73,7 @@ import top.apricityx.workshop.displayName
 import top.apricityx.workshop.filterModLibraryGroups
 import top.apricityx.workshop.hasActiveFilters
 import top.apricityx.workshop.latestUpdateStatus
-import top.apricityx.workshop.latestVersion
+import top.apricityx.workshop.latestVersionOrNull
 import top.apricityx.workshop.modGroupKey
 import top.apricityx.workshop.modLibraryKey
 import top.apricityx.workshop.primaryFile
@@ -81,6 +81,7 @@ import top.apricityx.workshop.screenSubtitle
 import top.apricityx.workshop.sectionSubtitle
 import top.apricityx.workshop.sortModLibraryGroups
 import top.apricityx.workshop.totalFileCount
+import top.apricityx.workshop.updateReferenceEntry
 import top.apricityx.workshop.ui.component.MessageTone
 import top.apricityx.workshop.ui.component.MetricFlow
 import top.apricityx.workshop.ui.component.ModPreviewImage
@@ -877,7 +878,7 @@ private fun LargePreviewModLibraryCard(
     onSharePrimaryFile: (ExportedDownloadFile) -> Unit,
     onViewChangeNotes: () -> Unit,
 ) {
-    val latestVersion = group.latestVersion()
+    val latestVersion = group.latestVersionOrNull()
     val primaryFile = group.primaryFile()
     WorkshopPanelCard(
         modifier = Modifier.clickable(onClick = onOpenDetail),
@@ -917,7 +918,13 @@ private fun LargePreviewModLibraryCard(
             }
             if (group.versionCount() > 1) {
                 Text(
-                    text = "当前已保存 ${group.versionCount()} 个版本，最新版本为 ${latestVersion.versionLabel()}。",
+                    text = "当前已保存 ${group.versionCount()} 个版本，最新版本为 ${latestVersion?.versionLabel().orEmpty()}。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (group.versionCount() == 0) {
+                Text(
+                    text = "当前已加入模组库，尚未下载任何版本。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1243,7 +1250,7 @@ private fun CompactListModLibraryCard(
     onOpenDetail: () -> Unit,
     onViewChangeNotes: () -> Unit,
 ) {
-    val latestVersion = group.latestVersion()
+    val latestVersion = group.latestVersionOrNull()
     WorkshopPanelCard(
         modifier = Modifier.clickable(onClick = onOpenDetail),
     ) {
@@ -1271,13 +1278,23 @@ private fun CompactListModLibraryCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = "最新版本：${latestVersion.versionLabel()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (latestVersion != null) {
+                        Text(
+                            text = "最新版本：${latestVersion.versionLabel()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        Text(
+                            text = "当前仅加入模组库，尚未下载版本",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     ModUpdateStatusText(result = updateResult)
                 }
                 Icon(
@@ -1299,11 +1316,12 @@ private fun CompactListModLibraryCard(
 }
 
 private fun buildModGroupMetrics(group: DownloadedModGroup): List<String> {
-    val latestVersion = group.latestVersion()
+    val latestVersion = group.latestVersionOrNull()
+    val updateReferenceEntry = group.updateReferenceEntry()
     return listOf(
         "版本 ${group.versionCount()}",
         "文件 ${group.totalFileCount()}",
-        "同步 ${formatModLibraryTimestamp(latestVersion.storedAtMillis)}",
+        "同步 ${formatModLibraryTimestamp((latestVersion ?: updateReferenceEntry).storedAtMillis)}",
     )
 }
 
@@ -1311,7 +1329,7 @@ private fun latestUpdateResult(
     group: DownloadedModGroup,
     state: ModLibraryUiState,
 ): ModUpdateCheckResult? =
-    state.updateCheckState.results[group.cachedLatestVersionKey]
+    state.updateCheckState.results[group.cachedUpdateReferenceKey]
 
 private fun filteredMetricText(
     visibleCount: Int,

@@ -1331,7 +1331,7 @@ class WorkshopViewModel(
                 withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
                     group.previewImageUrl.takeIf(String::isNotBlank)
                         ?: detailRepository.loadWorkshopItemDetail(
-                            item = group.latestVersion().toWorkshopBrowseItem(),
+                            item = group.toWorkshopBrowseItem(),
                             includeChangeNotes = false,
                         ).previewImageUrl
                 }
@@ -1451,7 +1451,13 @@ class WorkshopViewModel(
                 modLibraryRepository.deleteMod(entry)
             }.onSuccess { entries ->
                 downloadCenterManager.clearExportedFilesForMod(entry)
-                _toastMessages.emit("已删除 ${entry.itemTitle} 的本地文件。")
+                _toastMessages.emit(
+                    if (entry.isTrackingOnly) {
+                        "已从模组库移除 ${entry.itemTitle}。"
+                    } else {
+                        "已删除 ${entry.itemTitle} 的本地文件。"
+                    },
+                )
                 var persistedUpdateCheckState: ModLibraryUpdateCheckState? = null
                 _uiState.update { state ->
                     val nextState = applyModLibraryEntries(
@@ -2019,6 +2025,64 @@ class WorkshopViewModel(
             items = listOf(item),
         )
 
+    fun addWorkshopItemToModLibrary(item: WorkshopBrowseItem) {
+        viewModelScope.launch {
+            val isAlreadyInLibrary = _uiState.value.modLibraryState.items.any { group ->
+                group.matches(item.appId, item.publishedFileId)
+            }
+            if (isAlreadyInLibrary) {
+                _toastMessages.emit("该模组已经在模组库中。")
+                return@launch
+            }
+
+            val detailState = _uiState.value.workshopItemDetailState
+            val cachedDetail = detailState
+                ?.takeIf { state ->
+                    state.item.appId == item.appId &&
+                        state.item.publishedFileId == item.publishedFileId
+                }
+                ?.detail
+            val detail = cachedDetail ?: runCatching {
+                withTimeout(MAIN_SCREEN_TIMEOUT_MS) {
+                    detailRepository.loadWorkshopItemDetail(
+                        item = item,
+                        includeChangeNotes = false,
+                    )
+                }
+            }.getOrNull()
+            val remoteUpdatedAtMillis = detail?.timeUpdatedEpochSeconds
+                ?.takeIf { it > 0L }
+                ?.times(1000L)
+
+            runCatching {
+                modLibraryRepository.upsertTrackedMod(
+                    appId = item.appId,
+                    publishedFileId = item.publishedFileId,
+                    gameTitle = resolveGameTitleForDownload(item.appId),
+                    itemTitle = detail?.title?.ifBlank { item.title } ?: item.title,
+                    description = detail?.description.orEmpty(),
+                    changeNotes = detail?.changeNotes.orEmpty(),
+                    changeNotesFetched = detail?.changeNotes?.isNotBlank() == true,
+                    previewImageUrl = detail?.previewImageUrl?.ifBlank { item.previewImageUrl } ?: item.previewImageUrl,
+                    versionId = buildModVersionId(remoteUpdatedAtMillis),
+                    versionUpdatedAtMillis = remoteUpdatedAtMillis,
+                )
+            }.onSuccess { entries ->
+                var persistedUpdateCheckState: ModLibraryUpdateCheckState? = null
+                _uiState.update { state ->
+                    val nextState = applyModLibraryEntries(state = state, entries = entries)
+                    persistedUpdateCheckState = nextState.modLibraryState.updateCheckState
+                    nextState
+                }
+                persistedUpdateCheckState?.let(::persistModLibraryUpdateStateIfStable)
+                _toastMessages.emit("已将 ${item.title} 添加到模组库。")
+            }.onFailure { error ->
+                _toastMessages.emit(error.message ?: "添加到模组库失败。")
+                refreshModLibrary(showLoading = false)
+            }
+        }
+    }
+
     fun downloadItems(items: List<WorkshopBrowseItem>): Boolean {
         val distinctItems = items.distinctBy(WorkshopBrowseItem::downloadKey)
         if (distinctItems.isEmpty()) {
@@ -2068,6 +2132,8 @@ class WorkshopViewModel(
 
     suspend fun loadRequiredItemsForDownload(item: WorkshopBrowseItem): List<WorkshopRequiredItem> {
         val downloadedItemKeys = _uiState.value.modLibraryState.items
+            .asSequence()
+            .filter(DownloadedModGroup::hasStoredVersions)
             .map { group -> group.appId to group.publishedFileId }
             .toSet()
         val activeDownloadItemKeys = _uiState.value.downloadCenterState.activeTasks
@@ -3507,6 +3573,16 @@ private fun DownloadedModEntry.toWorkshopBrowseItem(): WorkshopBrowseItem =
         descriptionSnippet = description,
     )
 
+private fun DownloadedModGroup.toWorkshopBrowseItem(): WorkshopBrowseItem =
+    WorkshopBrowseItem(
+        appId = appId,
+        publishedFileId = publishedFileId,
+        title = itemTitle,
+        authorName = "",
+        previewImageUrl = previewImageUrl,
+        descriptionSnippet = description,
+    )
+
 private val WorkshopBrowseItem.downloadKey: Pair<UInt, ULong>
     get() = appId to publishedFileId
 
@@ -3534,8 +3610,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
-
 
 
 

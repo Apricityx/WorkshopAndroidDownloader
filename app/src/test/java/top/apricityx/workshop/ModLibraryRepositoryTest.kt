@@ -84,6 +84,64 @@ class ModLibraryRepositoryTest {
     }
 
     @Test
+    fun mergeIndexedAndLocalMods_keepsTrackingOnlyEntry_whenNoLocalFilesExist() {
+        val indexed = listOf(
+            DownloadedModEntry(
+                appId = 646570u,
+                publishedFileId = 3677098410uL,
+                gameTitle = "Slay the Spire",
+                itemTitle = "Skip The Spire",
+                description = "Tracked only",
+                versionId = "updated-1772900923",
+                versionUpdatedAtMillis = 1_772_900_923_000L,
+                storedAtMillis = 100L,
+                files = emptyList(),
+                isTrackingOnly = true,
+            ),
+        )
+
+        val merged = mergeIndexedAndLocalMods(indexed, emptyList()) { 999L }
+
+        assertThat(merged).hasSize(1)
+        assertThat(merged.single().isTrackingOnly).isTrue()
+        assertThat(merged.single().files).isEmpty()
+    }
+
+    @Test
+    fun mergeIndexedAndLocalMods_dropsTrackingOnlyEntry_whenLocalVersionExists() {
+        val indexed = listOf(
+            DownloadedModEntry(
+                appId = 646570u,
+                publishedFileId = 3677098410uL,
+                gameTitle = "Slay the Spire",
+                itemTitle = "Skip The Spire",
+                versionId = "updated-1772900923",
+                versionUpdatedAtMillis = 1_772_900_923_000L,
+                storedAtMillis = 100L,
+                files = emptyList(),
+                isTrackingOnly = true,
+            ),
+        )
+        val localMods = listOf(
+            ModLibraryRepository.LocalModSnapshot(
+                appId = 646570u,
+                publishedFileId = 3677098410uL,
+                gameTitle = "Slay the Spire",
+                itemTitle = "Skip The Spire",
+                versionId = "updated-1772901999",
+                versionUpdatedAtMillis = 1_772_901_999_000L,
+                files = listOf(sampleFile("mods/v2.jar", 200L)),
+            ),
+        )
+
+        val merged = mergeIndexedAndLocalMods(indexed, localMods) { 999L }
+
+        assertThat(merged).hasSize(1)
+        assertThat(merged.single().isTrackingOnly).isFalse()
+        assertThat(merged.single().versionId).isEqualTo("updated-1772901999")
+    }
+
+    @Test
     fun mergeIndexedAndLocalMods_keepsDistinctVersionsForSameMod() {
         val localMods = listOf(
             ModLibraryRepository.LocalModSnapshot(

@@ -62,12 +62,14 @@ import top.apricityx.workshop.ui.theme.workshopChromePadding
 internal fun WorkshopItemDetailScreen(
     state: WorkshopItemDetailUiState,
     downloadedItemIds: Set<ULong>,
+    isInModLibrary: Boolean,
     modStatus: WorkshopModStatus,
     onRetry: () -> Unit,
     onRetryComments: () -> Unit,
     onLoadPreviousCommentsPage: () -> Unit,
     onLoadNextCommentsPage: () -> Unit,
     onTranslateDescription: () -> Unit,
+    onAddToLibrary: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
     onOpenRequiredItem: (WorkshopBrowseItem) -> Unit,
     onOpenExternalUrl: (String) -> Unit,
@@ -179,6 +181,14 @@ internal fun WorkshopItemDetailScreen(
                     ) {
                         Text("查看更新日志")
                     }
+                }
+
+                WorkshopOutlinedButton(
+                    onClick = onAddToLibrary,
+                    enabled = !isInModLibrary,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (isInModLibrary) "已在模组库中" else "添加到库")
                 }
 
                 state.translationErrorMessage?.let { translationErrorMessage ->

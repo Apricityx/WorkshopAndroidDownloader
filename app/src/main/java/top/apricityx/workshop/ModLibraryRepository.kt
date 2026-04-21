@@ -47,6 +47,8 @@ class ModLibraryRepository(
             val normalizedVersionId = normalizeModVersionId(versionId)
             val existingEntry = currentEntries.firstOrNull {
                 it.matches(appId, publishedFileId, normalizedVersionId)
+            } ?: currentEntries.firstOrNull {
+                it.appId == appId && it.publishedFileId == publishedFileId
             }
             val updatedEntry = DownloadedModEntry(
                 appId = appId,
@@ -63,9 +65,83 @@ class ModLibraryRepository(
                 versionUpdatedAtMillis = versionUpdatedAtMillis,
                 storedAtMillis = nowMillis(),
                 files = files.sortedBy(ExportedDownloadFile::relativePath),
+                isTrackingOnly = false,
             )
-            val updated = (currentEntries.filterNot { it.matches(appId, publishedFileId, normalizedVersionId) } + updatedEntry)
-                .sortedForDisplay()
+            val updated = (
+                currentEntries.filterNot { entry ->
+                    (entry.appId == appId && entry.publishedFileId == publishedFileId && entry.isTrackingOnly) ||
+                        entry.matches(appId, publishedFileId, normalizedVersionId)
+                } + updatedEntry
+                ).sortedForDisplay()
+            store.saveEntries(updated)
+            updated
+        }
+    }
+
+    suspend fun upsertTrackedMod(
+        appId: UInt,
+        publishedFileId: ULong,
+        gameTitle: String,
+        itemTitle: String,
+        description: String = "",
+        changeNotes: String = "",
+        changeNotesFetched: Boolean = false,
+        previewImagePath: String? = null,
+        previewImageUrl: String = "",
+        versionId: String = LEGACY_MOD_VERSION_ID,
+        versionUpdatedAtMillis: Long? = null,
+    ): List<DownloadedModEntry> = withContext(Dispatchers.IO) {
+        store.withFileLock {
+            val currentEntries = store.loadEntries()
+            val normalizedVersionId = normalizeModVersionId(versionId)
+            val sameModEntries = currentEntries.filter { entry ->
+                entry.appId == appId && entry.publishedFileId == publishedFileId
+            }
+            val existingEntry = sameModEntries.firstOrNull()
+            if (sameModEntries.any(DownloadedModEntry::isStoredVersion)) {
+                val updated = currentEntries.map { entry ->
+                    if (entry.appId == appId && entry.publishedFileId == publishedFileId) {
+                        entry.copy(
+                            gameTitle = gameTitle.ifBlank { entry.gameTitle },
+                            itemTitle = itemTitle.ifBlank { entry.itemTitle },
+                            description = description.ifBlank { entry.description },
+                            changeNotes = changeNotes.takeIf { changeNotesFetched || it.isNotBlank() }
+                                ?: entry.changeNotes,
+                            changeNotesFetched = changeNotesFetched || entry.changeNotesFetched,
+                            previewImagePath = previewImagePath ?: entry.previewImagePath?.takeIf(::isExistingFile),
+                            previewImageUrl = previewImageUrl.ifBlank { entry.previewImageUrl },
+                        )
+                    } else {
+                        entry
+                    }
+                }.sortedForDisplay()
+                store.saveEntries(updated)
+                return@withFileLock updated
+            }
+            val trackedEntry = DownloadedModEntry(
+                appId = appId,
+                publishedFileId = publishedFileId,
+                gameTitle = gameTitle.ifBlank { existingEntry?.gameTitle.orEmpty().ifBlank { "App $appId" } },
+                itemTitle = itemTitle.ifBlank { existingEntry?.itemTitle.orEmpty().ifBlank { "模组 $publishedFileId" } },
+                description = description.ifBlank { existingEntry?.description.orEmpty() },
+                changeNotes = changeNotes.takeIf { changeNotesFetched || it.isNotBlank() }
+                    ?: existingEntry?.changeNotes.orEmpty(),
+                changeNotesFetched = changeNotesFetched || existingEntry?.changeNotesFetched == true,
+                previewImagePath = previewImagePath ?: existingEntry?.previewImagePath?.takeIf(::isExistingFile),
+                previewImageUrl = previewImageUrl.ifBlank { existingEntry?.previewImageUrl.orEmpty() },
+                versionId = normalizedVersionId,
+                versionUpdatedAtMillis = versionUpdatedAtMillis,
+                storedAtMillis = nowMillis(),
+                files = emptyList(),
+                isTrackingOnly = true,
+            )
+            val updated = (
+                currentEntries.filterNot { entry ->
+                    entry.appId == appId &&
+                        entry.publishedFileId == publishedFileId &&
+                        entry.isTrackingOnly
+                } + trackedEntry
+                ).sortedForDisplay()
             store.saveEntries(updated)
             updated
         }
@@ -140,12 +216,24 @@ class ModLibraryRepository(
         store.withFileLock {
             val currentEntries = store.loadEntries()
             localDataSource.deleteModFiles(entry)
-            val remainingIndexedEntries = currentEntries.filterNot {
+            val remainingEntries = currentEntries.filterNot {
                 it.matches(entry.appId, entry.publishedFileId, entry.versionId)
             }
+            val sameModRemainingEntries = remainingEntries.filter { candidate ->
+                candidate.appId == entry.appId && candidate.publishedFileId == entry.publishedFileId
+            }
+            val trackingEntry = if (entry.isTrackingOnly || sameModRemainingEntries.isNotEmpty()) {
+                null
+            } else {
+                entry.copy(
+                    storedAtMillis = nowMillis(),
+                    files = emptyList(),
+                    isTrackingOnly = true,
+                )
+            }
             val synced = mergeIndexedAndLocalMods(
-                indexedEntries = remainingIndexedEntries,
-                localMods = localDataSource.listLocalMods(remainingIndexedEntries),
+                indexedEntries = remainingEntries + listOfNotNull(trackingEntry),
+                localMods = localDataSource.listLocalMods(remainingEntries),
                 nowMillis = nowMillis,
             )
             if (shouldDeletePreviewAfterRemovingEntry(entry, synced)) {
@@ -209,8 +297,7 @@ internal fun mergeIndexedAndLocalMods(
     nowMillis: () -> Long,
 ): List<DownloadedModEntry> {
     val indexedByKey = indexedEntries.associateBy(::entryIdentityKey)
-    return localMods
-        .map { local ->
+    val localEntries = localMods.map { local ->
             val existing = indexedByKey[
                 entryIdentityKey(
                     appId = local.appId,
@@ -234,9 +321,23 @@ internal fun mergeIndexedAndLocalMods(
                     ?: local.files.maxOfOrNull(ExportedDownloadFile::modifiedEpochMillis)
                     ?: nowMillis(),
                 files = local.files.sortedBy(ExportedDownloadFile::relativePath),
+                isTrackingOnly = false,
             )
         }
-        .sortedForDisplay()
+    val trackedEntries = indexedEntries
+        .filter(DownloadedModEntry::isTrackingOnly)
+        .filterNot { trackedEntry ->
+            localMods.any { local ->
+                local.appId == trackedEntry.appId && local.publishedFileId == trackedEntry.publishedFileId
+            }
+        }
+        .map { trackedEntry ->
+            trackedEntry.copy(
+                files = emptyList(),
+                isTrackingOnly = true,
+            )
+        }
+    return (localEntries + trackedEntries).sortedForDisplay()
 }
 
 private fun List<DownloadedModEntry>.sortedForDisplay(): List<DownloadedModEntry> =

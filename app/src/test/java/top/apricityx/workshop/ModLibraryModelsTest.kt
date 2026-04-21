@@ -141,6 +141,74 @@ class ModLibraryModelsTest {
             .inOrder()
     }
 
+    @Test
+    fun versionCount_ignoresTrackingOnlyEntry() {
+        val group = DownloadedModGroup(
+            appId = 646570u,
+            publishedFileId = 3677098410uL,
+            gameTitle = "Slay the Spire",
+            itemTitle = "Skip The Spire",
+            versions = listOf(
+                DownloadedModEntry(
+                    appId = 646570u,
+                    publishedFileId = 3677098410uL,
+                    gameTitle = "Slay the Spire",
+                    itemTitle = "Skip The Spire",
+                    versionId = "updated-2",
+                    versionUpdatedAtMillis = 2_000L,
+                    storedAtMillis = 3_000L,
+                    files = emptyList(),
+                    isTrackingOnly = true,
+                ),
+                DownloadedModEntry(
+                    appId = 646570u,
+                    publishedFileId = 3677098410uL,
+                    gameTitle = "Slay the Spire",
+                    itemTitle = "Skip The Spire",
+                    versionId = "updated-1",
+                    versionUpdatedAtMillis = 1_000L,
+                    storedAtMillis = 2_000L,
+                    files = listOf(sampleFile("mods/v1.jar", 2_000L)),
+                ),
+            ),
+        )
+
+        assertThat(group.versionCount()).isEqualTo(1)
+        assertThat(group.latestVersionOrNull()?.versionId).isEqualTo("updated-1")
+        assertThat(group.updateReferenceEntry().versionId).isEqualTo("updated-1")
+    }
+
+    @Test
+    fun latestVersionsForUpdateCheck_usesTrackingEntry_whenNoStoredVersionsExist() {
+        val trackedGroup = DownloadedModGroup(
+            appId = 480u,
+            publishedFileId = 1234uL,
+            gameTitle = "Test Game",
+            itemTitle = "Tracked Mod",
+            versions = listOf(
+                DownloadedModEntry(
+                    appId = 480u,
+                    publishedFileId = 1234uL,
+                    gameTitle = "Test Game",
+                    itemTitle = "Tracked Mod",
+                    versionId = "updated-5",
+                    versionUpdatedAtMillis = 5_000L,
+                    storedAtMillis = 6_000L,
+                    files = emptyList(),
+                    isTrackingOnly = true,
+                ),
+            ),
+        )
+
+        val latest = listOf(trackedGroup).latestVersionsForUpdateCheck()
+
+        assertThat(trackedGroup.versionCount()).isEqualTo(0)
+        assertThat(trackedGroup.latestVersionOrNull()).isNull()
+        assertThat(latest).hasSize(1)
+        assertThat(latest.single().versionId).isEqualTo("updated-5")
+        assertThat(latest.single().isTrackingOnly).isTrue()
+    }
+
     private fun sampleFile(
         relativePath: String,
         modifiedAt: Long,

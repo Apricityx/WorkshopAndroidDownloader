@@ -62,9 +62,11 @@ fun buildWorkshopModStatusResolver(
     pendingDownloadItemKeys: Set<WorkshopModKey> = emptySet(),
     activeDownloadItemKeys: Set<WorkshopModKey> = emptySet(),
 ): WorkshopModStatusResolver {
-    val latestDownloadedEntries = downloadedGroups.associate { group ->
-        group.workshopModKey() to group.latestVersion()
-    }
+    val latestDownloadedEntries = downloadedGroups.mapNotNull { group ->
+        group.latestVersionOrNull()?.let { version ->
+            group.workshopModKey() to version
+        }
+    }.toMap()
     val updateResultsByModKey = latestDownloadedEntries.mapNotNull { (key, entry) ->
         updateResults[entry.modLibraryKey()]?.let { result ->
             key to result

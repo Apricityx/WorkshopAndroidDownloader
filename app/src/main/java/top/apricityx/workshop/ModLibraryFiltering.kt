@@ -31,13 +31,13 @@ fun sortModLibraryGroups(
         ModLibrarySortOption.ModTitle -> items.sortedWith(
             compareBy<DownloadedModGroup> { it.normalizedItemTitle }
                 .thenBy { it.normalizedGameTitle }
-                .thenByDescending { it.latestVersion().storedAtMillis },
+                .thenByDescending { it.updateReferenceEntry().storedAtMillis },
         )
 
         ModLibrarySortOption.GameTitle -> items.sortedWith(
             compareBy<DownloadedModGroup> { it.normalizedGameTitle }
                 .thenBy { it.normalizedItemTitle }
-                .thenByDescending { it.latestVersion().storedAtMillis },
+                .thenByDescending { it.updateReferenceEntry().storedAtMillis },
         )
     }
 }
@@ -53,7 +53,7 @@ fun availableModLibraryGames(items: List<DownloadedModGroup>): List<String> =
 fun DownloadedModGroup.latestUpdateStatus(
     updateResults: Map<String, ModUpdateCheckResult>,
 ): ModUpdateCheckStatus =
-    updateResults[cachedLatestVersionKey]?.status ?: ModUpdateCheckStatus.Unknown
+    updateResults[cachedUpdateReferenceKey]?.status ?: ModUpdateCheckStatus.Unknown
 
 private fun normalizeSearchTerms(searchQuery: String): List<String> =
     searchQuery.trim()
