@@ -1,7 +1,10 @@
 package top.apricityx.workshop.ui.screen
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +20,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -29,15 +33,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Comment
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Visibility
 import top.apricityx.workshop.WorkshopModStatus
 import top.apricityx.workshop.WorkshopItemDetailUiState
 import top.apricityx.workshop.formatBinaryFileSize
@@ -86,15 +98,59 @@ internal fun WorkshopItemDetailScreen(
     ) {
         mutableStateOf(false)
     }
-    val metrics = buildList {
-        add("作者 ${detail?.authorName ?: state.item.authorName}")
-        detail?.subscriptions?.let { add("订阅 ${formatCount(it)}") }
-        detail?.views?.let { add("浏览 ${formatCount(it)}") }
-        detail?.fileSizeBytes?.let { add("大小 ${formatBinaryFileSize(it)}") }
-        detail?.requiredItems?.takeIf { requiredItems -> requiredItems.isNotEmpty() }?.let { requiredItems ->
-            add("前置 ${requiredItems.size}")
+    val summaryMetrics = buildList {
+        add(
+            WorkshopItemSummaryMetric(
+                icon = Icons.Default.Person,
+                label = "作者",
+                value = detail?.authorName ?: state.item.authorName,
+            ),
+        )
+        detail?.subscriptions?.let {
+            add(
+                WorkshopItemSummaryMetric(
+                    icon = Icons.Default.Download,
+                    label = "订阅",
+                    value = formatCount(it),
+                ),
+            )
         }
-        detail?.commentCount?.let { add("评论 ${formatCount(it)}") }
+        detail?.views?.let {
+            add(
+                WorkshopItemSummaryMetric(
+                    icon = Icons.Default.Visibility,
+                    label = "浏览",
+                    value = formatCount(it),
+                ),
+            )
+        }
+        detail?.fileSizeBytes?.let {
+            add(
+                WorkshopItemSummaryMetric(
+                    icon = Icons.Default.Storage,
+                    label = "大小",
+                    value = formatBinaryFileSize(it),
+                ),
+            )
+        }
+        detail?.requiredItems?.takeIf { requiredItems -> requiredItems.isNotEmpty() }?.let { requiredItems ->
+            add(
+                WorkshopItemSummaryMetric(
+                    icon = Icons.Default.Extension,
+                    label = "前置",
+                    value = requiredItems.size.toString(),
+                ),
+            )
+        }
+        detail?.commentCount?.let {
+            add(
+                WorkshopItemSummaryMetric(
+                    icon = Icons.AutoMirrored.Filled.Comment,
+                    label = "评论",
+                    value = formatCount(it),
+                ),
+            )
+        }
     }
 
     if (state.showConnectionErrorState) {
@@ -116,8 +172,10 @@ internal fun WorkshopItemDetailScreen(
             ScreenSummaryCard(
                 title = detail?.title ?: state.item.title,
                 subtitle = "PublishedFileID ${state.item.publishedFileId}",
-                metrics = metrics,
             ) {
+                if (summaryMetrics.isNotEmpty()) {
+                    WorkshopItemSummaryMetricFlow(metrics = summaryMetrics)
+                }
                 WorkshopDetailHeaderImage(
                     thumbnailUrl = state.item.previewImageUrl,
                     fullImageUrl = detail?.previewImageUrl,
@@ -127,90 +185,12 @@ internal fun WorkshopItemDetailScreen(
                         .height(220.dp),
                 )
 
-                if (description.isNotBlank()) {
-                    if (state.translatedDescription != null) {
-                        Text(
-                            text = "原文",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    SelectionContainer {
-                        Text(
-                            text = description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-
-                if (canTranslateDescription) {
-                    WorkshopOutlinedButton(
-                        onClick = onTranslateDescription,
-                        enabled = !state.isTranslatingDescription,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        if (state.isTranslatingDescription) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Text(" 正在翻译描述…")
-                        } else {
-                            Text(
-                                if (state.translatedDescription == null) {
-                                    "翻译描述"
-                                } else {
-                                    "重新翻译描述"
-                                },
-                            )
-                        }
-                    }
-                }
-
-                if (detail != null) {
-                    WorkshopOutlinedButton(
-                        onClick = {
-                            if (changeNotes.isNotBlank()) {
-                                showChangeNotesDialog = true
-                            } else {
-                                onOpenExternalUrl(changeNotesUrl)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("查看更新日志")
-                    }
-                }
-
                 WorkshopOutlinedButton(
                     onClick = onAddToLibrary,
                     enabled = !isInModLibrary,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (isInModLibrary) "已在模组库中" else "添加到库")
-                }
-
-                state.translationErrorMessage?.let { translationErrorMessage ->
-                    WorkshopMessageBanner(
-                        message = translationErrorMessage,
-                        tone = MessageTone.Error,
-                    )
-                }
-
-                state.translatedDescription?.takeIf(String::isNotBlank)?.let { translatedDescription ->
-                    Text(
-                        text = "译文",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    SelectionContainer {
-                        Text(
-                            text = translatedDescription,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
                 }
 
                 WorkshopButton(
@@ -249,6 +229,99 @@ internal fun WorkshopItemDetailScreen(
                             contentDescription = null,
                         )
                         Text(" 重试加载详情")
+                    }
+                }
+            }
+
+            if (
+                description.isNotBlank() ||
+                canTranslateDescription ||
+                detail != null ||
+                state.translationErrorMessage != null ||
+                !state.translatedDescription.isNullOrBlank()
+            ) {
+                WorkshopPanelCard {
+                    Text(
+                        text = "简介",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (description.isNotBlank()) {
+                        if (state.translatedDescription != null) {
+                            Text(
+                                text = "原文",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        SelectionContainer {
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+
+                    if (canTranslateDescription) {
+                        WorkshopOutlinedButton(
+                            onClick = onTranslateDescription,
+                            enabled = !state.isTranslatingDescription,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (state.isTranslatingDescription) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text(" 正在翻译描述…")
+                            } else {
+                                Text(
+                                    if (state.translatedDescription == null) {
+                                        "翻译描述"
+                                    } else {
+                                        "重新翻译描述"
+                                    },
+                                )
+                            }
+                        }
+                    }
+
+                    if (detail != null) {
+                        WorkshopOutlinedButton(
+                            onClick = {
+                                if (changeNotes.isNotBlank()) {
+                                    showChangeNotesDialog = true
+                                } else {
+                                    onOpenExternalUrl(changeNotesUrl)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("查看更新日志")
+                        }
+                    }
+
+                    state.translationErrorMessage?.let { translationErrorMessage ->
+                        WorkshopMessageBanner(
+                            message = translationErrorMessage,
+                            tone = MessageTone.Error,
+                        )
+                    }
+
+                    state.translatedDescription?.takeIf(String::isNotBlank)?.let { translatedDescription ->
+                        Text(
+                            text = "译文",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        SelectionContainer {
+                            Text(
+                                text = translatedDescription,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                     }
                 }
             }
@@ -636,3 +709,73 @@ private fun formatUpdatedTime(epochSeconds: Long): String =
         )
 
 private fun formatCount(value: Long): String = "%,d".format(value)
+
+private data class WorkshopItemSummaryMetric(
+    val icon: ImageVector,
+    val label: String,
+    val value: String,
+)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WorkshopItemSummaryMetricFlow(
+    metrics: List<WorkshopItemSummaryMetric>,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        metrics.forEach { metric ->
+            WorkshopItemSummaryMetricPill(metric = metric)
+        }
+    }
+}
+
+@Composable
+private fun WorkshopItemSummaryMetricPill(
+    metric: WorkshopItemSummaryMetric,
+    modifier: Modifier = Modifier,
+) {
+    val isLiquidGlass = top.apricityx.workshop.ui.theme.isLiquidGlassFrontendEnabled()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.35f
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = if (isLiquidGlass) {
+            MaterialTheme.colorScheme.surface.copy(alpha = if (isDark) 0.22f else 0.16f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = if (isLiquidGlass) {
+            BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.onSurface.copy(alpha = if (isDark) 0.14f else 0.1f),
+            )
+        } else {
+            null
+        },
+        tonalElevation = if (isLiquidGlass) 0.dp else 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = metric.icon,
+                contentDescription = metric.label,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = metric.value,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}

@@ -107,12 +107,6 @@ fun ModDetailScreen(
             ) {
                 Text("重命名模组")
             }
-            WorkshopOutlinedButton(
-                onClick = { onViewChangeNotes(group) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("查看更新日志")
-            }
             if (group.versionCount() > 1) {
                 Text(
                     text = "该模组共保存了 ${group.versionCount()} 个版本，下面可以分别查看、更新或删除。",
@@ -147,7 +141,7 @@ fun ModDetailScreen(
             }
         }
 
-        if (group.description.isNotBlank()) {
+        if (group.description.isNotBlank() || group.changeNotesFetched || group.changeNotes.isNotBlank()) {
             WorkshopPanelCard {
                 Text(
                     text = "简介",
@@ -188,6 +182,12 @@ fun ModDetailScreen(
                             },
                         )
                     }
+                }
+                WorkshopOutlinedButton(
+                    onClick = { onViewChangeNotes(group) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("查看更新日志")
                 }
                 descriptionTranslationState.translationErrorMessage?.let { translationErrorMessage ->
                     WorkshopMessageBanner(
