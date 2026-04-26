@@ -87,7 +87,14 @@ class WorkshopPublicExportManager(
         return@withContext when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
                 log("选择导出策略：MediaStore.Downloads")
-                exportToMediaStore(exportPlan, log)
+                try {
+                    exportToMediaStore(exportPlan, log)
+                } catch (error: Throwable) {
+                    log(
+                        "MediaStore 导出失败，回退到应用专用下载目录。reason=${error.toDebugString()}",
+                    )
+                    exportToAppSpecificDownloads(exportPlan, log)
+                }
             }
             hasLegacyExternalStoragePermission() && isLegacyExternalStorageWritable() -> {
                 log("选择导出策略：旧版公共下载目录")
@@ -115,19 +122,35 @@ class WorkshopPublicExportManager(
         val exportedFiles = mutableListOf<ExportedDownloadFile>()
         exportPlan.forEach { target ->
             val mimeType = URLConnection.guessContentTypeFromName(target.displayName) ?: "application/octet-stream"
+            val insertValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, target.displayName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, target.mediaStoreRelativePath)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
             log(
                 "MediaStore insert start: source=${target.file.relativePath} displayName=${target.displayName} relativePath=${target.mediaStoreRelativePath}",
             )
+            log(
+                "MediaStore insert values: uri=${MediaStore.Downloads.EXTERNAL_CONTENT_URI} values=${insertValues.toDebugString()} device=sdk=${Build.VERSION.SDK_INT} release=${Build.VERSION.RELEASE}",
+            )
 
-            val itemUri = resolver.insert(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, target.displayName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, target.mediaStoreRelativePath)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                },
-            ) ?: error("Failed to create public download entry for ${target.file.relativePath}")
+            val itemUri = try {
+                resolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    insertValues,
+                )
+            } catch (error: Throwable) {
+                log(
+                    "MediaStore insert threw for ${target.file.relativePath}: ${error.toDebugString()} values=${insertValues.toDebugString()}",
+                )
+                throw error
+            } ?: run {
+                log(
+                    "MediaStore insert returned null for ${target.file.relativePath} values=${insertValues.toDebugString()}",
+                )
+                error("Failed to create public download entry for ${target.file.relativePath}")
+            }
             log("MediaStore insert ok: uri=$itemUri")
 
             try {
@@ -309,6 +332,42 @@ class WorkshopPublicExportManager(
             "${application.packageName}.fileprovider",
             file,
         )
+
+    private fun ContentValues.toDebugString(): String {
+        if (size() == 0) {
+            return "{}"
+        }
+        return keySet()
+            .sorted()
+            .joinToString(prefix = "{", postfix = "}") { key ->
+                "$key=${get(key)}"
+            }
+    }
+
+    private fun Throwable.toDebugString(): String {
+        val chain = generateSequence(this) { it.cause }
+            .map { current ->
+                buildString {
+                    append(current::class.java.name)
+                    current.message?.takeIf { it.isNotBlank() }?.let {
+                        append(": ")
+                        append(it)
+                    }
+                }
+            }
+            .joinToString(" <- ")
+        return buildString {
+            append(chain)
+            stackTrace.firstOrNull()?.let { firstFrame ->
+                append(" @ ")
+                append(firstFrame.className)
+                append(".")
+                append(firstFrame.methodName)
+                append(":")
+                append(firstFrame.lineNumber)
+            }
+        }
+    }
 
     private fun buildExportDisplayName(
         source: File,
