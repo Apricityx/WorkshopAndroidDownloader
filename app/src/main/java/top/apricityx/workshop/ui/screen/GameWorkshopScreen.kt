@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -543,7 +544,15 @@ private fun WorkshopDownloadActionButton(
                 }
             }
 
-            WorkshopModStatus.LatestDownloaded,
+            WorkshopModStatus.LatestDownloaded -> {
+                {
+                    Icon(
+                        imageVector = Icons.Default.Done,
+                        contentDescription = null,
+                    )
+                }
+            }
+
             WorkshopModStatus.UpdateAvailable,
             WorkshopModStatus.NotDownloaded,
             -> null

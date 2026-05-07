@@ -1226,6 +1226,20 @@ class WorkshopViewModel(
         ensureModDetailPreviewCached(entry)
     }
 
+    fun openDownloadedWorkshopItem(item: WorkshopBrowseItem) {
+        val entry = _uiState.value.modLibraryState.items.firstOrNull { group ->
+            group.matches(item.appId, item.publishedFileId) && group.hasStoredVersions()
+        }
+        if (entry == null) {
+            viewModelScope.launch {
+                _toastMessages.emit("这个模组还没有下载完成。")
+            }
+            refreshModLibrary(showLoading = false)
+            return
+        }
+        openModDetail(entry)
+    }
+
     fun openModLibraryChangeNotes(group: DownloadedModGroup) {
         val targetGroupKey = group.modGroupKey()
         val dialogMarkdown = _uiState.value.modLibraryState.changeNotesDialogState
@@ -3610,7 +3624,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
 
 
 

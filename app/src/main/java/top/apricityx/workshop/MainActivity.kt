@@ -461,6 +461,7 @@ class MainActivity : ComponentActivity() {
             onLoadNextWorkshopCommentsPage = workshopViewModel::loadNextWorkshopCommentsPage,
             onTranslateWorkshopItemDescription = workshopViewModel::translateWorkshopItemDescription,
             onAddWorkshopItemToModLibrary = workshopViewModel::addWorkshopItemToModLibrary,
+            onOpenDownloadedWorkshopItem = workshopViewModel::openDownloadedWorkshopItem,
             onTranslateModLibraryDescription = workshopViewModel::translateModLibraryDescription,
             onDownloadSingleItem = ::requestDownloadSingleItem,
         )

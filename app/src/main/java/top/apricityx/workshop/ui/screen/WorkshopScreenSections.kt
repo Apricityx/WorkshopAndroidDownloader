@@ -612,6 +612,7 @@ private fun WorkshopScreenScene(
                         onTranslateDescription = actions.onTranslateWorkshopItemDescription,
                         onAddToLibrary = { actions.onAddWorkshopItemToModLibrary(detailState.item) },
                         onDownload = actions.onDownloadSingleItem,
+                        onViewDownloadedMod = actions.onOpenDownloadedWorkshopItem,
                         onOpenRequiredItem = actions.onOpenWorkshopItemDetail,
                         onOpenExternalUrl = actions.onOpenExternalUrl,
                         modifier = Modifier.fillMaxSize(),

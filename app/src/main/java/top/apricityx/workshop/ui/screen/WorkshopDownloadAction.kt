@@ -7,11 +7,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -25,7 +25,7 @@ import top.apricityx.workshop.WorkshopModStatus
 
 internal fun WorkshopModStatus.actionLabel(): String =
     when (this) {
-        WorkshopModStatus.LatestDownloaded -> "已下载"
+        WorkshopModStatus.LatestDownloaded -> "查看"
         WorkshopModStatus.UpdateAvailable -> "更新到最新版本"
         WorkshopModStatus.NotDownloaded -> "下载"
         WorkshopModStatus.Downloading -> "下载中"
@@ -33,7 +33,7 @@ internal fun WorkshopModStatus.actionLabel(): String =
 
 internal fun WorkshopModStatus.actionIcon(): ImageVector =
     when (this) {
-        WorkshopModStatus.LatestDownloaded -> Icons.Default.Done
+        WorkshopModStatus.LatestDownloaded -> Icons.Default.Visibility
         WorkshopModStatus.UpdateAvailable -> Icons.Default.Upload
         WorkshopModStatus.NotDownloaded -> Icons.Default.Download
         WorkshopModStatus.Downloading -> Icons.Default.Sync
@@ -41,6 +41,9 @@ internal fun WorkshopModStatus.actionIcon(): ImageVector =
 
 internal fun WorkshopModStatus.isDownloadActionEnabled(): Boolean =
     this == WorkshopModStatus.UpdateAvailable || this == WorkshopModStatus.NotDownloaded
+
+internal fun WorkshopModStatus.isViewActionEnabled(): Boolean =
+    this == WorkshopModStatus.LatestDownloaded
 
 @Composable
 internal fun DownloadingAnimatedIcon(

@@ -83,6 +83,7 @@ internal fun WorkshopItemDetailScreen(
     onTranslateDescription: () -> Unit,
     onAddToLibrary: () -> Unit,
     onDownload: (WorkshopBrowseItem) -> Unit,
+    onViewDownloadedMod: (WorkshopBrowseItem) -> Unit,
     onOpenRequiredItem: (WorkshopBrowseItem) -> Unit,
     onOpenExternalUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -195,11 +196,13 @@ internal fun WorkshopItemDetailScreen(
 
                 WorkshopButton(
                     onClick = {
-                        if (modStatus.isDownloadActionEnabled()) {
+                        if (modStatus.isViewActionEnabled()) {
+                            onViewDownloadedMod(state.item)
+                        } else if (modStatus.isDownloadActionEnabled()) {
                             onDownload(state.item)
                         }
                     },
-                    enabled = modStatus.isDownloadActionEnabled(),
+                    enabled = modStatus.isViewActionEnabled() || modStatus.isDownloadActionEnabled(),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     CompositionLocalProvider(LocalContentColor provides Color.Black) {
