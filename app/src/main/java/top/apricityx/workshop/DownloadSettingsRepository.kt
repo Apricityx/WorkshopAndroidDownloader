@@ -76,6 +76,16 @@ class DownloadSettingsRepository(context: Context) {
         prefs.edit().putString(KEY_MOD_LIBRARY_DISPLAY_MODE, value.storageValue).apply()
     }
 
+    fun isAutoRenameModFilesToModNameEnabled(): Boolean =
+        prefs.getBoolean(
+            KEY_AUTO_RENAME_MOD_FILES_TO_MOD_NAME,
+            DEFAULT_AUTO_RENAME_MOD_FILES_TO_MOD_NAME_ENABLED,
+        )
+
+    fun setAutoRenameModFilesToModNameEnabled(value: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_RENAME_MOD_FILES_TO_MOD_NAME, value).apply()
+    }
+
     fun isAutoCheckUpdatesEnabled(): Boolean =
         prefs.getBoolean(KEY_AUTO_CHECK_UPDATES_ENABLED, DEFAULT_AUTO_CHECK_UPDATES_ENABLED)
 
@@ -155,6 +165,7 @@ class DownloadSettingsRepository(context: Context) {
         private const val KEY_FRONTEND_MODE = "frontend_mode"
         private const val KEY_STEAM_LANGUAGE_PREFERENCE = "steam_language_preference"
         private const val KEY_MOD_LIBRARY_DISPLAY_MODE = "mod_library_display_mode"
+        private const val KEY_AUTO_RENAME_MOD_FILES_TO_MOD_NAME = "auto_rename_mod_files_to_mod_name"
         private const val KEY_AUTO_CHECK_UPDATES_ENABLED = "auto_check_updates_enabled"
         private const val KEY_PREFERRED_UPDATE_SOURCE_ID = "preferred_update_source_id"
         private const val KEY_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP =
@@ -176,6 +187,7 @@ class DownloadSettingsRepository(context: Context) {
         const val MIN_MOD_UPDATE_CONCURRENT_CHECKS = 1
         const val MAX_MOD_UPDATE_CONCURRENT_CHECKS = 10
         const val DEFAULT_AUTO_CHECK_UPDATES_ENABLED = true
+        const val DEFAULT_AUTO_RENAME_MOD_FILES_TO_MOD_NAME_ENABLED = false
         const val DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP = false
         const val DEFAULT_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED = true
         val DEFAULT_THEME_MODE: AppThemeMode = AppThemeMode.FollowSystem

@@ -128,6 +128,7 @@ data class WorkshopScreenActions(
     val onUpdateModUpdateConcurrentCheckCountInput: (String) -> Unit,
     val onUpdateAllowSteamAuthenticatedCleartextHttp: (Boolean) -> Unit,
     val onUpdateExperimentalWorkshopDirectAccess: (Boolean) -> Unit,
+    val onUpdateAutoRenameModFilesToModName: (Boolean) -> Unit,
     val onSaveDownloadSettings: () -> Unit,
     val onUpdateAddGameSearchQuery: (String) -> Unit,
     val onSearchGames: () -> Unit,

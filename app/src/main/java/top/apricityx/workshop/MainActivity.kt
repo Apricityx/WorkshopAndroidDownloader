@@ -441,6 +441,7 @@ class MainActivity : ComponentActivity() {
             onUpdateModUpdateConcurrentCheckCountInput = workshopViewModel::updateModUpdateConcurrentCheckCountInput,
             onUpdateAllowSteamAuthenticatedCleartextHttp = workshopViewModel::updateAllowSteamAuthenticatedCleartextHttp,
             onUpdateExperimentalWorkshopDirectAccess = workshopViewModel::updateExperimentalWorkshopDirectAccess,
+            onUpdateAutoRenameModFilesToModName = workshopViewModel::updateAutoRenameModFilesToModName,
             onSaveDownloadSettings = workshopViewModel::saveDownloadSettings,
             onUpdateAddGameSearchQuery = workshopViewModel::updateAddGameSearchQuery,
             onSearchGames = workshopViewModel::searchGames,

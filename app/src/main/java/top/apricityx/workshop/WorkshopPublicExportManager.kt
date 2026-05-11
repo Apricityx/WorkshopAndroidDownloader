@@ -20,6 +20,7 @@ import java.util.zip.ZipInputStream
 
 class WorkshopPublicExportManager(
     private val application: Application,
+    private val settingsRepository: DownloadSettingsRepository = DownloadSettingsRepository(application),
 ) {
     suspend fun exportDownloadedFiles(
         gameTitle: String,
@@ -36,14 +37,17 @@ class WorkshopPublicExportManager(
 
         val metadata = readWorkshopDownloadMetadata(stagingDir)
         val resolvedItemTitle = metadata?.title?.takeIf { it.isNotBlank() } ?: itemTitle
+        val autoRenameToModName = settingsRepository.isAutoRenameModFilesToModNameEnabled()
         val exportPlan = files.map { file ->
             val source = File(stagingDir, file.relativePath.replace('/', File.separatorChar))
             require(source.isFile) { "Downloaded file is missing: ${file.relativePath}" }
+
             val displayName = buildExportDisplayName(
                 source = source,
                 file = file,
                 metadata = metadata,
                 singleFile = files.size == 1,
+                autoRenameToModName = autoRenameToModName,
             )
 
             ExportTarget(
@@ -374,8 +378,17 @@ class WorkshopPublicExportManager(
         file: top.apricityx.workshop.workshop.DownloadedFileInfo,
         metadata: WorkshopDownloadMetadata?,
         singleFile: Boolean,
+        autoRenameToModName: Boolean,
     ): String {
         val originalName = file.relativePath.substringAfterLast('/')
+        val metadataTitle = metadata?.title
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::sanitizeFileName)
+            ?.ifBlank { null }
+        if (singleFile && autoRenameToModName && metadataTitle != null) {
+            return appendExtensionIfMissing(metadataTitle, inferExtension(source))
+        }
+
         val metadataFileName = metadata?.filename
             ?.substringAfterLast('/')
             ?.takeIf { it.isNotBlank() }
@@ -384,10 +397,6 @@ class WorkshopPublicExportManager(
             return appendExtensionIfMissing(metadataFileName, inferExtension(source))
         }
 
-        val metadataTitle = metadata?.title
-            ?.takeIf { it.isNotBlank() }
-            ?.let(::sanitizeFileName)
-            ?.ifBlank { null }
         if (singleFile && metadataTitle != null) {
             return appendExtensionIfMissing(metadataTitle, inferExtension(source))
         }

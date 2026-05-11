@@ -239,6 +239,8 @@ data class SettingsUiState(
         DownloadSettingsRepository.DEFAULT_ALLOW_STEAM_AUTHENTICATED_CLEARTEXT_HTTP,
     val experimentalWorkshopDirectAccessEnabled: Boolean =
         DownloadSettingsRepository.DEFAULT_EXPERIMENTAL_WORKSHOP_DIRECT_ACCESS_ENABLED,
+    val autoRenameModFilesToModNameEnabled: Boolean =
+        DownloadSettingsRepository.DEFAULT_AUTO_RENAME_MOD_FILES_TO_MOD_NAME_ENABLED,
     val baiduTranslationApiKeyConfigured: Boolean = false,
     val steamAuthState: SteamAuthUiState = SteamAuthUiState(),
     val autoCheckUpdatesEnabled: Boolean = DownloadSettingsRepository.DEFAULT_AUTO_CHECK_UPDATES_ENABLED,

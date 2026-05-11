@@ -685,6 +685,7 @@ private fun WorkshopScreenScene(
                     onModUpdateConcurrentCheckCountChange = actions.onUpdateModUpdateConcurrentCheckCountInput,
                     onAllowSteamAuthenticatedCleartextHttpChanged = actions.onUpdateAllowSteamAuthenticatedCleartextHttp,
                     onExperimentalWorkshopDirectAccessChanged = actions.onUpdateExperimentalWorkshopDirectAccess,
+                    onAutoRenameModFilesToModNameChanged = actions.onUpdateAutoRenameModFilesToModName,
                     onSave = actions.onSaveDownloadSettings,
                     modifier = Modifier.fillMaxSize(),
                 )

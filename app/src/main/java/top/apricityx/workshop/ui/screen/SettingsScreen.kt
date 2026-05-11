@@ -100,6 +100,7 @@ fun SettingsScreen(
     onModUpdateConcurrentCheckCountChange: (String) -> Unit,
     onAllowSteamAuthenticatedCleartextHttpChanged: (Boolean) -> Unit,
     onExperimentalWorkshopDirectAccessChanged: (Boolean) -> Unit,
+    onAutoRenameModFilesToModNameChanged: (Boolean) -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -442,6 +443,28 @@ fun SettingsScreen(
                 WorkshopSwitch(
                     checked = state.experimentalWorkshopDirectAccessEnabled,
                     onCheckedChange = onExperimentalWorkshopDirectAccessChanged,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("自动重命名模组文件", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "开启后，之后下载的单文件模组会自动将导出的文件名改为模组名，并保留原文件扩展名。若未解析到模组名则使用原文件名。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                WorkshopSwitch(
+                    checked = state.autoRenameModFilesToModNameEnabled,
+                    onCheckedChange = onAutoRenameModFilesToModNameChanged,
                 )
             }
 

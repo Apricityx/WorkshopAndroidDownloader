@@ -255,6 +255,7 @@ class WorkshopViewModel(
         val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
         val experimentalWorkshopDirectAccessEnabled =
             settingsRepository.isExperimentalWorkshopDirectAccessEnabled()
+        val autoRenameModFilesToModNameEnabled = settingsRepository.isAutoRenameModFilesToModNameEnabled()
         val application = getApplication<Application>()
         val currentSteamAuthState = steamAuthRepository.loadSnapshot().toUiState(
             loginDialogState = _uiState.value.settingsState.steamAuthState.loginDialogState,
@@ -275,6 +276,7 @@ class WorkshopViewModel(
                     selectedSteamLanguagePreference = currentSteamLanguagePreference,
                     allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
                     experimentalWorkshopDirectAccessEnabled = experimentalWorkshopDirectAccessEnabled,
+                    autoRenameModFilesToModNameEnabled = autoRenameModFilesToModNameEnabled,
                     baiduTranslationApiKeyConfigured = baiduTranslationCredentialsRepository.hasConfiguredCredentials(),
                     steamAuthState = currentSteamAuthState,
                     autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
@@ -561,6 +563,27 @@ class WorkshopViewModel(
                     }
                 } else {
                     "已关闭实验性创意工坊直连策略。"
+                },
+            )
+        }
+    }
+
+    fun updateAutoRenameModFilesToModName(enabled: Boolean) {
+        settingsRepository.setAutoRenameModFilesToModNameEnabled(enabled)
+        _uiState.update { state ->
+            state.copy(
+                settingsState = state.settingsState.copy(
+                    autoRenameModFilesToModNameEnabled = enabled,
+                    message = null,
+                ),
+            )
+        }
+        viewModelScope.launch {
+            _toastMessages.emit(
+                if (enabled) {
+                    "已开启自动重命名，之后下载的单文件模组会使用模组名作为文件名。"
+                } else {
+                    "已关闭自动重命名模组文件。"
                 },
             )
         }
@@ -3496,6 +3519,7 @@ class WorkshopViewModel(
         val allowSteamAuthenticatedCleartextHttp = settingsRepository.isSteamAuthenticatedCleartextHttpAllowed()
         val experimentalWorkshopDirectAccessEnabled =
             settingsRepository.isExperimentalWorkshopDirectAccessEnabled()
+        val autoRenameModFilesToModNameEnabled = settingsRepository.isAutoRenameModFilesToModNameEnabled()
         val application = getApplication<Application>()
         return WorkshopUiState(
             themeMode = themeMode,
@@ -3518,6 +3542,7 @@ class WorkshopViewModel(
                 selectedSteamLanguagePreference = steamLanguagePreference,
                 allowSteamAuthenticatedCleartextHttp = allowSteamAuthenticatedCleartextHttp,
                 experimentalWorkshopDirectAccessEnabled = experimentalWorkshopDirectAccessEnabled,
+                autoRenameModFilesToModNameEnabled = autoRenameModFilesToModNameEnabled,
                 baiduTranslationApiKeyConfigured = hasSavedBaiduCredentials,
                 steamAuthState = steamAuthRepository.loadSnapshot().toUiState(),
                 autoCheckUpdatesEnabled = settingsRepository.isAutoCheckUpdatesEnabled(),
