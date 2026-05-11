@@ -2006,11 +2006,22 @@ class WorkshopViewModel(
 
     fun searchCurrentGameWorkshop() {
         val workshopState = _uiState.value.gameWorkshopState ?: return
+        val searchQuery = workshopState.searchQuery.trim()
+        val sortOption = if (searchQuery.isNotBlank()) {
+            WorkshopBrowseSortOption.MostPopular
+        } else {
+            workshopState.selectedSortOption
+        }
+        val timeWindow = if (searchQuery.isNotBlank()) {
+            WorkshopBrowseTimeWindow.AllTime
+        } else {
+            workshopState.selectedTimeWindow
+        }
         loadWorkshopPage(
             game = workshopState.game,
-            searchQuery = workshopState.searchQuery.trim(),
-            sortOption = workshopState.selectedSortOption,
-            timeWindow = workshopState.selectedTimeWindow,
+            searchQuery = searchQuery,
+            sortOption = sortOption,
+            timeWindow = timeWindow,
             page = 1,
             append = false,
         )
@@ -3624,7 +3635,6 @@ private fun List<WorkshopRequiredItem>.filterPendingRequiredItems(
 
 private const val BAIDU_AUTO_DETECT_LANGUAGE = "auto"
 private const val BAIDU_DEFAULT_TARGET_LANGUAGE = "zh"
-
 
 
 
