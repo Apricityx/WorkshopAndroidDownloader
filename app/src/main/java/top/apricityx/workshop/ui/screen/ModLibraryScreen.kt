@@ -148,13 +148,14 @@ fun ModLibraryScreen(
     modifier: Modifier = Modifier,
 ) {
     val updateResults = state.updateCheckState.results
-    val visibleItems = remember(state.items, state.filterState, state.sortOption) {
+    val visibleItems = remember(state.items, state.filterState, state.sortOption, updateResults) {
         sortModLibraryGroups(
             items = filterModLibraryGroups(
                 items = state.items,
                 filterState = state.filterState,
             ),
             sortOption = state.sortOption,
+            updateResults = updateResults,
         )
     }
     val summaryData = remember(state.items, visibleItems, updateResults) {

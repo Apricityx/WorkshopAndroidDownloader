@@ -92,6 +92,28 @@ class ModLibraryFilteringTest {
     }
 
     @Test
+    fun sortModLibraryGroups_prioritizesUpdateAvailableMods() {
+        val c = group(646570u, 1uL, "Slay the Spire", "Zeta Mod", "updated-2")
+        val a = group(480u, 2uL, "Spacewar", "Alpha Mod", "updated-3")
+        val b = group(881100u, 3uL, "Noita", "Beta Mod", "updated-4")
+        val updateResults = mapOf(
+            c.updateReferenceEntry().modLibraryKey() to ModUpdateCheckResult(
+                status = ModUpdateCheckStatus.UpdateAvailable,
+            ),
+        )
+
+        val sorted = sortModLibraryGroups(
+            items = listOf(a, b, c),
+            sortOption = ModLibrarySortOption.ModTitle,
+            updateResults = updateResults,
+        )
+
+        assertThat(sorted.map(DownloadedModGroup::itemTitle))
+            .containsExactly("Zeta Mod", "Alpha Mod", "Beta Mod")
+            .inOrder()
+    }
+
+    @Test
     fun availableModLibraryGames_returnsDistinctSortedTitles() {
         val games = availableModLibraryGames(
             listOf(

@@ -21,21 +21,27 @@ fun filterModLibraryGroups(
 fun sortModLibraryGroups(
     items: List<DownloadedModGroup>,
     sortOption: ModLibrarySortOption,
+    updateResults: Map<String, ModUpdateCheckResult> = emptyMap(),
 ): List<DownloadedModGroup> {
-    if (items.size < 2 || sortOption == ModLibrarySortOption.LatestSynced) {
+    if (items.size < 2) {
         return items
     }
 
+    val updateAvailableComparator = compareByDescending<DownloadedModGroup> {
+        it.latestUpdateStatus(updateResults) == ModUpdateCheckStatus.UpdateAvailable
+    }
     return when (sortOption) {
-        ModLibrarySortOption.LatestSynced -> items
+        ModLibrarySortOption.LatestSynced -> items.sortedWith(updateAvailableComparator)
         ModLibrarySortOption.ModTitle -> items.sortedWith(
-            compareBy<DownloadedModGroup> { it.normalizedItemTitle }
+            updateAvailableComparator
+                .thenBy { it.normalizedItemTitle }
                 .thenBy { it.normalizedGameTitle }
                 .thenByDescending { it.updateReferenceEntry().storedAtMillis },
         )
 
         ModLibrarySortOption.GameTitle -> items.sortedWith(
-            compareBy<DownloadedModGroup> { it.normalizedGameTitle }
+            updateAvailableComparator
+                .thenBy { it.normalizedGameTitle }
                 .thenBy { it.normalizedItemTitle }
                 .thenByDescending { it.updateReferenceEntry().storedAtMillis },
         )
