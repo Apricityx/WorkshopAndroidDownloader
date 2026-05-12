@@ -135,6 +135,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.androidx.security.crypto)
     implementation(libs.xlog)
+    compileOnly(libs.errorprone.annotations)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

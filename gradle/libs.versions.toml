@@ -22,6 +22,7 @@ securityCrypto = "1.1.0-alpha06"
 xlog = "1.11.0"
 backdrop = "1.0.6"
 kyantShapes = "1.2.0"
+errorProneAnnotations = "2.36.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -61,6 +62,7 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 xlog = { module = "com.elvishew:xlog", version.ref = "xlog" }
 kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 kyant-shapes = { module = "io.github.kyant0:shapes", version.ref = "kyantShapes" }
+errorprone-annotations = { module = "com.google.errorprone:error_prone_annotations", version.ref = "errorProneAnnotations" }
 
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
