@@ -22,6 +22,10 @@
 
 -keep class com.github.luben.zstd.** { *; }
 
+# protobuf-javalite generated messages are accessed through generated schema metadata.
+# Obfuscating these fields breaks Steam CM/CDN request encoding at runtime.
+-keep class top.apricityx.workshop.steam.proto.** { *; }
+
 -dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
 -dontwarn com.google.errorprone.annotations.CheckReturnValue
 -dontwarn com.google.errorprone.annotations.Immutable

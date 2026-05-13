@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -14,6 +15,7 @@ import okhttp3.Interceptor
 import okhttp3.Response
 import top.apricityx.workshop.steam.protocol.SteamAccountSession
 import top.apricityx.workshop.steam.protocol.SteamAuthPollResult
+import top.apricityx.workshop.steam.protocol.SteamAuthenticationException
 import top.apricityx.workshop.steam.protocol.SteamAuthSessionDetails
 import top.apricityx.workshop.steam.protocol.SteamAuthenticationClient
 import top.apricityx.workshop.steam.protocol.SteamCredentialAuthSession
@@ -471,10 +473,17 @@ class SteamAuthRepository(context: Context) {
                     requiresReauthentication = false,
                 )
             }
-        }.onFailure {
+        }.onFailure { error ->
+            val requiresReauthentication = error.isDefinitiveSteamReauthenticationFailure()
+            workshopLogWarn(
+                "Steam web access token refresh failed accountId=${account.accountId} " +
+                    "resultCode=${error.steamAuthenticationResultCodeOrNull() ?: "-"} " +
+                    "requiresReauthentication=$requiresReauthentication: ${error.message}",
+                error,
+            )
             updateAccount(account.accountId) {
                 it.copy(
-                    requiresReauthentication = true,
+                    requiresReauthentication = requiresReauthentication || it.requiresReauthentication,
                     webAccessToken = null,
                     webAccessTokenExpEpochSeconds = null,
                 )
@@ -590,10 +599,50 @@ class SteamAuthRepository(context: Context) {
             ?.apply()
     }
 
-    private fun loadState(): StoredSteamState =
-        prefs.getString(KEY_ACCOUNTS_JSON, null)
-            ?.let { raw -> runCatching { json.decodeFromString<StoredSteamState>(raw) }.getOrNull() }
-            ?: StoredSteamState()
+    private fun loadState(): StoredSteamState {
+        val rawState = prefs.getString(KEY_ACCOUNTS_JSON, null) ?: return emptyStoredState()
+        val decodedState = runCatching {
+            json.decodeFromString<StoredSteamState>(rawState)
+        }.onFailure { error ->
+            workshopLogWarn("Failed to decode stored Steam authentication state.", error)
+        }.getOrNull() ?: return emptyStoredState()
+
+        val migratedState = migrateStoredState(decodedState)
+        if (migratedState != decodedState) {
+            prefs.edit()
+                .putString(KEY_ACCOUNTS_JSON, json.encodeToString(migratedState))
+                .apply()
+        }
+        return migratedState
+    }
+
+    private fun migrateStoredState(state: StoredSteamState): StoredSteamState {
+        if (state.reauthenticationMigrationVersion >= AUTH_STATE_REAUTH_MIGRATION_VERSION) {
+            return state
+        }
+
+        var recoveredAccountCount = 0
+        val recoveredAccounts = state.accounts.map { account ->
+            if (account.requiresReauthentication && account.refreshToken.isNotBlank()) {
+                recoveredAccountCount++
+                account.copy(requiresReauthentication = false)
+            } else {
+                account
+            }
+        }
+        if (recoveredAccountCount > 0) {
+            workshopLogInfo(
+                "Recovered $recoveredAccountCount Steam account reauthentication flag(s) after R8 protobuf keep-rule migration.",
+            )
+        }
+        return state.copy(
+            accounts = recoveredAccounts,
+            reauthenticationMigrationVersion = AUTH_STATE_REAUTH_MIGRATION_VERSION,
+        )
+    }
+
+    private fun emptyStoredState(): StoredSteamState =
+        StoredSteamState(reauthenticationMigrationVersion = AUTH_STATE_REAUTH_MIGRATION_VERSION)
 
     private fun saveState(state: StoredSteamState) {
         prefs.edit()
@@ -606,6 +655,7 @@ class SteamAuthRepository(context: Context) {
         private const val FALLBACK_PREFS_NAME = "steam_accounts_secure_fallback"
         private const val KEY_ACCOUNTS_JSON = "accounts_json"
         private const val TOKEN_REFRESH_WINDOW_SECONDS = 15 * 60L
+        private const val AUTH_STATE_REAUTH_MIGRATION_VERSION = 1
 
         private const val LEGACY_PREFS_NAME = "steam_auth"
         private const val KEY_COMMUNITY_COOKIE_HEADER = "community_cookie_header"
@@ -660,20 +710,33 @@ class SteamLanguageInterceptor(
 
 @Serializable
 private data class StoredSteamState(
+    @SerialName("accounts")
     val accounts: List<StoredSteamAccount> = emptyList(),
+    @SerialName("activeAccountId")
     val activeAccountId: String? = null,
+    @SerialName("reauthenticationMigrationVersion")
+    val reauthenticationMigrationVersion: Int = 0,
 )
 
 @Serializable
 private data class StoredSteamAccount(
+    @SerialName("accountId")
     val accountId: String,
+    @SerialName("accountName")
     val accountName: String,
+    @SerialName("steamId")
     val steamId: Long,
+    @SerialName("refreshToken")
     val refreshToken: String,
+    @SerialName("guardData")
     val guardData: String? = null,
+    @SerialName("webAccessToken")
     val webAccessToken: String? = null,
+    @SerialName("webAccessTokenExpEpochSeconds")
     val webAccessTokenExpEpochSeconds: Long? = null,
+    @SerialName("webSessionId")
     val webSessionId: String? = null,
+    @SerialName("requiresReauthentication")
     val requiresReauthentication: Boolean = false,
 )
 
@@ -684,6 +747,32 @@ private fun StoredSteamAccount.toProtocolSession(machineName: String): SteamAcco
         refreshToken = refreshToken,
         machineName = machineName,
     )
+
+private fun Throwable.isDefinitiveSteamReauthenticationFailure(): Boolean =
+    steamAuthenticationResultCodeOrNull() in DEFINITIVE_REAUTHENTICATION_RESULT_CODES
+
+private fun Throwable.steamAuthenticationResultCodeOrNull(): Int? {
+    var current: Throwable? = this
+    while (current != null) {
+        if (current is SteamAuthenticationException) {
+            return current.resultCode
+        }
+        current = current.cause
+    }
+    return null
+}
+
+private val DEFINITIVE_REAUTHENTICATION_RESULT_CODES = setOf(
+    5,
+    8,
+    15,
+    63,
+    65,
+    66,
+    74,
+    85,
+    88,
+)
 
 internal fun String.isSteamDomain(): Boolean {
     val host = lowercase()
