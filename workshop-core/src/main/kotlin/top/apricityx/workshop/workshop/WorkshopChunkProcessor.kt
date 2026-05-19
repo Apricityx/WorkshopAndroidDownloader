@@ -1,6 +1,5 @@
 package top.apricityx.workshop.workshop
 
-import com.github.luben.zstd.Zstd
 import org.tukaani.xz.LZMAInputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -54,8 +53,8 @@ internal object ChunkProcessor {
         val expectedSize = ByteBuffer.wrap(rawChunk, rawChunk.size - 11, 4).order(ByteOrder.LITTLE_ENDIAN).int
         val compressed = rawChunk.copyOfRange(8, rawChunk.size - 15)
         val destination = ByteArray(expectedSize)
-        val written = Zstd.decompress(destination, compressed)
-        if (written != expectedSize.toLong()) {
+        val written = AndroidZstdBridgeInvoker.decompress(destination, compressed)
+        if (written != expectedSize) {
             throw WorkshopDownloadException("VZstd decompression failed")
         }
         return destination
@@ -128,3 +127,13 @@ private const val VZIP_FOOTER_MAGIC = 0x767A
 private const val VZIP_HEADER_LENGTH = 7
 private const val VZIP_PROPERTIES_LENGTH = 5
 private const val VZIP_FOOTER_LENGTH = 10
+
+private object AndroidZstdBridgeInvoker {
+    private val decompressMethod by lazy {
+        Class.forName("io.stamethyst.backend.workshop.AndroidZstdBridge")
+            .getMethod("decompress", ByteArray::class.java, ByteArray::class.java)
+    }
+
+    fun decompress(destination: ByteArray, compressed: ByteArray): Int =
+        (decompressMethod.invoke(null, destination, compressed) as Number).toInt()
+}

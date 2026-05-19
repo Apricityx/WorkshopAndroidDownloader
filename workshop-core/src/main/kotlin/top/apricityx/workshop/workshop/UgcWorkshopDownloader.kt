@@ -336,7 +336,7 @@ class UgcWorkshopDownloader(
                     return ChunkProcessor.process(raw, chunk, depotKey)
                 } catch (error: Throwable) {
                     lastError = error
-                    log("Chunk ${chunk.idHex} failed from ${server.host}: ${error.message}")
+                    log("Chunk ${chunk.idHex} failed from ${server.host}: ${error.fullMessage()}")
                 }
             }
 
@@ -346,7 +346,11 @@ class UgcWorkshopDownloader(
             }
         }
 
-        throw WorkshopDownloadException("Failed to download chunk ${chunk.idHex}", lastError)
+        throw WorkshopDownloadException(
+            lastError?.fullMessage()?.let { "Failed to download chunk ${chunk.idHex}: $it" }
+                ?: "Failed to download chunk ${chunk.idHex}",
+            lastError,
+        )
     }
 
     private suspend fun assembleFiles(
@@ -519,5 +523,15 @@ class UgcWorkshopDownloader(
         const val DEFAULT_MAX_CONCURRENT_CHUNKS = 4
         private const val MAX_CHUNK_DOWNLOAD_ATTEMPTS = 3
         private const val CHUNK_RETRY_DELAY_MILLIS = 750L
+    }
+}
+
+private fun Throwable.fullMessage(): String = buildString {
+    append(this@fullMessage::class.simpleName ?: "Error")
+    message?.takeIf(String::isNotBlank)?.let { append(": ").append(it) }
+    cause?.let { cause ->
+        append("; caused by ")
+        append(cause::class.simpleName ?: "Error")
+        cause.message?.takeIf(String::isNotBlank)?.let { append(": ").append(it) }
     }
 }
