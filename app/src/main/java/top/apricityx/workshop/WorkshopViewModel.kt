@@ -33,6 +33,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import coil.ImageLoader
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MultipartBody
@@ -107,6 +108,11 @@ class WorkshopViewModel(
             fallbackNoticeSink = ExperimentalWorkshopDirectAccessFallbackNotifier,
         )
         .build()
+    internal val workshopImageLoader: ImageLoader by lazy {
+        ImageLoader.Builder(application)
+            .okHttpClient(httpClient)
+            .build()
+    }
     private val gameRepository = SteamGameRepository(
         client = httpClient,
         languagePreferenceProvider = settingsRepository::getSteamLanguagePreference,

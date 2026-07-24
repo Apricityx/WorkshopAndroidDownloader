@@ -12,18 +12,40 @@ internal data class WattToolkitRouteProfile(
     val cacheFileName: String,
     val supportedHosts: Set<String>,
     val bootstrapForwardTargets: List<String>,
+    val additionalLogicalHosts: Set<String> = emptySet(),
+    val bootstrapFakeServerName: String = "",
+    val bootstrapIgnoreSslCertVerification: Boolean = true,
 )
 
 internal val SteamCommunityWattToolkitRouteProfile = WattToolkitRouteProfile(
     name = "steam-community",
-    cacheFileName = "watt-route-cache.json",
+    cacheFileName = "watt-route-cache-v3.json",
     supportedHosts = setOf(STEAM_COMMUNITY_HOST, "www.steamcommunity.com"),
-    bootstrapForwardTargets = listOf("steamcommunity.rmbgame.net"),
+    bootstrapForwardTargets = listOf("https://www.valvesoftware.com"),
+    bootstrapFakeServerName = "www.valvesoftware.com",
+    bootstrapIgnoreSslCertVerification = false,
+)
+
+internal val SteamImageWattToolkitRouteProfile = WattToolkitRouteProfile(
+    name = "steam-image",
+    cacheFileName = "watt-image-route-cache-v1.json",
+    supportedHosts = setOf(
+        "steamcdn-a.akamaihd.net",
+        "steamuserimages-a.akamaihd.net",
+        "cdn.akamai.steamstatic.com",
+        "community.akamai.steamstatic.com",
+        "avatars.akamai.steamstatic.com",
+        "store.akamai.steamstatic.com",
+        "avatars.fastly.steamstatic.com",
+        "images.steamusercontent.com",
+    ),
+    bootstrapForwardTargets = listOf("https://steamimage.rmbgame.net"),
+    additionalLogicalHosts = setOf("images.steamusercontent.com"),
 )
 
 internal val SteamStoreWattToolkitRouteProfile = WattToolkitRouteProfile(
     name = "steam-store",
-    cacheFileName = "watt-store-route-cache.json",
+    cacheFileName = "watt-store-route-cache-v3.json",
     supportedHosts = setOf(
         "api.steampowered.com",
         "store.steampowered.com",
@@ -31,7 +53,9 @@ internal val SteamStoreWattToolkitRouteProfile = WattToolkitRouteProfile(
         "login.steampowered.com",
         "checkout.steampowered.com",
     ),
-    bootstrapForwardTargets = listOf("steamstore.rmbgame.net"),
+    bootstrapForwardTargets = listOf("steamuserimages-a.akamaihd.net.edgesuite.net"),
+    bootstrapFakeServerName = "officecdn-microsoft-com.akamaized.net",
+    bootstrapIgnoreSslCertVerification = false,
 )
 
 internal val GithubApiWattToolkitRouteProfile = WattToolkitRouteProfile(
@@ -70,6 +94,7 @@ internal val DEFAULT_WATT_TOOLKIT_GITHUB_USERCONTENT_ROUTE_HOSTS: Set<String> = 
 private val defaultExperimentalWorkshopDirectAccessProfiles = listOf(
     SteamCommunityWattToolkitRouteProfile,
     SteamStoreWattToolkitRouteProfile,
+    SteamImageWattToolkitRouteProfile,
 )
 
 private val defaultExperimentalGithubDirectAccessProfiles = listOf(
@@ -82,12 +107,14 @@ internal data class ExperimentalWorkshopDirectAccessRuntime(
     val resolvers: List<WattToolkitWorkshopRouteResolver>,
     val hostnameVerifier: HostnameVerifier,
     val directHttpClient: OkHttpClient,
+    val forwardDns: WattToolkitForwardDns = WattToolkitForwardDns(),
 )
 
 internal fun createExperimentalWorkshopDirectAccessRuntime(
     filesDir: File,
     routeProfiles: List<WattToolkitRouteProfile> = defaultExperimentalWorkshopDirectAccessProfiles,
 ): ExperimentalWorkshopDirectAccessRuntime {
+    val forwardDns = WattToolkitForwardDns()
     val resolvers = routeProfiles.map { routeProfile ->
         WattToolkitWorkshopRouteResolver(
             routeProfile = routeProfile,
@@ -104,6 +131,8 @@ internal fun createExperimentalWorkshopDirectAccessRuntime(
         .applyDefaultHttpTimeouts()
         .applyAppNetworkLogging("workshop-web")
         .hostnameVerifier(hostnameVerifier)
+        .dns(forwardDns)
+        .trustWattToolkitForwardCertificates()
         .followRedirects(false)
         .followSslRedirects(false)
         .protocols(listOf(Protocol.HTTP_1_1))
@@ -112,6 +141,7 @@ internal fun createExperimentalWorkshopDirectAccessRuntime(
         resolvers = resolvers,
         hostnameVerifier = hostnameVerifier,
         directHttpClient = directHttpClient,
+        forwardDns = forwardDns,
     )
 }
 
@@ -130,6 +160,7 @@ internal fun OkHttpClient.Builder.addExperimentalWorkshopDirectAccess(
                     steamCookieJar = steamCookieJar,
                     directCallFactory = runtime.directHttpClient,
                     fallbackNoticeSink = fallbackNoticeSink,
+                    forwardDns = runtime.forwardDns,
                 ),
             )
         }
@@ -151,7 +182,8 @@ internal fun defaultBootstrapRouteForProfile(routeProfile: WattToolkitRouteProfi
             WattToolkitWorkshopRoute(
                 logicalHosts = routeProfile.supportedHosts.map(String::lowercase).toSet(),
                 forwardTargets = forwardTargets,
-                ignoreSslCertVerification = true,
+                ignoreSslCertVerification = routeProfile.bootstrapIgnoreSslCertVerification,
+                fakeServerName = routeProfile.bootstrapFakeServerName,
             )
         }
 
@@ -159,12 +191,14 @@ internal data class ExperimentalGithubDirectAccessRuntime(
     val resolvers: List<WattToolkitWorkshopRouteResolver>,
     val hostnameVerifier: HostnameVerifier,
     val directHttpClient: OkHttpClient,
+    val forwardDns: WattToolkitForwardDns = WattToolkitForwardDns(),
 )
 
 internal fun createExperimentalGithubDirectAccessRuntime(
     filesDir: File,
     routeProfiles: List<WattToolkitRouteProfile> = defaultExperimentalGithubDirectAccessProfiles,
 ): ExperimentalGithubDirectAccessRuntime {
+    val forwardDns = WattToolkitForwardDns()
     val resolvers = routeProfiles.map { routeProfile ->
         WattToolkitWorkshopRouteResolver(
             routeProfile = routeProfile,
@@ -181,6 +215,8 @@ internal fun createExperimentalGithubDirectAccessRuntime(
         .applyDefaultHttpTimeouts()
         .applyAppNetworkLogging("github-update")
         .hostnameVerifier(hostnameVerifier)
+        .dns(forwardDns)
+        .trustWattToolkitForwardCertificates()
         .followRedirects(false)
         .followSslRedirects(false)
         .protocols(listOf(Protocol.HTTP_1_1))
@@ -189,6 +225,7 @@ internal fun createExperimentalGithubDirectAccessRuntime(
         resolvers = resolvers,
         hostnameVerifier = hostnameVerifier,
         directHttpClient = directHttpClient,
+        forwardDns = forwardDns,
     )
 }
 
@@ -201,6 +238,7 @@ internal fun OkHttpClient.Builder.addExperimentalGithubDirectAccess(
                 enabledProvider = { true },
                 routeResolvers = runtime.resolvers,
                 directCallFactory = runtime.directHttpClient,
+                forwardDns = runtime.forwardDns,
             ),
         )
     }

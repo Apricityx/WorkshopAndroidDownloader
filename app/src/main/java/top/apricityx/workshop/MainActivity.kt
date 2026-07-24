@@ -14,6 +14,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -21,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import coil.compose.LocalImageLoader
 import top.apricityx.workshop.data.WorkshopBrowseItem
 import top.apricityx.workshop.data.WorkshopRequiredItem
 import top.apricityx.workshop.ui.component.DownloadDependencyWarningDialog
@@ -82,45 +84,47 @@ class MainActivity : ComponentActivity() {
                 themeMode = uiState.themeMode,
                 frontendMode = uiState.frontendMode,
             ) {
-                LaunchedEffect(uiState.themeMode) {
-                    applySystemNightMode(uiState.themeMode)
-                }
-                LaunchedEffect(Unit) {
-                    workshopViewModel.toastMessages.collect { message ->
-                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                CompositionLocalProvider(LocalImageLoader provides workshopViewModel.workshopImageLoader) {
+                    LaunchedEffect(uiState.themeMode) {
+                        applySystemNightMode(uiState.themeMode)
                     }
-                }
-                LaunchedEffect(activeDownloadItemKeys) {
-                    if (activeDownloadItemKeys.isNotEmpty()) {
-                        pendingDownloadItemKeys -= activeDownloadItemKeys
+                    LaunchedEffect(Unit) {
+                        workshopViewModel.toastMessages.collect { message ->
+                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                        }
                     }
-                }
+                    LaunchedEffect(activeDownloadItemKeys) {
+                        if (activeDownloadItemKeys.isNotEmpty()) {
+                            pendingDownloadItemKeys -= activeDownloadItemKeys
+                        }
+                    }
 
-                WorkshopScreen(
-                    state = uiState,
-                    actions = buildWorkshopScreenActions(),
-                    pendingDownloadItemKeys = pendingDownloadItemKeys,
-                )
-
-                downloadDependencyWarningDialogState?.let { dialogState ->
-                    DownloadDependencyWarningDialog(
-                        item = dialogState.item,
-                        requiredItems = dialogState.requiredItems,
-                        onDismissRequest = { downloadDependencyWarningDialogState = null },
-                        onDownloadAllWithDependencies = {
-                            val items = dialogState.requiredItems
-                                .map(WorkshopRequiredItem::toBrowseItem) + dialogState.item
-                            downloadDependencyWarningDialogState = null
-                            markDownloadPending(items)
-                            startDownloadItemsWithCompatibilityGuard(items)
-                        },
-                        onDownloadOnlyCurrent = {
-                            val item = dialogState.item
-                            downloadDependencyWarningDialogState = null
-                            markDownloadPending(item)
-                            startDownloadItemsWithCompatibilityGuard(listOf(item))
-                        },
+                    WorkshopScreen(
+                        state = uiState,
+                        actions = buildWorkshopScreenActions(),
+                        pendingDownloadItemKeys = pendingDownloadItemKeys,
                     )
+
+                    downloadDependencyWarningDialogState?.let { dialogState ->
+                        DownloadDependencyWarningDialog(
+                            item = dialogState.item,
+                            requiredItems = dialogState.requiredItems,
+                            onDismissRequest = { downloadDependencyWarningDialogState = null },
+                            onDownloadAllWithDependencies = {
+                                val items = dialogState.requiredItems
+                                    .map(WorkshopRequiredItem::toBrowseItem) + dialogState.item
+                                downloadDependencyWarningDialogState = null
+                                markDownloadPending(items)
+                                startDownloadItemsWithCompatibilityGuard(items)
+                            },
+                            onDownloadOnlyCurrent = {
+                                val item = dialogState.item
+                                downloadDependencyWarningDialogState = null
+                                markDownloadPending(item)
+                                startDownloadItemsWithCompatibilityGuard(listOf(item))
+                            },
+                        )
+                    }
                 }
             }
         }

@@ -26,6 +26,7 @@ class ExperimentalWorkshopDirectAccessTest {
     @Before
     fun setUp() {
         ExperimentalWorkshopDirectAccessFallbackNotifier.resetForTesting()
+        WattToolkitRouteFetchState.resetForTesting()
         apiServer = MockWebServer()
         forwardedServer = MockWebServer()
         apiServer.start()
@@ -37,6 +38,7 @@ class ExperimentalWorkshopDirectAccessTest {
         apiServer.close()
         forwardedServer.close()
         ExperimentalWorkshopDirectAccessFallbackNotifier.resetForTesting()
+        WattToolkitRouteFetchState.resetForTesting()
     }
 
     @Test
@@ -124,6 +126,125 @@ class ExperimentalWorkshopDirectAccessTest {
 
         val persistedCookies = cookieJar.loadForRequest(originalUrl)
         assertThat(persistedCookies.map { it.name }).containsAtLeast("sessionid", "steamCountry")
+    }
+
+    @Test
+    fun routeResolver_parsesFakeServerName_andUsesItForForwardedTlsHost() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "api.steampowered.com",
+                              "ForwardDomainNames": "http://steamstore.rmbgame.net:${forwardedServer.port}",
+                              "FakeServerName": "officecdn-microsoft-com.akamaized.net",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": false
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+
+        val dns = Dns { listOf(InetAddress.getByName("127.0.0.1")) }
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = SteamStoreWattToolkitRouteProfile,
+            client = OkHttpClient.Builder().dns(dns).build(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+        )
+
+        val route = resolver.resolveRouteForHost("api.steampowered.com")
+
+        assertThat(route).isNotNull()
+        assertThat(route?.fakeServerName).isEqualTo("officecdn-microsoft-com.akamaized.net")
+        assertThat(
+            route?.buildForwardedUrl(
+                "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/".toHttpUrl(),
+            )?.host,
+        ).isEqualTo("officecdn-microsoft-com.akamaized.net")
+    }
+
+    @Test
+    fun interceptor_mapsFakeServerNameToForwardDns_andPreservesLogicalHost() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "api.steampowered.com",
+                              "ForwardDomainNames": "http://steamstore-forward.test:${forwardedServer.port}",
+                              "FakeServerName": "officecdn-microsoft-com.akamaized.net",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        forwardedServer.enqueue(MockResponse.Builder().code(200).body("ok").build())
+
+        var lookedUpHost: String? = null
+        val routeDns = WattToolkitForwardDns(
+            Dns { hostname ->
+                lookedUpHost = hostname
+                listOf(InetAddress.getByName("127.0.0.1"))
+            },
+        )
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = SteamStoreWattToolkitRouteProfile,
+            client = OkHttpClient.Builder().build(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+        )
+        val directClient = OkHttpClient.Builder()
+            .dns(routeDns)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(
+                ExperimentalWorkshopDirectAccessInterceptor(
+                    enabledProvider = { true },
+                    routeResolver = resolver,
+                    steamCookieJar = SteamWebSessionCookieJar(),
+                    directCallFactory = directClient,
+                    forwardDns = routeDns,
+                ),
+            )
+            .build()
+
+        client.newCall(
+            Request.Builder()
+                .url("https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
+                .build(),
+        ).execute().use { response ->
+            assertThat(response.code).isEqualTo(200)
+            assertThat(response.request.url.host).isEqualTo("api.steampowered.com")
+        }
+
+        assertThat(lookedUpHost).isEqualTo("steamstore-forward.test")
+        apiServer.takeRequest()
+        val forwardedRequest = forwardedServer.takeRequest()
+        assertThat(forwardedRequest.headers["Host"]).isEqualTo("api.steampowered.com")
+        assertThat(forwardedRequest.url.encodedPath)
+            .isEqualTo("/ISteamRemoteStorage/GetPublishedFileDetails/v1/")
     }
 
     @Test
@@ -291,6 +412,293 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
+    fun interceptor_rewrites_steam_preview_images_through_watt_image_route() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcdn-a.akamaihd.net;steamuserimages-a.akamaihd.net;cdn.akamai.steamstatic.com;community.akamai.steamstatic.com;avatars.akamai.steamstatic.com;store.akamai.steamstatic.com",
+                              "ForwardDomainNames": "http://steamimage.rmbgame.net:${forwardedServer.port}",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        forwardedServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body("image-bytes")
+                .build(),
+        )
+
+        val dns = Dns { listOf(InetAddress.getByName("127.0.0.1")) }
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = SteamImageWattToolkitRouteProfile,
+            client = OkHttpClient.Builder().dns(dns).build(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+        )
+        val directClient = OkHttpClient.Builder()
+            .dns(dns)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(
+                ExperimentalWorkshopDirectAccessInterceptor(
+                    enabledProvider = { true },
+                    routeResolver = resolver,
+                    steamCookieJar = SteamWebSessionCookieJar(),
+                    directCallFactory = directClient,
+                ),
+            )
+            .build()
+
+        client.newCall(
+            Request.Builder()
+                .url("https://images.steamusercontent.com/ugc/123/preview.jpg")
+                .build(),
+        ).execute().use { response ->
+            assertThat(response.isSuccessful).isTrue()
+            assertThat(response.body?.string()).isEqualTo("image-bytes")
+            assertThat(response.request.url.host).isEqualTo("images.steamusercontent.com")
+        }
+
+        apiServer.takeRequest()
+        val forwardedRequest = forwardedServer.takeRequest()
+        assertThat(forwardedRequest.url.encodedPath).isEqualTo("/ugc/123/preview.jpg")
+        assertThat(forwardedRequest.headers["Host"]).isEqualTo("images.steamusercontent.com")
+    }
+
+    @Test
+    fun routeResolver_matches_wildcard_steam_content_cdn_host() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "*.st.dl.eccdnx.com",
+                              "ListenDomainNames": "*.st.dl.eccdnx.com",
+                              "ForwardDomainNames": "cdn.example.test",
+                              "ProxyType": 0,
+                              "Checked": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val profile = WattToolkitRouteProfile(
+            name = "steam-content-cdn-test",
+            cacheFileName = "steam-content-cdn-test.json",
+            supportedHosts = setOf("st.dl.eccdnx.com"),
+            bootstrapForwardTargets = emptyList(),
+        )
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = profile,
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+        )
+
+        val route = resolver.resolveRouteForHost("st.dl.eccdnx.com")
+
+        assertThat(route?.forwardTargets).containsExactly("cdn.example.test")
+    }
+
+    @Test
+    fun routeResolver_ignores_unchecked_watt_route() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com",
+                              "ForwardDomainNames": "unchecked.example.test",
+                              "ProxyType": 0,
+                              "Checked": false
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = WattToolkitRouteProfile(
+                name = "unchecked-route-test",
+                cacheFileName = "unchecked-route-test.json",
+                supportedHosts = setOf("steamcommunity.com"),
+                bootstrapForwardTargets = emptyList(),
+            ),
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+        )
+
+        assertThat(resolver.resolveRouteForHost("steamcommunity.com")).isNull()
+    }
+
+    @Test
+    fun routeResolver_ranks_forward_targets_by_success_rate_then_latency() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com",
+                              "ForwardDomainNames": "slow-node.test;fast-node.test",
+                              "ProxyType": 0,
+                              "Checked": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = WattToolkitRouteProfile(
+                name = "ranked-route-test",
+                cacheFileName = "ranked-route-test.json",
+                supportedHosts = setOf("steamcommunity.com"),
+                bootstrapForwardTargets = emptyList(),
+            ),
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            forwardTargetProbe = { target ->
+                when (target) {
+                    "slow-node.test" -> WattToolkitForwardTargetProbe(
+                        successes = 2,
+                        attempts = 3,
+                        latencyMs = 5,
+                    )
+                    else -> WattToolkitForwardTargetProbe(
+                        successes = 3,
+                        attempts = 3,
+                        latencyMs = 40,
+                    )
+                }
+            },
+        )
+
+        val route = resolver.resolveRouteForHost("steamcommunity.com")
+
+        assertThat(route?.forwardTargets).containsExactly("fast-node.test", "slow-node.test").inOrder()
+    }
+
+    @Test
+    fun interceptor_fails_over_to_next_forward_target_after_connection_error() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body(
+                    """
+                    {
+                      "🦓": [
+                        {
+                          "Items": [
+                            {
+                              "MatchDomainNames": "steamcommunity.com",
+                              "ForwardDomainNames": "http://127.0.0.1:1;http://steamcommunity-fallback.test:${forwardedServer.port}",
+                              "ProxyType": 0,
+                              "IgnoreSSLCertVerification": true,
+                              "Checked": true
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        forwardedServer.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .body("fallback-ok")
+                .build(),
+        )
+
+        val dns = Dns { listOf(InetAddress.getByName("127.0.0.1")) }
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = WattToolkitRouteProfile(
+                name = "fallback-route-test",
+                cacheFileName = "fallback-route-test.json",
+                supportedHosts = setOf("steamcommunity.com"),
+                bootstrapForwardTargets = emptyList(),
+            ),
+            client = OkHttpClient.Builder().dns(dns).build(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            forwardTargetProbe = {
+                WattToolkitForwardTargetProbe(successes = 1, attempts = 1, latencyMs = 1)
+            },
+        )
+        val directClient = OkHttpClient.Builder()
+            .dns(dns)
+            .retryOnConnectionFailure(false)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+        val client = OkHttpClient.Builder()
+            .dns(dns)
+            .addInterceptor(
+                ExperimentalWorkshopDirectAccessInterceptor(
+                    enabledProvider = { true },
+                    routeResolver = resolver,
+                    steamCookieJar = SteamWebSessionCookieJar(),
+                    directCallFactory = directClient,
+                ),
+            )
+            .build()
+
+        client.newCall(
+            Request.Builder()
+                .url("https://steamcommunity.com/workshop/browse/?appid=646570")
+                .build(),
+        ).execute().use { response ->
+            assertThat(response.isSuccessful).isTrue()
+            assertThat(response.body?.string()).isEqualTo("fallback-ok")
+            assertThat(response.request.url.host).isEqualTo("steamcommunity.com")
+        }
+
+        val forwardedRequest = forwardedServer.takeRequest()
+        assertThat(forwardedRequest.url.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(forwardedRequest.headers["Host"]).isEqualTo("steamcommunity.com")
+    }
+
+    @Test
     fun routeResolver_matches_github_release_hosts_from_listen_domain_names() {
         apiServer.enqueue(
             MockResponse.Builder()
@@ -388,7 +796,7 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
-    fun routeResolver_uses_persisted_route_when_refresh_fails() {
+    fun routeResolver_discards_known_broken_persisted_route_when_refresh_fails() {
         val persistedRoute = WattToolkitWorkshopRoute(
             logicalHosts = DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS,
             forwardTargets = listOf("steamcommunity.rmbgame.net"),
@@ -412,9 +820,10 @@ class ExperimentalWorkshopDirectAccessTest {
 
         val route = resolver.resolveSteamCommunityRoute()
 
-        assertThat(route).isEqualTo(persistedRoute)
+        assertThat(route?.forwardTargets).containsExactly("https://www.valvesoftware.com")
+        assertThat(route?.isKnownBrokenLegacyRoute()).isFalse()
         assertThat(store.loadCount).isEqualTo(1)
-        assertThat(store.saved).isEmpty()
+        assertThat(store.saved).hasSize(1)
     }
 
     @Test
@@ -486,8 +895,9 @@ class ExperimentalWorkshopDirectAccessTest {
         assertThat(route).isEqualTo(
             WattToolkitWorkshopRoute(
                 logicalHosts = DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS,
-                forwardTargets = listOf("steamcommunity.rmbgame.net"),
-                ignoreSslCertVerification = true,
+                forwardTargets = listOf("https://www.valvesoftware.com"),
+                ignoreSslCertVerification = false,
+                fakeServerName = "www.valvesoftware.com",
             ),
         )
     }
@@ -509,10 +919,64 @@ class ExperimentalWorkshopDirectAccessTest {
         assertThat(route).isEqualTo(
             WattToolkitWorkshopRoute(
                 logicalHosts = DEFAULT_WATT_TOOLKIT_STEAM_STORE_ROUTE_HOSTS,
-                forwardTargets = listOf("steamstore.rmbgame.net"),
-                ignoreSslCertVerification = true,
+                forwardTargets = listOf("steamuserimages-a.akamaihd.net.edgesuite.net"),
+                ignoreSslCertVerification = false,
+                fakeServerName = "officecdn-microsoft-com.akamaized.net",
             ),
         )
+    }
+
+    @Test
+    fun routeResolver_detects_captive_portal_keyword_after_preview_window() {
+        val longPrefix = "x".repeat(240)
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(404)
+                .addHeader("Server", "nginx/1.14.0")
+                .body("$longPrefix 欢迎使用校园网，正在进入认证页面")
+                .build(),
+        )
+
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = SteamCommunityWattToolkitRouteProfile,
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            sleepProvider = { _ -> },
+        )
+
+        val route = resolver.resolveSteamCommunityRoute()
+
+        assertThat(route?.forwardTargets).containsExactly("https://www.valvesoftware.com")
+        assertThat(WattToolkitRouteFetchState.isCaptivePortalBlocked()).isTrue()
+    }
+
+    @Test
+    fun routeResolver_suppresses_follow_up_fetches_after_captive_portal_detection() {
+        apiServer.enqueue(
+            MockResponse.Builder()
+                .code(404)
+                .body("欢迎使用校园网，正在进入认证页面")
+                .build(),
+        )
+
+        val firstResolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = SteamCommunityWattToolkitRouteProfile,
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            sleepProvider = { _ -> },
+        )
+        val secondResolver = WattToolkitWorkshopRouteResolver(
+            routeProfile = SteamStoreWattToolkitRouteProfile,
+            client = OkHttpClient(),
+            projectGroupsUrl = apiServer.url("/accelerator/projectgroups"),
+            sleepProvider = { _ -> },
+        )
+
+        assertThat(firstResolver.resolveSteamCommunityRoute()?.forwardTargets)
+            .containsExactly("https://www.valvesoftware.com")
+        assertThat(secondResolver.resolveRouteForHost("api.steampowered.com")?.forwardTargets)
+            .containsExactly("steamuserimages-a.akamaihd.net.edgesuite.net")
+        assertThat(apiServer.requestCount).isEqualTo(1)
     }
 
     @Test
@@ -525,6 +989,7 @@ class ExperimentalWorkshopDirectAccessTest {
                 logicalHosts = DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS,
                 forwardTargets = listOf("https://steamcommunity.rmbgame.net"),
                 ignoreSslCertVerification = true,
+                fakeServerName = "officecdn-microsoft-com.akamaized.net",
             ),
             cachedAtMs = 12_345L,
         )
@@ -676,7 +1141,7 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
-    fun interceptor_notifies_and_falls_back_to_original_request_when_refreshed_route_still_fails() {
+    fun interceptor_propagates_failure_when_refreshed_route_still_fails() {
         val unavailablePort = ServerSocket(0).use { serverSocket -> serverSocket.localPort }
         apiServer.enqueue(
             MockResponse.Builder()
@@ -722,13 +1187,6 @@ class ExperimentalWorkshopDirectAccessTest {
                     """.trimIndent(),
                 ).build(),
         )
-        forwardedServer.enqueue(
-            MockResponse.Builder()
-                .code(200)
-                .body("fallback-ok")
-                .build(),
-        )
-
         val dns = Dns { listOf(InetAddress.getByName("127.0.0.1")) }
         val store = FakeWattToolkitWorkshopRouteStore()
         var fallbackNoticeCount = 0
@@ -755,21 +1213,19 @@ class ExperimentalWorkshopDirectAccessTest {
                 ),
             )
             .build()
-        val originalUrl =
-            "http://steamcommunity.com:${forwardedServer.port}/workshop/browse/?appid=646570&searchtext=basemod".toHttpUrl()
-
-        client.newCall(Request.Builder().url(originalUrl).build()).execute().use { response ->
-            assertThat(response.isSuccessful).isTrue()
-            assertThat(response.request.url).isEqualTo(originalUrl)
-        }
+        val error = runCatching {
+            client.newCall(
+                Request.Builder()
+                    .url("http://steamcommunity.com/workshop/browse/?appid=646570&searchtext=basemod")
+                    .build(),
+            ).execute().use { it.body?.close() }
+        }.exceptionOrNull()
 
         assertThat(apiServer.requestCount).isEqualTo(2)
         assertThat(store.clearCount).isEqualTo(1)
-        assertThat(fallbackNoticeCount).isEqualTo(1)
-        val fallbackRequest = forwardedServer.takeRequest()
-        assertThat(fallbackRequest.url.encodedPath).isEqualTo("/workshop/browse/")
-        assertThat(fallbackRequest.url.queryParameter("appid")).isEqualTo("646570")
-        assertThat(fallbackRequest.url.queryParameter("searchtext")).isEqualTo("basemod")
+        assertThat(fallbackNoticeCount).isEqualTo(0)
+        assertThat(error).isInstanceOf(IOException::class.java)
+        assertThat(forwardedServer.requestCount).isEqualTo(0)
     }
 
     @Test
