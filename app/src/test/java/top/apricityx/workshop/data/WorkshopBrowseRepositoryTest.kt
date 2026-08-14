@@ -58,6 +58,8 @@ class WorkshopBrowseRepositoryTest {
         assertThat(requestUrl.queryParameter("actualsort")).isEqualTo("trend")
         assertThat(requestUrl.queryParameter("days")).isEqualTo("30")
         assertThat(requestUrl.queryParameter("p")).isEqualTo("3")
+        assertThat(request.headers["User-Agent"]).isEqualTo(STEAM_WEB_BROWSER_USER_AGENT)
+        assertThat(request.headers["Accept"]).contains("text/html")
     }
 
     @Test

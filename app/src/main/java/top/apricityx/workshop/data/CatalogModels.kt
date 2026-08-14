@@ -10,6 +10,8 @@ data class SteamGame(
     val headerImageUrl: String,
     val capsuleImageUrl: String,
     val supportsWorkshop: Boolean,
+    // Blank means the record predates store type persistence and must be refreshed.
+    val storeType: String = "",
 )
 
 data class WorkshopBrowseItem(

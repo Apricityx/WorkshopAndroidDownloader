@@ -65,6 +65,8 @@ class SteamGameRepositoryTest {
         assertThat(searchRequest.url.queryParameter("l")).isEqualTo("schinese")
         assertThat(detailsRequest.url.encodedPath).isEqualTo("/api/appdetails")
         assertThat(detailsRequest.url.queryParameter("l")).isEqualTo("schinese")
+        assertThat(detailsRequest.headers["User-Agent"]).isEqualTo(STEAM_WEB_BROWSER_USER_AGENT)
+        assertThat(detailsRequest.headers["Accept"]).isEqualTo(STEAM_WEB_BROWSER_ACCEPT)
     }
 
     @Test
@@ -207,6 +209,38 @@ class SteamGameRepositoryTest {
         assertThat(detailsRequest.url.encodedPath).isEqualTo("/api/appdetails")
         assertThat(browseRequest.url.encodedPath).isEqualTo("/workshop/browse/")
         assertThat(redirectedRequest.url.encodedPath).isEqualTo("/workshop/")
+    }
+
+    @Test
+    fun lookupGame_doesNotProbeWorkshopForVideoEntries() = runBlocking {
+        val repository = SteamGameRepository(
+            client = OkHttpClient(),
+            baseUrl = server.url("/"),
+            workshopBaseUrl = server.url("/"),
+        )
+        server.enqueue(
+            mockResponse(
+                """
+                {
+                  "646750": {
+                    "success": true,
+                    "data": {
+                      "steam_appid": 646750,
+                      "name": "Shane Mauss: Mating Season",
+                      "type": "video",
+                      "categories": [{"id": 30}]
+                    }
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val game = repository.lookupGame(646750u)
+
+        assertThat(game?.storeType).isEqualTo("video")
+        assertThat(game?.supportsWorkshop).isFalse()
+        assertThat(server.requestCount).isEqualTo(1)
     }
 }
 

@@ -796,6 +796,29 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
+    fun routeResolver_accepts_current_store_mirror_when_fake_sni_is_present() {
+        val route = WattToolkitWorkshopRoute(
+            logicalHosts = SteamStoreWattToolkitRouteProfile.supportedHosts,
+            forwardTargets = listOf("steamstore.rmbgame.net"),
+            ignoreSslCertVerification = false,
+            fakeServerName = "steamstore-a.akamaihd.net",
+        )
+
+        assertThat(route.isKnownBrokenLegacyRoute()).isFalse()
+    }
+
+    @Test
+    fun routeResolver_rejects_legacy_store_mirror_without_fake_sni() {
+        val route = WattToolkitWorkshopRoute(
+            logicalHosts = SteamStoreWattToolkitRouteProfile.supportedHosts,
+            forwardTargets = listOf("steamstore.rmbgame.net"),
+            ignoreSslCertVerification = true,
+        )
+
+        assertThat(route.isKnownBrokenLegacyRoute()).isTrue()
+    }
+
+    @Test
     fun routeResolver_discards_known_broken_persisted_route_when_refresh_fails() {
         val persistedRoute = WattToolkitWorkshopRoute(
             logicalHosts = DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS,
@@ -919,9 +942,9 @@ class ExperimentalWorkshopDirectAccessTest {
         assertThat(route).isEqualTo(
             WattToolkitWorkshopRoute(
                 logicalHosts = DEFAULT_WATT_TOOLKIT_STEAM_STORE_ROUTE_HOSTS,
-                forwardTargets = listOf("steamuserimages-a.akamaihd.net.edgesuite.net"),
+                forwardTargets = listOf("steamstore.rmbgame.net"),
                 ignoreSslCertVerification = false,
-                fakeServerName = "officecdn-microsoft-com.akamaized.net",
+                fakeServerName = "steamstore-a.akamaihd.net",
             ),
         )
     }
@@ -975,7 +998,7 @@ class ExperimentalWorkshopDirectAccessTest {
         assertThat(firstResolver.resolveSteamCommunityRoute()?.forwardTargets)
             .containsExactly("https://www.valvesoftware.com")
         assertThat(secondResolver.resolveRouteForHost("api.steampowered.com")?.forwardTargets)
-            .containsExactly("steamuserimages-a.akamaihd.net.edgesuite.net")
+            .containsExactly("steamstore.rmbgame.net")
         assertThat(apiServer.requestCount).isEqualTo(1)
     }
 
@@ -1046,8 +1069,7 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
-    fun interceptor_retries_with_refreshed_watt_route_after_direct_access_failure() {
-        val unavailablePort = ServerSocket(0).use { serverSocket -> serverSocket.localPort }
+    fun interceptor_retries_with_refreshed_watt_route_after_forwarded_403() {
         apiServer.enqueue(
             MockResponse.Builder()
                 .code(200)
@@ -1059,7 +1081,7 @@ class ExperimentalWorkshopDirectAccessTest {
                           "Items": [
                             {
                               "MatchDomainNames": "steamcommunity.com;www.steamcommunity.com",
-                              "ForwardDomainNames": "http://steamcommunity.rmbgame.net:$unavailablePort",
+                              "ForwardDomainNames": "http://steamcommunity.rmbgame.net:${forwardedServer.port}",
                               "ProxyType": 0,
                               "IgnoreSSLCertVerification": true
                             }
@@ -1091,6 +1113,12 @@ class ExperimentalWorkshopDirectAccessTest {
                     }
                     """.trimIndent(),
                 ).build(),
+        )
+        forwardedServer.enqueue(
+            MockResponse.Builder()
+                .code(403)
+                .body("forbidden")
+                .build(),
         )
         forwardedServer.enqueue(
             MockResponse.Builder()
@@ -1135,13 +1163,16 @@ class ExperimentalWorkshopDirectAccessTest {
 
         assertThat(apiServer.requestCount).isEqualTo(2)
         assertThat(store.clearCount).isEqualTo(1)
+        val rejectedRequest = forwardedServer.takeRequest()
+        assertThat(rejectedRequest.url.encodedPath).isEqualTo("/workshop/browse/")
+        assertThat(rejectedRequest.headers["Host"]).isEqualTo("steamcommunity.com")
         val forwardedRequest = forwardedServer.takeRequest()
         assertThat(forwardedRequest.url.encodedPath).isEqualTo("/workshop/browse/")
         assertThat(forwardedRequest.headers["Host"]).isEqualTo("steamcommunity.com")
     }
 
     @Test
-    fun interceptor_propagates_failure_when_refreshed_route_still_fails() {
+    fun interceptor_falls_back_when_refreshed_route_still_fails() {
         val unavailablePort = ServerSocket(0).use { serverSocket -> serverSocket.localPort }
         apiServer.enqueue(
             MockResponse.Builder()
@@ -1223,7 +1254,7 @@ class ExperimentalWorkshopDirectAccessTest {
 
         assertThat(apiServer.requestCount).isEqualTo(2)
         assertThat(store.clearCount).isEqualTo(1)
-        assertThat(fallbackNoticeCount).isEqualTo(0)
+        assertThat(fallbackNoticeCount).isEqualTo(1)
         assertThat(error).isInstanceOf(IOException::class.java)
         assertThat(forwardedServer.requestCount).isEqualTo(0)
     }

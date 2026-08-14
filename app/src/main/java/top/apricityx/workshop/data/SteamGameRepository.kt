@@ -76,6 +76,9 @@ class SteamGameRepository(
             workshopSupportCache[game.appId] = true
             return game
         }
+        if (!game.storeType.isWorkshopEligibleStoreType()) {
+            return game
+        }
 
         val hasWorkshopPage = workshopSupportCache.getOrPut(game.appId) {
             runCatching { hasWorkshopBrowsePage(game.appId) }.getOrDefault(false)
@@ -104,7 +107,8 @@ class SteamGameRepository(
     private fun executeStringRequest(url: HttpUrl): String {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", STEAM_WEB_BROWSER_USER_AGENT)
+            .header("Accept", STEAM_WEB_BROWSER_ACCEPT)
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -130,7 +134,8 @@ class SteamGameRepository(
             .build()
         val request = Request.Builder()
             .url(requestUrl)
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", STEAM_WEB_BROWSER_USER_AGENT)
+            .header("Accept", STEAM_WEB_BROWSER_ACCEPT)
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -156,8 +161,6 @@ class SteamGameRepository(
             602960u,
             108600u,
         )
-
-        private const val USER_AGENT = "WorkshopOnAndroid/1.0"
     }
 }
 
@@ -195,7 +198,8 @@ internal object SteamGameParsers {
                 shortDescription = SteamHtmlDecoder.stripTagsAndDecode(data.stringValue("short_description")),
                 headerImageUrl = data.stringValue("header_image"),
                 capsuleImageUrl = data.stringValue("capsule_imagev5").ifBlank { data.stringValue("capsule_image") },
-                supportsWorkshop = 30 in categories,
+                supportsWorkshop = 30 in categories && data.stringValue("type").ifBlank { "game" }.isWorkshopEligibleStoreType(),
+                storeType = data.stringValue("type").ifBlank { "game" },
             )
         }
     }
@@ -205,4 +209,8 @@ internal object SteamGameParsers {
 
     private fun JsonObject.stringValue(key: String): String =
         get(key)?.jsonPrimitive?.content.orEmpty()
+
 }
+
+internal fun String.isWorkshopEligibleStoreType(): Boolean =
+    equals("game", ignoreCase = true) || equals("software", ignoreCase = true)

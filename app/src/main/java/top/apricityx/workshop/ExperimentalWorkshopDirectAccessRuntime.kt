@@ -19,7 +19,9 @@ internal data class WattToolkitRouteProfile(
 
 internal val SteamCommunityWattToolkitRouteProfile = WattToolkitRouteProfile(
     name = "steam-community",
-    cacheFileName = "watt-route-cache-v3.json",
+    // v4 invalidates snapshots written before the Steam community/store route
+    // format and fake-SNI mapping changed upstream.
+    cacheFileName = "watt-route-cache-v4.json",
     supportedHosts = setOf(STEAM_COMMUNITY_HOST, "www.steamcommunity.com"),
     bootstrapForwardTargets = listOf("https://www.valvesoftware.com"),
     bootstrapFakeServerName = "www.valvesoftware.com",
@@ -45,7 +47,7 @@ internal val SteamImageWattToolkitRouteProfile = WattToolkitRouteProfile(
 
 internal val SteamStoreWattToolkitRouteProfile = WattToolkitRouteProfile(
     name = "steam-store",
-    cacheFileName = "watt-store-route-cache-v3.json",
+    cacheFileName = "watt-store-route-cache-v4.json",
     supportedHosts = setOf(
         "api.steampowered.com",
         "store.steampowered.com",
@@ -53,8 +55,11 @@ internal val SteamStoreWattToolkitRouteProfile = WattToolkitRouteProfile(
         "login.steampowered.com",
         "checkout.steampowered.com",
     ),
-    bootstrapForwardTargets = listOf("steamuserimages-a.akamaihd.net.edgesuite.net"),
-    bootstrapFakeServerName = "officecdn-microsoft-com.akamaized.net",
+    // Keep the offline route aligned with Watt's current Steam Store profile.
+    // The previous Akamai/officecdn pair now presents a certificate for the
+    // wrong hostname and fails before an HTTP request is sent.
+    bootstrapForwardTargets = listOf("steamstore.rmbgame.net"),
+    bootstrapFakeServerName = "steamstore-a.akamaihd.net",
     bootstrapIgnoreSslCertVerification = false,
 )
 

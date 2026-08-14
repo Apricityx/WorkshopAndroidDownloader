@@ -56,7 +56,8 @@ class WorkshopBrowseRepository(
 
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", STEAM_WEB_BROWSER_USER_AGENT)
+            .header("Accept", STEAM_WEB_BROWSER_ACCEPT)
             .build()
 
         client.newCall(request).execute().use { response ->
@@ -126,10 +127,16 @@ class WorkshopBrowseRepository(
         }
     }
 
-    private companion object {
-        const val USER_AGENT = "WorkshopOnAndroid/1.0"
-    }
 }
+
+// Steam's store and community endpoints are web routes rather than stable
+// public APIs. Use a normal mobile-browser profile so edge relays and Steam
+// do not reject requests solely because they originate from a native client.
+internal const val STEAM_WEB_BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+
+internal const val STEAM_WEB_BROWSER_ACCEPT =
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
 
 internal fun createWorkshopBrowseDetailClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
@@ -166,9 +173,8 @@ internal object WorkshopBrowseParser {
         """SharedFileBindMouseHover\(\s*"sharedfile_(\d+)"\s*,\s*false\s*,\s*(\{.*?\})\s*\);""",
         setOf(RegexOption.DOT_MATCHES_ALL),
     )
-    private val ssrRenderContextRegex = Regex(
-        """window\.SSR\.renderContext=JSON\.parse\("(.+?)"\);""",
-        setOf(RegexOption.DOT_MATCHES_ALL),
+    private val ssrRenderContextPrefixRegex = Regex(
+        """window\.SSR\.renderContext\s*=\s*JSON\.parse\("""",
     )
 
     fun parse(
@@ -228,7 +234,7 @@ internal object WorkshopBrowseParser {
         fallbackPage: WorkshopBrowsePage,
         json: Json,
     ): WorkshopBrowsePage {
-        val encodedRenderContext = ssrRenderContextRegex.find(payload)?.groupValues?.getOrNull(1) ?: return fallbackPage
+        val encodedRenderContext = extractJsonParseString(payload) ?: return fallbackPage
         val renderContext = decodeJsonStringLiteral(encodedRenderContext, json) ?: return fallbackPage
         val renderContextObject = runCatching {
             json.parseToJsonElement(renderContext) as? JsonObject
@@ -312,6 +318,33 @@ internal object WorkshopBrowseParser {
                 .jsonPrimitive
                 .content
         }.getOrNull()
+
+    /**
+     * Extract the argument of JSON.parse("...") without treating escaped quotes
+     * in nested SSR data as the end of the JavaScript string.
+     */
+    private fun extractJsonParseString(payload: String): String? {
+        val prefixMatch = ssrRenderContextPrefixRegex.find(payload) ?: return null
+        val start = prefixMatch.range.last + 1
+        for (index in start until payload.length) {
+            if (payload[index] != '"') {
+                continue
+            }
+            var backslashCount = 0
+            var previous = index - 1
+            while (previous >= start && payload[previous] == '\\') {
+                backslashCount++
+                previous--
+            }
+            if (backslashCount % 2 == 0 &&
+                payload.getOrNull(index + 1) == ')' &&
+                payload.getOrNull(index + 2) == ';'
+            ) {
+                return payload.substring(start, index)
+            }
+        }
+        return null
+    }
 }
 
 private fun JsonElement?.asJsonObject(): JsonObject? = this as? JsonObject

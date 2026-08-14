@@ -55,9 +55,13 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
         }
 
         val route = routeResolver.resolveRouteForHost(originalUrl.host)
-            ?: throw IOException(
-                "Experimental workshop direct access has no Watt route for host=${originalUrl.host}.",
-            )
+            ?: run {
+                workshopLogWarn(
+                    "Experimental workshop direct access has no Watt route for host=${originalUrl.host}; falling back to the original Steam route.",
+                )
+                notifyFallbackIfWorkshopHost(originalUrl.host)
+                return chain.proceed(request)
+            }
         return try {
             executeDirectAccessRequestWithRouteRefresh(
                 initialLogicalRequest = request,
@@ -69,7 +73,19 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
                 "Experimental workshop direct access exhausted Watt route refresh for host=${originalUrl.host}; accelerated request failed: ${error::class.java.simpleName}:${error.message}",
                 error,
             )
-            throw error
+            workshopLogWarn(
+                "Experimental workshop direct access falling back to the original Steam route for host=${originalUrl.host}.",
+            )
+            notifyFallbackIfWorkshopHost(originalUrl.host)
+            return chain.proceed(request)
+        }
+    }
+
+    private fun notifyFallbackIfWorkshopHost(host: String) {
+        if (host.equals(STEAM_COMMUNITY_HOST, ignoreCase = true) ||
+            host.equals("www.steamcommunity.com", ignoreCase = true)
+        ) {
+            fallbackNoticeSink.onFallbackToOriginalSteamRoute()
         }
     }
 
@@ -142,7 +158,19 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
         var lastError: IOException? = null
         route.forwardTargetCandidates().forEach { candidateRoute ->
             try {
-                return directCallFactory.newCall(buildNetworkRequest(logicalRequest, candidateRoute)).execute()
+                val response = directCallFactory
+                    .newCall(buildNetworkRequest(logicalRequest, candidateRoute))
+                    .execute()
+                if (response.isRetryableForwardedFailure(logicalRequest, candidateRoute)) {
+                    val failure = ForwardedHttpFailure(
+                        responseCode = response.code,
+                        requestUrl = response.request.url,
+                    )
+                    response.close()
+                    lastError = failure
+                    return@forEach
+                }
+                return response
             } catch (error: IOException) {
                 lastError = error
             }
@@ -453,6 +481,7 @@ internal class WattToolkitWorkshopRouteResolver(
             val cachedMatch = cachedRoute
                 ?.takeIf { it.matchesLogicalHost(normalizedHost) }
                 ?.takeUnless(WattToolkitWorkshopRoute::isKnownBrokenLegacyRoute)
+                ?.takeIf { now - cachedAtMs < ROUTE_CACHE_TTL_MS }
             if (cachedMatch != null) {
                 return cachedMatch
             }
@@ -562,6 +591,13 @@ internal class WattToolkitWorkshopRouteResolver(
         }
         persistedRouteLoaded = true
         val persisted = routeStore.load() ?: return
+        if (persisted.route.isKnownBrokenLegacyRoute()) {
+            workshopLogWarn(
+                "Experimental workshop direct access discarded known broken persisted Watt route forward=${persisted.route.forwardTargets.joinToString(";")}",
+            )
+            routeStore.clear()
+            return
+        }
         cachedRoute = persisted.route
         cachedAtMs = persisted.cachedAtMs
         workshopLogInfo(
@@ -834,7 +870,11 @@ internal data class WattToolkitWorkshopRoute(
 
     fun isKnownBrokenLegacyRoute(): Boolean =
         forwardHosts.any { host ->
-            host == "steamcommunity.rmbgame.net" || host == "steamstore.rmbgame.net"
+            // The community mirror was retired and now answers Steam paths with
+            // a generic 404. The store mirror remains valid when paired with
+            // the current fake SNI supplied by Watt (steamstore-a.*).
+            host == "steamcommunity.rmbgame.net" ||
+                (host == "steamstore.rmbgame.net" && fakeServerName.isBlank())
         }
 
     fun networkHostFor(logicalHost: String): String? {
@@ -888,6 +928,12 @@ internal class WattToolkitForwardDns(
         return delegate.lookup(targetHost)
     }
 }
+
+/** A forwarded endpoint answered with a gateway/mirror failure rather than Steam content. */
+private class ForwardedHttpFailure(
+    val responseCode: Int,
+    val requestUrl: HttpUrl,
+) : IOException("Forwarded Steam request failed with HTTP $responseCode at $requestUrl")
 
 internal interface WattToolkitWorkshopRouteStore {
     fun load(): PersistedWattToolkitWorkshopRoute?
@@ -1063,6 +1109,20 @@ private fun Throwable.isRetryableWattRouteFetchFailure(): Boolean =
 
 private fun Throwable.isRetryableDirectAccessRouteRefreshFailure(): Boolean =
     this is IOException || cause?.isRetryableDirectAccessRouteRefreshFailure() == true
+
+private fun Response.isRetryableForwardedFailure(
+    logicalRequest: Request,
+    route: WattToolkitWorkshopRoute,
+): Boolean {
+    if (!route.matchesLogicalHost(logicalRequest.url.host)) {
+        return false
+    }
+    // A 403 from a forwarded endpoint means that the relay rejected the
+    // logical Steam host. It is not an access decision for the requested
+    // workshop item, so refresh the route and then fall back if needed.
+    return code == 403 || code == 404 || code == 421 || code == 502 || code == 503 || code == 504 ||
+        code in 521..525
+}
 
 private fun Response.redirectTarget(
     logicalUrl: HttpUrl,

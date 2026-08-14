@@ -182,4 +182,43 @@ class WorkshopBrowseParserTest {
         assertThat(page.items[0].title).isEqualTo("Skip The Spire")
         assertThat(page.items[0].authorName).isEqualTo("apricity")
     }
+
+    @Test
+    fun parseSsrRenderContextWhenNestedDataContainsJsonParseTerminator() {
+        val queryData = """
+            {
+              "mutations": [],
+              "queries": [
+                {
+                  "state": {
+                    "data": {
+                      "current_page": 1,
+                      "total_pages": 2,
+                      "results": [
+                        {
+                          "publishedfileid": "3770021703",
+                          "creator": "76561198000000001",
+                          "consumer_appid": 646570,
+                          "preview_url": "https://example.com/preview.png",
+                          "title": "Act 3 Boss Chest",
+                          "short_description": "Contains the marker \\\"example.webm\\\"); inside text"
+                        }
+                      ]
+                    }
+                  },
+                  "queryKey": ["workshop_browse", 646570, "trend"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val renderContext = """{"queryData":${Json.encodeToString(queryData)}}"""
+        val payload = "window.SSR.renderContext=JSON.parse(${Json.encodeToString(renderContext)});"
+
+        val page = WorkshopBrowseParser.parse(payload, page = 1, json = json)
+
+        assertThat(page.items).hasSize(1)
+        assertThat(page.items[0].publishedFileId).isEqualTo(3770021703uL)
+        assertThat(page.items[0].title).isEqualTo("Act 3 Boss Chest")
+        assertThat(page.items[0].descriptionSnippet).contains("example.webm")
+    }
 }

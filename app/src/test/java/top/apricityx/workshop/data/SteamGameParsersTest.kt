@@ -102,4 +102,26 @@ class SteamGameParsersTest {
         assertThat(games.first { it.appId == 262060u }.supportsWorkshop).isFalse()
         assertThat(games.first { it.appId == 570u }.supportsWorkshop).isFalse()
     }
+
+    @Test
+    fun parseAppDetails_rejectsVideoEntriesAsWorkshopGames() {
+        val payload = """
+            {
+              "646750": {
+                "success": true,
+                "data": {
+                  "steam_appid": 646750,
+                  "name": "Shane Mauss: Mating Season",
+                  "type": "video",
+                  "categories": [{ "id": 30 }]
+                }
+              }
+            }
+        """.trimIndent()
+
+        val game = SteamGameParsers.parseAppDetails(payload, json).single()
+
+        assertThat(game.storeType).isEqualTo("video")
+        assertThat(game.supportsWorkshop).isFalse()
+    }
 }

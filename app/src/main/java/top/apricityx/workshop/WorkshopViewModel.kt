@@ -1191,7 +1191,13 @@ class WorkshopViewModel(
             }.onSuccess { game ->
                 when {
                     game == null -> showAddGameMessage("没有找到这个游戏。")
-                    !game.supportsWorkshop -> showAddGameMessage("这个游戏当前没有公开 Steam 创意工坊。")
+                    !game.supportsWorkshop -> showAddGameMessage(
+                        if (game.storeType.equals("video", ignoreCase = true)) {
+                            "这个 AppID 对应的是 Steam 视频条目，不是游戏，因此没有可加载的创意工坊。"
+                        } else {
+                            "这个游戏当前没有公开 Steam 创意工坊。"
+                        },
+                    )
                     else -> addGameAndOpen(game)
                 }
             }.onFailure { error ->
@@ -2333,7 +2339,10 @@ class WorkshopViewModel(
                     emptyList()
                 } else {
                     val cachedGamesById = libraryRepository.loadGames().associateBy(SteamGame::appId)
-                    val missingIds = appIds.filterNot(cachedGamesById::containsKey)
+                    val missingIds = appIds.filter { appId ->
+                        val cachedGame = cachedGamesById[appId]
+                        cachedGame == null || cachedGame.storeType.isBlank()
+                    }
                     if (missingIds.isEmpty()) {
                         appIds.mapNotNull(cachedGamesById::get)
                     } else {
