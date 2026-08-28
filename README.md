@@ -36,7 +36,8 @@
   <a href="#release-automation">发布自动化</a> •
   <a href="#automation">自动化调试</a> •
   <a href="#repository-layout">仓库结构</a> •
-  <a href="#limitations">当前限制</a>
+  <a href="#limitations">当前限制</a> •
+  <a href="#license">许可证</a>
 </p>
 
 > [!IMPORTANT]
@@ -192,3 +193,9 @@ scripts\prepare-release.bat
 - 暂不支持 `Collection`。
 - 工坊列表和详情依赖 Steam 页面结构与相关接口，若上游改版需要同步调整解析逻辑。
 - 当网络无法稳定访问 Steam 时，游戏库、工坊列表和下载流程都可能失败或超时。
+
+<a id="license"></a>
+
+## 许可证
+
+本项目基于 [Apache License 2.0](LICENSE) 开源。
