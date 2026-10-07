@@ -176,6 +176,10 @@ internal object WorkshopBrowseParser {
     private val ssrRenderContextPrefixRegex = Regex(
         """window\.SSR\.renderContext\s*=\s*JSON\.parse\("""",
     )
+    private val ssrDataScriptRegex = Regex(
+        """<script\b[^>]*id="valve-ssr-data"[^>]*>(.*?)</script>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+    )
 
     fun parse(
         payload: String,
@@ -234,11 +238,7 @@ internal object WorkshopBrowseParser {
         fallbackPage: WorkshopBrowsePage,
         json: Json,
     ): WorkshopBrowsePage {
-        val encodedRenderContext = extractJsonParseString(payload) ?: return fallbackPage
-        val renderContext = decodeJsonStringLiteral(encodedRenderContext, json) ?: return fallbackPage
-        val renderContextObject = runCatching {
-            json.parseToJsonElement(renderContext) as? JsonObject
-        }.getOrNull() ?: return fallbackPage
+        val renderContextObject = extractRenderContext(payload, json) ?: return fallbackPage
         val queryData = runCatching {
             renderContextObject.stringValueOrNull("queryData")
         }.getOrNull() ?: return fallbackPage
@@ -344,6 +344,29 @@ internal object WorkshopBrowseParser {
             }
         }
         return null
+    }
+
+    /**
+     * Resolve the SSR render context object regardless of the page's embedding format:
+     * - current: a JSON payload inside <script id="valve-ssr-data">, whose renderContext is an object
+     * - legacy: window.SSR.renderContext = JSON.parse("..."), whose value is a JSON string
+     */
+    private fun extractRenderContext(
+        payload: String,
+        json: Json,
+    ): JsonObject? {
+        ssrDataScriptRegex.find(payload)?.let { match ->
+            runCatching {
+                json.parseToJsonElement(match.groupValues[1].trim())
+                    .asJsonObject()
+                    ?.objectValue("renderContext")
+            }.getOrNull()?.let { return it }
+        }
+        val encodedRenderContext = extractJsonParseString(payload) ?: return null
+        val renderContext = decodeJsonStringLiteral(encodedRenderContext, json) ?: return null
+        return runCatching {
+            json.parseToJsonElement(renderContext) as? JsonObject
+        }.getOrNull()
     }
 }
 

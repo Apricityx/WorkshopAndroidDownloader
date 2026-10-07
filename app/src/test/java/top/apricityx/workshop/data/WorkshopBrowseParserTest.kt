@@ -221,4 +221,68 @@ class WorkshopBrowseParserTest {
         assertThat(page.items[0].title).isEqualTo("Act 3 Boss Chest")
         assertThat(page.items[0].descriptionSnippet).contains("example.webm")
     }
+
+    @Test
+    fun parse_extractsWorkshopItemsFromValveSsrDataScript() {
+        val queryData = """
+            {
+              "mutations": [],
+              "queries": [
+                {
+                  "state": {
+                    "data": {
+                      "public_data": {
+                        "steamid": "76561198000000001",
+                        "persona_name": "apricity"
+                      }
+                    }
+                  },
+                  "queryKey": ["PlayerLinkDetails", "76561198000000001"]
+                },
+                {
+                  "state": {
+                    "data": {
+                      "current_page": 1,
+                      "total_pages": 3,
+                      "total_count": 90,
+                      "results": [
+                        {
+                          "publishedfileid": "3811869823",
+                          "creator": "76561198000000001",
+                          "consumer_appid": 322330,
+                          "preview_url": "https://example.com/stack.png",
+                          "title": "自动堆叠掉落物 2026",
+                          "short_description": "把掉落物堆叠起来",
+                          "file_size": "80593"
+                        }
+                      ]
+                    }
+                  },
+                  "queryKey": ["workshop_browse", 322330, "trend"]
+                }
+              ]
+            }
+        """.trimIndent()
+        val renderContext = """{"queryData":${Json.encodeToString(queryData)}}"""
+        val ssrData = """{"loaderData":"{}","renderContext":${renderContext}}"""
+        // Mirrors Steam's current embedding: a type="application/json" script tag with
+        // extra attributes (type/nonce) before and after id="valve-ssr-data".
+        val payload = """
+            <html><head>
+                <script type="application/json" id="valve-ssr-data" nonce="abc-123">${ssrData}</script>
+            </head><body></body></html>
+        """.trimIndent()
+
+        val page = WorkshopBrowseParser.parse(payload, page = 1, json = json)
+
+        assertThat(page.page).isEqualTo(1)
+        assertThat(page.hasNextPage).isTrue()
+        assertThat(page.items).hasSize(1)
+        assertThat(page.items[0].publishedFileId).isEqualTo(3811869823uL)
+        assertThat(page.items[0].appId).isEqualTo(322330u)
+        assertThat(page.items[0].title).isEqualTo("自动堆叠掉落物 2026")
+        assertThat(page.items[0].authorName).isEqualTo("apricity")
+        assertThat(page.items[0].descriptionSnippet).isEqualTo("把掉落物堆叠起来")
+        assertThat(page.items[0].fileSizeBytes).isEqualTo(80593L)
+    }
 }
