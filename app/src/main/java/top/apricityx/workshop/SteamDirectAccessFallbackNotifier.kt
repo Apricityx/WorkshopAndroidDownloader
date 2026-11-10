@@ -15,7 +15,7 @@ internal object NoOpSteamDirectAccessFallbackNoticeSink : SteamDirectAccessFallb
 }
 
 internal object ExperimentalWorkshopDirectAccessFallbackNotifier : SteamDirectAccessFallbackNoticeSink {
-    private val isDisabledForCurrentProcess = AtomicBoolean(false)
+    private val hasNotified = AtomicBoolean(false)
     private val _events = MutableSharedFlow<Unit>(
         replay = 0,
         extraBufferCapacity = 1,
@@ -25,18 +25,12 @@ internal object ExperimentalWorkshopDirectAccessFallbackNotifier : SteamDirectAc
     val events: SharedFlow<Unit> = _events.asSharedFlow()
 
     override fun onFallbackToOriginalSteamRoute() {
-        if (isDisabledForCurrentProcess.compareAndSet(false, true)) {
+        if (hasNotified.compareAndSet(false, true)) {
             _events.tryEmit(Unit)
         }
     }
 
-    fun isDirectAccessAllowed(userEnabled: Boolean): Boolean =
-        userEnabled && !isDisabledForCurrentProcess.get()
-
-    fun isDirectAccessDisabledForCurrentProcess(): Boolean =
-        isDisabledForCurrentProcess.get()
-
     fun resetForTesting() {
-        isDisabledForCurrentProcess.set(false)
+        hasNotified.set(false)
     }
 }

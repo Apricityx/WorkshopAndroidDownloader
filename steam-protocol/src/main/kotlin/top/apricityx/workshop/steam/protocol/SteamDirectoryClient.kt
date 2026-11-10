@@ -15,7 +15,7 @@ class SteamDirectoryClient(
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val apiBaseUrl: HttpUrl = "https://api.steampowered.com/".toHttpUrl(),
 ) {
-    suspend fun loadServers(cellId: UInt = 0u, maxCount: UInt = 5u): List<CmServer> = withContext(Dispatchers.IO) {
+    suspend fun loadServers(cellId: UInt = 0u, maxCount: UInt = 50u): List<CmServer> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(
                 apiBaseUrl.newBuilder()
@@ -33,9 +33,24 @@ class SteamDirectoryClient(
             }
             val payload = response.body?.string().orEmpty()
             val parsed = json.decodeFromString<CmDirectoryEnvelope>(payload)
-            parsed.response.serverList
+            // The closest region can be completely unreachable on the user's
+            // network. Interleave regions so the bounded connection race does
+            // not fill all its slots with ports on the same blocked hosts.
+            val byRegion = parsed.response.serverList
                 .filter { it.type == "websockets" }
-                .map { CmServer(endpoint = it.endpoint, type = it.type) }
+                .distinctBy { it.endpoint }
+                .groupBy { it.dc.ifBlank { it.endpoint.substringBefore(':') } }
+                .values.map { it.iterator() }
+            buildList {
+                while (byRegion.any { it.hasNext() }) {
+                    byRegion.forEach { region ->
+                        if (region.hasNext()) {
+                            val server = region.next()
+                            add(CmServer(endpoint = server.endpoint, type = server.type))
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -93,6 +108,7 @@ private data class CmDirectoryResponse(
 private data class CmServerDto(
     val endpoint: String,
     val type: String,
+    val dc: String = "",
 )
 
 @Serializable

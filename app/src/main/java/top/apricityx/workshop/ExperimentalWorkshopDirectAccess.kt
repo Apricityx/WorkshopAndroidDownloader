@@ -53,12 +53,16 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
         if (!enabledProvider() || !routeResolver.supports(originalUrl.host)) {
             return chain.proceed(request)
         }
+        if (routeResolver.isTemporarilyUnavailable()) {
+            return chain.proceed(request)
+        }
 
         val route = routeResolver.resolveRouteForHost(originalUrl.host)
             ?: run {
                 workshopLogWarn(
                     "Experimental workshop direct access has no Watt route for host=${originalUrl.host}; falling back to the original Steam route.",
                 )
+                routeResolver.recordRouteFailure()
                 notifyFallbackIfWorkshopHost(originalUrl.host)
                 return chain.proceed(request)
             }
@@ -67,7 +71,7 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
                 initialLogicalRequest = request,
                 originalLogicalHost = originalUrl.host,
                 route = route,
-            )
+            ).also { routeResolver.recordRouteSuccess() }
         } catch (error: IOException) {
             workshopLogWarn(
                 "Experimental workshop direct access exhausted Watt route refresh for host=${originalUrl.host}; accelerated request failed: ${error::class.java.simpleName}:${error.message}",
@@ -76,6 +80,7 @@ internal class ExperimentalWorkshopDirectAccessInterceptor(
             workshopLogWarn(
                 "Experimental workshop direct access falling back to the original Steam route for host=${originalUrl.host}.",
             )
+            routeResolver.recordRouteFailure()
             notifyFallbackIfWorkshopHost(originalUrl.host)
             return chain.proceed(request)
         }
@@ -417,6 +422,21 @@ internal class WattToolkitWorkshopRouteResolver(
     private var cachedAtMs: Long = 0L
     @Volatile
     private var persistedRouteLoaded: Boolean = false
+    @Volatile
+    private var retryAfterMs: Long = 0L
+
+    // Back off only this route profile. A community failure must not disable
+    // the store/API profile used by authentication and download tasks.
+    fun isTemporarilyUnavailable(): Boolean = nowProvider() < retryAfterMs
+
+    fun recordRouteFailure() {
+        retryAfterMs = nowProvider() + ROUTE_FAILURE_COOLDOWN_MS
+        workshopLogWarn("Steam acceleration profile=${routeProfile.name} backing off for ${ROUTE_FAILURE_COOLDOWN_MS}ms")
+    }
+
+    fun recordRouteSuccess() {
+        retryAfterMs = 0L
+    }
 
     fun supports(host: String): Boolean =
         host.lowercase() in normalizedSupportedHosts
@@ -540,14 +560,7 @@ internal class WattToolkitWorkshopRouteResolver(
                 )
                 return fetched
             }
-            if (WattToolkitRouteFetchState.isCaptivePortalBlocked()) {
-                return routeWithoutRemoteFetchLocked(
-                    normalizedHost = normalizedHost,
-                    now = now,
-                    preferBootstrap = true,
-                )
-            }
-            return null
+            return routeWithoutRemoteFetchLocked(normalizedHost, now, preferBootstrap = true)
         }
     }
 
@@ -762,7 +775,8 @@ internal class WattToolkitWorkshopRouteResolver(
     private companion object {
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val ROUTE_CACHE_TTL_MS = 30L * 60L * 1_000L
-        const val ROUTE_FETCH_ATTEMPTS = 5
+        const val ROUTE_FAILURE_COOLDOWN_MS = 30_000L
+        const val ROUTE_FETCH_ATTEMPTS = 3
         val ROUTE_FETCH_RETRY_DELAYS_MS = longArrayOf(250L, 500L, 1_000L, 1_500L)
     }
 }
@@ -870,11 +884,9 @@ internal data class WattToolkitWorkshopRoute(
 
     fun isKnownBrokenLegacyRoute(): Boolean =
         forwardHosts.any { host ->
-            // The community mirror was retired and now answers Steam paths with
-            // a generic 404. The store mirror remains valid when paired with
-            // the current fake SNI supplied by Watt (steamstore-a.*).
-            host == "steamcommunity.rmbgame.net" ||
-                (host == "steamstore.rmbgame.net" && fakeServerName.isBlank())
+            host == "www.valvesoftware.com" ||
+                ((host == "steamcommunity.rmbgame.net" || host == "steamstore.rmbgame.net") &&
+                    normalizedFakeServerName() != "steamstore-a.akamaihd.net")
         }
 
     fun networkHostFor(logicalHost: String): String? {
@@ -1021,7 +1033,8 @@ internal data class PersistedWattToolkitWorkshopRoute(
 
 internal fun defaultWattToolkitRouteClient(): OkHttpClient =
     OkHttpClient.Builder()
-        .applyDefaultHttpTimeouts()
+        .applyDefaultHttpTimeouts(3L)
+        .callTimeout(4L, TimeUnit.SECONDS)
         .applyAppNetworkLogging("watt-route")
         .proxy(Proxy.NO_PROXY)
         .protocols(listOf(Protocol.HTTP_1_1))

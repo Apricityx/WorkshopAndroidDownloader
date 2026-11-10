@@ -44,6 +44,7 @@ internal class SteamClientIdentity(
             client = client,
             machineName = machineName,
             machineId = machineId,
+            diagnosticLogger = ::workshopLogInfo,
         )
 
     private fun resolveAndroidId(): String? =

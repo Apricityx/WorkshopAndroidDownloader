@@ -50,6 +50,27 @@ class SteamDirectoryClientTest {
         assertThat(result).hasSize(1)
         assertThat(result.first().endpoint).isEqualTo("cm1.example.net:27020")
         assertThat(result.first().websocketUri).isEqualTo("wss://cm1.example.net:27020/cmsocket/")
+        assertThat(server.takeRequest().url.queryParameter("maxcount")).isEqualTo("50")
+    }
+
+    @Test
+    fun `loadServers interleaves regions rather than exhausting nearest region first`() = runTest {
+        server.enqueue(mockResponse("""
+            {"response":{"serverlist":[
+                {"endpoint":"cm1.region-a:27018","type":"websockets","dc":"region-a"},
+                {"endpoint":"cm1.region-a:27019","type":"websockets","dc":"region-a"},
+                {"endpoint":"cm2.region-a:27018","type":"websockets","dc":"region-a"},
+                {"endpoint":"cm1.region-b:27018","type":"websockets","dc":"region-b"},
+                {"endpoint":"cm1.region-b:27019","type":"websockets","dc":"region-b"},
+                {"endpoint":"cm1.region-b:27019","type":"websockets","dc":"region-b"},
+                {"endpoint":"1.2.3.4:27017","type":"netfilter","dc":"region-b"}
+            ]}}
+        """.trimIndent()))
+        val result = SteamDirectoryClient(OkHttpClient(), apiBaseUrl = server.url("/")).loadServers()
+        assertThat(result.map(CmServer::endpoint)).containsExactly(
+            "cm1.region-a:27018", "cm1.region-b:27018",
+            "cm1.region-a:27019", "cm1.region-b:27019", "cm2.region-a:27018",
+        ).inOrder()
     }
 
     @Test

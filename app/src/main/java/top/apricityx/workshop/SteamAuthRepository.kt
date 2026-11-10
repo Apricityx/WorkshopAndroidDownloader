@@ -95,9 +95,7 @@ class SteamAuthRepository(context: Context) {
             .addExperimentalWorkshopDirectAccess(
                 runtime = experimentalWorkshopDirectAccessRuntime,
                 enabledProvider = {
-                    ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(
-                        settingsRepository.isExperimentalWorkshopDirectAccessEnabled(),
-                    )
+                    settingsRepository.isExperimentalWorkshopDirectAccessEnabled()
                 },
                 steamCookieJar = CookieJar.NO_COOKIES,
             )

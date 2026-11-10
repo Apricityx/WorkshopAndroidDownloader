@@ -19,12 +19,11 @@ internal data class WattToolkitRouteProfile(
 
 internal val SteamCommunityWattToolkitRouteProfile = WattToolkitRouteProfile(
     name = "steam-community",
-    // v4 invalidates snapshots written before the Steam community/store route
-    // format and fake-SNI mapping changed upstream.
-    cacheFileName = "watt-route-cache-v4.json",
+    // Drop snapshots containing the retired valvesoftware bootstrap route.
+    cacheFileName = "watt-route-cache-v5.json",
     supportedHosts = setOf(STEAM_COMMUNITY_HOST, "www.steamcommunity.com"),
-    bootstrapForwardTargets = listOf("https://www.valvesoftware.com"),
-    bootstrapFakeServerName = "www.valvesoftware.com",
+    bootstrapForwardTargets = listOf("steamcommunity.rmbgame.net"),
+    bootstrapFakeServerName = "steamstore-a.akamaihd.net",
     bootstrapIgnoreSslCertVerification = false,
 )
 

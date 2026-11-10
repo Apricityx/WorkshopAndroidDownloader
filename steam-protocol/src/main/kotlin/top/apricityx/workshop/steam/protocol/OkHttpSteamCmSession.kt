@@ -22,7 +22,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -38,16 +42,31 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.TimeUnit
 
 class OkHttpSteamCmSession(
     private val client: OkHttpClient = newDefaultOkHttpClient(),
     private val machineName: String = DEFAULT_MACHINE_NAME,
     private val machineId: ByteArray = defaultSteamMachineId(),
+    private val connectionTimeoutMillis: Long = 8_000L,
+    private val connectionStaggerMillis: Long = 250L,
+    private val logonTimeoutMillis: Long = 15_000L,
+    private val diagnosticLogger: (String) -> Unit = {},
 ) : SteamCmSession {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingRequests = ConcurrentHashMap<Long, PendingRequest<out MessageLite>>()
     private val _currentSession = MutableStateFlow<SessionContext?>(null)
     private val nextJobId = AtomicLong(1L)
+    private val transportLock = Any()
+    private val connectionAttempts = ConcurrentHashMap.newKeySet<ConnectionAttempt>()
+    private val failedServers = ConcurrentHashMap.newKeySet<String>()
+    private var transportGeneration = 0L
+
+    init {
+        require(connectionTimeoutMillis > 0)
+        require(connectionStaggerMillis >= 0)
+        require(logonTimeoutMillis > 0)
+    }
 
     @Volatile
     private var webSocket: WebSocket? = null
@@ -68,31 +87,37 @@ class OkHttpSteamCmSession(
 
     override suspend fun connect(servers: List<CmServer>) {
         reconnectPlan = ReconnectPlan.TransportOnly(servers.toList())
-        ensureConnected(servers)
+        try {
+            ensureConnected(servers)
+        } catch (error: Throwable) {
+            closeTransport()
+            throw error
+        }
     }
 
     override suspend fun connectAnonymous(servers: List<CmServer>): SessionContext {
         currentSession.value?.let { return it }
         reconnectPlan = ReconnectPlan.Anonymous(servers.toList())
-        ensureConnected(servers)
-        return startLogon(
-            requestLabel = "anonymous",
-            buildBody = {
-                CMsgClientLogon.newBuilder()
-                    .setProtocolVersion(SteamPacketCodec.clientLogonProtocol)
-                    .setClientOsType(DEFAULT_CLIENT_OS_TYPE)
-                    .setClientLanguage("english")
-                    .setCellId(0)
-                    .setClientPackageVersion(1771)
-                    .setObfuscatedPrivateIp(defaultObfuscatedPrivateIp())
-                    .setDeprecatedObfustucatedPrivateIp(defaultObfuscatedPrivateIp().v4)
-                    .setMachineName(machineName)
-                    .setMachineId(ByteString.copyFrom(machineId))
-                    .setSupportsRateLimitResponse(true)
-                    .build()
-            },
-            headerSteamId = anonymousSteamId(),
-        )
+        return connectAndLogon(servers) {
+            startLogon(
+                requestLabel = "anonymous",
+                buildBody = {
+                    CMsgClientLogon.newBuilder()
+                        .setProtocolVersion(SteamPacketCodec.clientLogonProtocol)
+                        .setClientOsType(DEFAULT_CLIENT_OS_TYPE)
+                        .setClientLanguage("english")
+                        .setCellId(0)
+                        .setClientPackageVersion(1771)
+                        .setObfuscatedPrivateIp(defaultObfuscatedPrivateIp())
+                        .setDeprecatedObfustucatedPrivateIp(defaultObfuscatedPrivateIp().v4)
+                        .setMachineName(machineName)
+                        .setMachineId(ByteString.copyFrom(machineId))
+                        .setSupportsRateLimitResponse(true)
+                        .build()
+                },
+                headerSteamId = anonymousSteamId(),
+            )
+        }
     }
 
     override suspend fun connectWithRefreshToken(
@@ -104,82 +129,190 @@ class OkHttpSteamCmSession(
             servers = servers.toList(),
             account = account,
         )
-        ensureConnected(servers)
-        return startLogon(
-            requestLabel = "refresh token",
-            buildBody = {
-                CMsgClientLogon.newBuilder()
-                    .setProtocolVersion(SteamPacketCodec.clientLogonProtocol)
-                    .setClientOsType(DEFAULT_CLIENT_OS_TYPE)
-                    .setClientLanguage("english")
-                    .setCellId(0)
-                    .setClientPackageVersion(1771)
-                    .setObfuscatedPrivateIp(defaultObfuscatedPrivateIp())
-                    .setDeprecatedObfustucatedPrivateIp(defaultObfuscatedPrivateIp().v4)
-                    .setMachineName(account.machineName.ifBlank { machineName })
-                    .setMachineId(ByteString.copyFrom(machineId))
-                    .setSupportsRateLimitResponse(true)
-                    .setAccountName(account.accountName)
-                    .setShouldRememberPassword(account.shouldRememberPassword)
-                    .setAccessToken(account.refreshToken)
-                    .build()
-            },
-            headerSteamId = account.steamId,
-        )
+        return connectAndLogon(servers) {
+            startLogon(
+                requestLabel = "refresh token",
+                buildBody = {
+                    CMsgClientLogon.newBuilder()
+                        .setProtocolVersion(SteamPacketCodec.clientLogonProtocol)
+                        .setClientOsType(DEFAULT_CLIENT_OS_TYPE)
+                        .setClientLanguage("english")
+                        .setCellId(0)
+                        .setClientPackageVersion(1771)
+                        .setObfuscatedPrivateIp(defaultObfuscatedPrivateIp())
+                        .setDeprecatedObfustucatedPrivateIp(defaultObfuscatedPrivateIp().v4)
+                        .setMachineName(account.machineName.ifBlank { machineName })
+                        .setMachineId(ByteString.copyFrom(machineId))
+                        .setSupportsRateLimitResponse(true)
+                        .setAccountName(account.accountName)
+                        .setShouldRememberPassword(account.shouldRememberPassword)
+                        .setAccessToken(account.refreshToken)
+                        .build()
+                },
+                headerSteamId = account.steamId,
+            )
+        }
     }
 
-    private suspend fun ensureConnected(servers: List<CmServer>) {
-        if (webSocket != null) {
-            return
-        }
-        require(servers.isNotEmpty()) { "No Steam CM servers available" }
-
+    private suspend fun connectAndLogon(
+        servers: List<CmServer>,
+        logon: suspend () -> SessionContext,
+    ): SessionContext {
+        val remaining = servers.distinctBy(CmServer::endpoint).toMutableList()
         var lastError: Throwable? = null
-        for (server in rotateServers(servers)) {
+        // Only retry transport failures. Invalid credentials and rate limits
+        // must not be replayed against every CM server.
+        repeat(MAX_LOGON_ATTEMPTS) {
+            var selected: CmServer? = null
             try {
-                connectSingleServer(server)
-                return
+                ensureConnected(remaining)
+                selected = currentServer
+                return logon()
             } catch (error: Throwable) {
-                lastError = error
                 closeTransport()
+                currentCoroutineContext().ensureActive()
+                if (selected == null) throw error
+                if (error is SteamAuthenticationException || !isRecoverableConnectionFailure(error)) throw error
+                lastError = error
+                failedServers += selected.endpoint
+                remaining.removeAll { it.endpoint == selected.endpoint }
+                if (remaining.isEmpty()) throw error
             }
         }
-
-        throw SteamProtocolException("Unable to connect to any Steam CM websocket", lastError)
+        throw SteamProtocolException("Steam CM logon failed after $MAX_LOGON_ATTEMPTS servers", lastError)
     }
 
-    private suspend fun connectSingleServer(server: CmServer) {
-        val deferred = CompletableDeferred<Unit>()
-        val request = Request.Builder().url(server.websocketUri).build()
+    private suspend fun ensureConnected(servers: List<CmServer>) = coroutineScope {
+        if (webSocket != null) {
+            return@coroutineScope
+        }
+        require(servers.isNotEmpty()) { "No Steam CM servers available" }
+        val generation = synchronized(transportLock) { transportGeneration }
+        val candidates = servers.distinctBy(CmServer::endpoint)
+            .sortedBy { it.endpoint in failedServers }
+            .take(MAX_CONNECTION_CANDIDATES)
+        val results = Channel<Result<ConnectionAttempt>>(Channel.UNLIMITED)
+        val attempts = candidates.map(::ConnectionAttempt)
+        connectionAttempts.addAll(attempts)
+        val jobs = attempts.mapIndexed { index, attempt ->
+            launch {
+                delay(index * connectionStaggerMillis)
+                val startedAt = System.nanoTime()
+                diagnosticLogger("Steam CM connecting endpoint=${attempt.server.endpoint} timeoutMs=$connectionTimeoutMillis")
+                try {
+                    openConnectionAttempt(attempt, generation)
+                    results.send(Result.success(attempt))
+                } catch (error: Throwable) {
+                    currentCoroutineContext().ensureActive()
+                    diagnosticLogger("Steam CM connection failed endpoint=${attempt.server.endpoint} elapsedMs=${(System.nanoTime() - startedAt) / 1_000_000L}: ${error.message}")
+                    failedServers += attempt.server.endpoint
+                    results.send(Result.failure(SteamProtocolException(
+                        "Steam CM websocket failed: ${attempt.server.endpoint}: ${error.message}", error,
+                    )))
+                }
+            }
+        }
+        var selected: ConnectionAttempt? = null
+        var connected = false
+        try {
+            var lastError: Throwable? = null
+            repeat(attempts.size) {
+                val result = results.receive()
+                val attempt = result.getOrNull()
+                if (attempt != null) {
+                    synchronized(transportLock) {
+                        check(transportGeneration == generation) { "Steam CM connection cancelled" }
+                        if (attempt.failure == null) {
+                            selected = attempt
+                            webSocket = attempt.socket
+                            currentServer = attempt.server
+                            failedServers -= attempt.server.endpoint
+                        } else {
+                            lastError = attempt.failure
+                        }
+                    }
+                    if (selected != null) {
+                        sendHello()
+                        connected = true
+                        diagnosticLogger("Steam CM selected endpoint=${attempt.server.endpoint}")
+                        return@coroutineScope
+                    }
+                } else {
+                    lastError = result.exceptionOrNull()
+                }
+            }
+            throw SteamProtocolException("Unable to connect to any Steam CM websocket", lastError)
+        } finally {
+            jobs.forEach { it.cancel() }
+            synchronized(transportLock) {
+                if (!connected) {
+                    if (webSocket === selected?.socket) webSocket = null
+                }
+                attempts.filter { !connected || it !== selected }.forEach {
+                    it.abandoned = true
+                    it.socket?.cancel()
+                }
+            }
+            connectionAttempts.removeAll(attempts.toSet())
+            results.close()
+        }
+    }
+
+    private suspend fun openConnectionAttempt(attempt: ConnectionAttempt, generation: Long) {
+        val request = Request.Builder().url(attempt.server.websocketUri).build()
 
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                this@OkHttpSteamCmSession.webSocket = webSocket
-                this@OkHttpSteamCmSession.currentServer = server
-                sendHello()
-                deferred.complete(Unit)
+                attempt.opened.completeIfNeeded(Unit)
             }
 
             override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
-                handleIncomingPacket(bytes.toByteArray())
+                synchronized(transportLock) {
+                    if (generation == transportGeneration && this@OkHttpSteamCmSession.webSocket === webSocket) {
+                        handleIncomingPacket(bytes.toByteArray())
+                    }
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                this@OkHttpSteamCmSession.webSocket = null
-                failActiveState(t)
-                deferred.completeExceptionallyIfNeeded(t)
+                failAttempt(webSocket, t)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                this@OkHttpSteamCmSession.webSocket = null
-                val failure = IOException("Steam websocket closed: $code $reason")
-                failActiveState(failure)
-                deferred.completeExceptionallyIfNeeded(failure)
+                failAttempt(webSocket, IOException("Steam websocket closed: $code $reason"))
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                failAttempt(webSocket, IOException("Steam websocket closing: $code $reason"))
+                webSocket.close(code, reason)
+            }
+
+            private fun failAttempt(socket: WebSocket, error: Throwable) {
+                synchronized(transportLock) {
+                    attempt.failure = error
+                    if (generation == transportGeneration && webSocket === socket) {
+                        failedServers += attempt.server.endpoint
+                        webSocket = null
+                        failActiveState(error)
+                    }
+                    attempt.opened.completeExceptionallyIfNeeded(error)
+                }
             }
         }
 
-        webSocket = client.newWebSocket(request, listener)
-        withTimeout(REQUEST_TIMEOUT_MS) { deferred.await() }
+        // Limit the handshake independently of the longer service-call timeout.
+        // All candidates race with staggered starts, so a black-holed first
+        // endpoint does not hold up a reachable later endpoint for 30 seconds.
+        val connectionClient = client.newBuilder()
+            .connectTimeout(connectionTimeoutMillis, TimeUnit.MILLISECONDS)
+            .readTimeout(connectionTimeoutMillis, TimeUnit.MILLISECONDS)
+            .build()
+        synchronized(transportLock) {
+            check(generation == transportGeneration) { "Steam CM connection cancelled" }
+            check(!attempt.abandoned) { "Steam CM connection attempt cancelled" }
+            attempt.socket = connectionClient.newWebSocket(request, listener)
+        }
+        withTimeout(connectionTimeoutMillis) { attempt.opened.await() }
     }
 
     private fun sendHello() {
@@ -200,7 +333,6 @@ class OkHttpSteamCmSession(
         buildBody: () -> CMsgClientLogon,
         headerSteamId: Long,
     ): SessionContext {
-        pendingLogon = CompletableDeferred()
         val packet = SteamPacketCodec.encode(
             emsg = SteamPacketCodec.emsgClientLogon,
             header = CMsgProtoBufHeader.newBuilder()
@@ -209,12 +341,15 @@ class OkHttpSteamCmSession(
                 .build(),
             body = buildBody(),
         )
-        if (webSocket?.send(packet.toByteString()) != true) {
-            val error = SteamProtocolException("Failed to send Steam $requestLabel logon")
-            pendingLogon.completeExceptionallyIfNeeded(error)
-            throw error
+        synchronized(transportLock) {
+            pendingLogon = CompletableDeferred()
+            if (webSocket?.send(packet.toByteString()) != true) {
+                val error = SteamProtocolException("Failed to send Steam $requestLabel logon")
+                pendingLogon.completeExceptionallyIfNeeded(error)
+                throw error
+            }
         }
-        return withTimeout(REQUEST_TIMEOUT_MS) { pendingLogon.await() }
+        return withTimeout(logonTimeoutMillis) { pendingLogon.await() }
     }
 
     private fun handleIncomingPacket(rawPacket: ByteArray) {
@@ -424,17 +559,24 @@ class OkHttpSteamCmSession(
 
     override fun close() {
         closeTransport()
+        scope.cancel()
     }
 
     private fun closeTransport() {
-        heartbeatJob?.cancel()
-        heartbeatJob = null
-        _currentSession.value = null
-        currentServer = null
-        val failure = SteamProtocolException("Steam CM session closed")
-        failActiveState(failure)
-        webSocket?.close(1000, "closed")
-        webSocket = null
+        synchronized(transportLock) {
+            transportGeneration++
+            heartbeatJob?.cancel()
+            heartbeatJob = null
+            val failure = SteamProtocolException("Steam CM session closed")
+            failActiveState(failure)
+            val previous = webSocket
+            webSocket = null
+            previous?.cancel()
+            connectionAttempts.forEach {
+                it.opened.completeExceptionallyIfNeeded(failure)
+                it.socket?.cancel()
+            }
+        }
     }
 
     private fun anonymousSteamId(): Long {
@@ -482,6 +624,7 @@ class OkHttpSteamCmSession(
 
     private suspend fun reconnectForRetry() {
         val plan = reconnectPlan ?: throw SteamProtocolException("No saved Steam connection plan to retry request")
+        currentServer?.let { failedServers += it.endpoint }
         closeTransport()
         when (plan) {
             is ReconnectPlan.TransportOnly -> connect(plan.servers)
@@ -496,6 +639,7 @@ class OkHttpSteamCmSession(
             try {
                 return block()
             } catch (error: Throwable) {
+                currentCoroutineContext().ensureActive()
                 if (!shouldRetry || !isRecoverableConnectionFailure(error)) {
                     throw error
                 }
@@ -515,18 +659,11 @@ class OkHttpSteamCmSession(
             else -> false
         }
 
-    private fun rotateServers(servers: List<CmServer>): List<CmServer> {
-        if (servers.size <= 1) {
-            return servers
-        }
-        val active = currentServer ?: return servers
-        val index = servers.indexOfFirst { it.endpoint == active.endpoint }
-        if (index == -1) {
-            return servers
-        }
-        return List(servers.size) { offset ->
-            servers[(index + offset + 1) % servers.size]
-        }
+    private class ConnectionAttempt(val server: CmServer) {
+        val opened = CompletableDeferred<Unit>()
+        var abandoned = false // guarded by transportLock
+        @Volatile var socket: WebSocket? = null
+        @Volatile var failure: Throwable? = null
     }
 
     private sealed interface ReconnectPlan {
@@ -588,6 +725,8 @@ class OkHttpSteamCmSession(
     private companion object {
         private const val OBFUSCATION_MASK = 0xBAADF00D.toInt()
         private const val REQUEST_TIMEOUT_MS = DEFAULT_HTTP_TIMEOUT_SECONDS * 1_000L
+        private const val MAX_CONNECTION_CANDIDATES = 12
+        private const val MAX_LOGON_ATTEMPTS = 2
     }
 }
 

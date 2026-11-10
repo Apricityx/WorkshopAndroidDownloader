@@ -7,6 +7,7 @@ import top.apricityx.workshop.steam.protocol.SteamContentClient
 import top.apricityx.workshop.steam.protocol.SteamDirectoryClient
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -39,15 +40,17 @@ class UgcWorkshopDownloader(
     ) = withContext(Dispatchers.IO) {
         log("Loading Steam CM websocket candidates")
         val cmServers = directoryClient.loadServers()
-        log("Loaded ${cmServers.size} CM websocket candidates")
+        log("Loaded ${cmServers.size} CM websocket candidates: ${cmServers.joinToString { it.endpoint }}")
         val cdnTransport = SteamCdnTransport(client)
 
         sessionFactory().use { session ->
             val contentClient = SteamContentClient(session, directoryClient)
+            val connectStartedAt = System.nanoTime()
             val connectResult = runCatching { sessionConnector(session, cmServers) }
             connectResult
-                .onSuccess { log("Connected to Steam CM cell=${it.cellId} steamId=${it.steamId}") }
+                .onSuccess { log("Connected to Steam CM cell=${it.cellId} steamId=${it.steamId} elapsedMs=${(System.nanoTime() - connectStartedAt) / 1_000_000L}") }
                 .onFailure {
+                    if (it is CancellationException) throw it
                     if (allowPublicCdnFallbackOnSessionFailure) {
                         log("Steam CM connection failed, continuing with public CDN flow: ${it.message}")
                     } else {
@@ -55,23 +58,25 @@ class UgcWorkshopDownloader(
                     }
                 }
 
-            val manifestRequestCode = runCatching {
+            val manifestRequestCode = if (connectResult.isSuccess) runCatching {
                 contentClient.getManifestRequestCode(
                     appId = request.appId,
                     depotId = item.depotId,
                     manifestId = item.manifestId,
                 )
             }.getOrElse {
+                if (it is CancellationException) throw it
                 log("Manifest request code unavailable, retrying without request code: ${it.message}")
                 0uL
-            }
+            } else 0uL
 
-            val contentServers = runCatching {
+            val contentServers = if (connectResult.isSuccess) runCatching {
                 contentClient.getServersForSteamPipe()
             }.getOrElse {
+                if (it is CancellationException) throw it
                 log("Falling back to public content server directory API")
                 directoryClient.loadContentServers()
-            }
+            } else directoryClient.loadContentServers()
 
             require(contentServers.isNotEmpty()) { "No CDN servers available for SteamPipe" }
             log("Loaded ${contentServers.size} SteamPipe content servers")
@@ -86,7 +91,7 @@ class UgcWorkshopDownloader(
             }
             val cdnAuthTokenCache = ConcurrentHashMap<String, String>()
 
-            val depotKey = runCatching {
+            val depotKey = if (connectResult.isSuccess) runCatching {
                 session.requestDepotDecryptionKey(
                     appId = request.appId,
                     depotId = item.depotId,
@@ -94,8 +99,9 @@ class UgcWorkshopDownloader(
             }.onSuccess {
                 log("Loaded depot key for depot=${item.depotId}")
             }.onFailure {
+                if (it is CancellationException) throw it
                 log("Depot key request failed for depot=${item.depotId}: ${it.message}")
-            }.getOrNull()
+            }.getOrNull() else null
 
             val manifest = downloadManifest(
                 appId = request.appId,

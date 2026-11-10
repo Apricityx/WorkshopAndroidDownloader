@@ -91,9 +91,7 @@ class SteamAppOwnershipRepository(
             .addExperimentalWorkshopDirectAccess(
                 runtime = experimentalWorkshopDirectAccessRuntime,
                 enabledProvider = {
-                    ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(
-                        settingsRepository.isExperimentalWorkshopDirectAccessEnabled(),
-                    )
+                    settingsRepository.isExperimentalWorkshopDirectAccessEnabled()
                 },
                 steamCookieJar = steamWebCookieJar,
             )

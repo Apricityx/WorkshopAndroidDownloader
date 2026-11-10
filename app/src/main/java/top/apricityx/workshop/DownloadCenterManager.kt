@@ -353,9 +353,7 @@ class DownloadCenterManager private constructor(
             .addExperimentalWorkshopDirectAccess(
                 runtime = experimentalWorkshopDirectAccessRuntime,
                 enabledProvider = {
-                    ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(
-                        settingsRepository.isExperimentalWorkshopDirectAccessEnabled(),
-                    )
+                    settingsRepository.isExperimentalWorkshopDirectAccessEnabled()
                 },
                 steamCookieJar = steamWebCookieJar,
             )
@@ -894,7 +892,6 @@ private fun eventProgressCompletedFiles(
     } else {
         progress.completedFiles + 1
     }
-
 
 
 

@@ -6,6 +6,10 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.nio.file.Files
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.Cookie
@@ -843,7 +847,7 @@ class ExperimentalWorkshopDirectAccessTest {
 
         val route = resolver.resolveSteamCommunityRoute()
 
-        assertThat(route?.forwardTargets).containsExactly("https://www.valvesoftware.com")
+        assertThat(route?.forwardTargets).containsExactly("steamcommunity.rmbgame.net")
         assertThat(route?.isKnownBrokenLegacyRoute()).isFalse()
         assertThat(store.loadCount).isEqualTo(1)
         assertThat(store.saved).hasSize(1)
@@ -918,9 +922,9 @@ class ExperimentalWorkshopDirectAccessTest {
         assertThat(route).isEqualTo(
             WattToolkitWorkshopRoute(
                 logicalHosts = DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS,
-                forwardTargets = listOf("https://www.valvesoftware.com"),
+                forwardTargets = listOf("steamcommunity.rmbgame.net"),
                 ignoreSslCertVerification = false,
-                fakeServerName = "www.valvesoftware.com",
+                fakeServerName = "steamstore-a.akamaihd.net",
             ),
         )
     }
@@ -969,7 +973,7 @@ class ExperimentalWorkshopDirectAccessTest {
 
         val route = resolver.resolveSteamCommunityRoute()
 
-        assertThat(route?.forwardTargets).containsExactly("https://www.valvesoftware.com")
+        assertThat(route?.forwardTargets).containsExactly("steamcommunity.rmbgame.net")
         assertThat(WattToolkitRouteFetchState.isCaptivePortalBlocked()).isTrue()
     }
 
@@ -996,7 +1000,7 @@ class ExperimentalWorkshopDirectAccessTest {
         )
 
         assertThat(firstResolver.resolveSteamCommunityRoute()?.forwardTargets)
-            .containsExactly("https://www.valvesoftware.com")
+            .containsExactly("steamcommunity.rmbgame.net")
         assertThat(secondResolver.resolveRouteForHost("api.steampowered.com")?.forwardTargets)
             .containsExactly("steamstore.rmbgame.net")
         assertThat(apiServer.requestCount).isEqualTo(1)
@@ -1260,19 +1264,106 @@ class ExperimentalWorkshopDirectAccessTest {
     }
 
     @Test
-    fun fallbackNotifier_disables_direct_access_for_current_process_after_first_fallback() {
-        assertThat(ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(userEnabled = true)).isTrue()
-        assertThat(
-            ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessDisabledForCurrentProcess(),
-        ).isFalse()
+    fun fallbackNotifier_notifies_once_without_disabling_other_routes() = runBlocking {
+        var notices = 0
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            ExperimentalWorkshopDirectAccessFallbackNotifier.events.collect { notices++ }
+        }
+        val storeResolver = WattToolkitWorkshopRouteResolver(routeProfile = SteamStoreWattToolkitRouteProfile)
+        repeat(2) { ExperimentalWorkshopDirectAccessFallbackNotifier.onFallbackToOriginalSteamRoute() }
+        kotlinx.coroutines.yield()
 
-        ExperimentalWorkshopDirectAccessFallbackNotifier.onFallbackToOriginalSteamRoute()
+        assertThat(notices).isEqualTo(1)
+        assertThat(storeResolver.isTemporarilyUnavailable()).isFalse()
+        collector.cancelAndJoin()
+    }
 
-        assertThat(ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(userEnabled = true)).isFalse()
-        assertThat(
-            ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessDisabledForCurrentProcess(),
-        ).isTrue()
-        assertThat(ExperimentalWorkshopDirectAccessFallbackNotifier.isDirectAccessAllowed(userEnabled = false)).isFalse()
+    @Test
+    fun routeResolver_accepts_and_reuses_current_community_route_cache() {
+        val route = defaultBootstrapRouteForProfile(SteamCommunityWattToolkitRouteProfile)!!
+        val store = FakeWattToolkitWorkshopRouteStore(PersistedWattToolkitWorkshopRoute(route, 1_000L))
+        val resolver = WattToolkitWorkshopRouteResolver(
+            client = OkHttpClient.Builder().addInterceptor { error("Cache should avoid config fetch") }.build(),
+            routeStore = store,
+            nowProvider = { 2_000L },
+        )
+
+        assertThat(route.isKnownBrokenLegacyRoute()).isFalse()
+        repeat(2) { assertThat(resolver.resolveSteamCommunityRoute()).isEqualTo(route) }
+        assertThat(store.loadCount).isEqualTo(1)
+        assertThat(store.clearCount).isEqualTo(0)
+    }
+
+    @Test
+    fun routeResolver_rejects_retired_valvesoftware_route() {
+        val route = WattToolkitWorkshopRoute(
+            logicalHosts = DEFAULT_WATT_TOOLKIT_ROUTE_HOSTS,
+            forwardTargets = listOf("https://www.valvesoftware.com"),
+            fakeServerName = "www.valvesoftware.com",
+        )
+        assertThat(route.isKnownBrokenLegacyRoute()).isTrue()
+    }
+
+    @Test
+    fun routeResolver_refresh_uses_bootstrap_when_configuration_unavailable() {
+        val resolver = WattToolkitWorkshopRouteResolver(
+            client = OkHttpClient.Builder().addInterceptor { throw IOException("offline") }.build(),
+            sleepProvider = {},
+        )
+        assertThat(resolver.refreshRouteForHost(STEAM_COMMUNITY_HOST))
+            .isEqualTo(defaultBootstrapRouteForProfile(SteamCommunityWattToolkitRouteProfile))
+    }
+
+    @Test
+    fun routeResolver_failure_backoff_is_profile_scoped_and_recovers_without_restart() {
+        var now = 1_000L
+        val community = WattToolkitWorkshopRouteResolver(nowProvider = { now })
+        val store = WattToolkitWorkshopRouteResolver(
+            routeProfile = SteamStoreWattToolkitRouteProfile,
+            nowProvider = { now },
+        )
+        community.recordRouteFailure()
+        assertThat(community.isTemporarilyUnavailable()).isTrue()
+        assertThat(store.isTemporarilyUnavailable()).isFalse()
+
+        now += 30_000L
+        assertThat(community.isTemporarilyUnavailable()).isFalse()
+        community.recordRouteFailure()
+        community.recordRouteSuccess()
+        assertThat(community.isTemporarilyUnavailable()).isFalse()
+    }
+
+    @Test
+    fun interceptor_skips_failed_profile_during_backoff_then_retries_acceleration() {
+        var now = 1_000L
+        val dns = Dns { listOf(InetAddress.getByName("127.0.0.1")) }
+        val route = WattToolkitWorkshopRoute(
+            logicalHosts = setOf(STEAM_COMMUNITY_HOST),
+            forwardTargets = listOf("http://forward.test:${forwardedServer.port}"),
+        )
+        val resolver = WattToolkitWorkshopRouteResolver(
+            routeStore = FakeWattToolkitWorkshopRouteStore(PersistedWattToolkitWorkshopRoute(route, now)),
+            nowProvider = { now },
+        )
+        val client = OkHttpClient.Builder().dns(dns).addInterceptor(
+            ExperimentalWorkshopDirectAccessInterceptor(
+                enabledProvider = { true },
+                routeResolver = resolver,
+                steamCookieJar = SteamWebSessionCookieJar(),
+                directCallFactory = OkHttpClient.Builder().dns(dns).build(),
+            ),
+        ).build()
+        val request = Request.Builder().url("http://$STEAM_COMMUNITY_HOST:${apiServer.port}/workshop/browse/").build()
+        resolver.recordRouteFailure()
+        apiServer.enqueue(MockResponse.Builder().body("origin").build())
+        client.newCall(request).execute().use { assertThat(it.body?.string()).isEqualTo("origin") }
+        assertThat(forwardedServer.requestCount).isEqualTo(0)
+
+        now += 30_000L
+        forwardedServer.enqueue(MockResponse.Builder().body("accelerated").build())
+        client.newCall(request).execute().use { assertThat(it.body?.string()).isEqualTo("accelerated") }
+        assertThat(forwardedServer.requestCount).isEqualTo(1)
+        assertThat(apiServer.requestCount).isEqualTo(1)
     }
 
     private class FakeWattToolkitWorkshopRouteStore(
